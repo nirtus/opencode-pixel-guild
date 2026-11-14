@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>OpenCode Pixel Guild Visualizer — Live Spectator Companion</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="alternate icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="stylesheet" href="/src/web/styles.css" />
+  <link rel="stylesheet" href="/src/web/styles-components.css" />
+  <link rel="stylesheet" href="/src/web/styles-responsive.css" />
+</head>
+<body>
+  <header class="top-bar">
+    <div class="brand">
+      <div class="brand-crest"><img class="brand-crest-img" src="/favicon.svg" alt="" aria-hidden="true" /></div>
+      <div class="brand-text">
+        <div class="brand-title">OpenCode Pixel Guild Visualizer</div>
+      </div>
+    </div>
+
+    <nav class="scenario-buttons" id="room-filter-buttons" aria-label="Project Worlds">
+      <span class="scenario-label">Worlds:</span>
+    </nav>
+
+    <div class="adapter-controls">
+      <span id="daemon-indicator" class="badge-pill live" title="Connected OpenCode V2 Daemon URL">Daemon: connecting...</span>
+      <span id="summary-indicator" class="badge-pill">0 rooms · 0 adventurers</span>
+      <div id="header-machine-strip" class="header-machine-strip" role="group" aria-label="Registered OpenCode Machines"></div>
+      <button type="button" class="btn" id="btn-open-pairing-modal" title="Pair &amp; Manage OpenCode Machines">🔗 Pair OpenCode</button>
+      <button type="button" class="btn btn-icon-compact" id="btn-open-account-modal" title="Login, Register &amp; User Profile">👤</button>
+      <button type="button" class="btn btn-summon-cta" id="btn-open-summon-modal" data-open-summon-modal="true" title="Summon a new Adventurer session in the active Workshop Room">✨ Summon</button>
+      <button type="button" class="btn btn-icon-compact" id="btn-refresh-live" title="Force sweep of live daemon state">🔄</button>
+      <button type="button" class="btn btn-icon-compact" id="btn-toggle-lineage" title="Toggle Active Squads vs Full Lineage">👥</button>
+      <button type="button" class="btn btn-icon-compact" id="btn-toggle-style" title="Toggle Clean Cartoon Vector Style vs Pixel Sprite Atlas Style">🎨</button>
+    </div>
+  </header>
+
+  <main class="main-stage" id="main-stage" data-world-hidden="false">
+    <section class="canvas-container world-section" id="world-section" aria-label="Project World">
+      <div class="camera-overlay world-toolbar">
+        <div class="camera-focus-group">
+          <span class="world-toolbar-label">🌍 World:</span>
+          <button type="button" class="btn active" id="btn-focus-auto" title="Smart Chamber Visibility (Room + Active Bug Wilds)">✨ Auto</button>
+          <button type="button" class="btn" id="btn-focus-workshop" title="Show/Hide Workshop Room inside World">🏰 Room ✓</button>
+          <button type="button" class="btn" id="btn-focus-wilds" title="Show/Hide Dungeon Wilds inside World">🌫️ Wilds</button>
+          <button type="button" class="btn" id="btn-focus-split" title="Show Both Room &amp; Wilderness">🗺️ Both</button>
+        </div>
+        <div class="camera-zoom-group">
+          <button type="button" class="btn" id="btn-zoom-out" aria-label="Zoom Out">-</button>
+          <span id="zoom-readout">1.00x</span>
+          <button type="button" class="btn" id="btn-zoom-in" aria-label="Zoom In">+</button>
+          <button type="button" class="btn" id="btn-reset-camera">Center</button>
+          <button type="button" class="btn" id="btn-hide-world" title="Hide World Section">Hide World ◀</button>
+          <button type="button" class="btn btn-icon-compact is-hidden" id="btn-restore-gamemaster" aria-label="Show Gamemaster Panel" title="Show Gamemaster Panel">⇤</button>
+        </div>
+      </div>
+
+      <div class="world-canvas-stage">
+        <canvas id="guild-canvas" width="800" height="720"></canvas>
+        <div id="alcove-tooltip" class="alcove-tooltip"></div>
+      </div>
+    </section>
+
+    <div id="layout-resizer" class="layout-resizer" role="separator" aria-orientation="vertical" aria-label="Resize Worlds and Game Master Sections" title="Drag left or right to resize Worlds and Game Master sections"></div>
+
+    <aside class="spectator-sidebar" data-drawer-state="collapsed" data-drawer-tab="ledger">
+      <div class="drawer-chrome">
+        <button type="button" class="drawer-handle-btn" id="drawer-handle-btn" aria-label="Toggle Spectator Drawer">
+          <span class="drawer-handle-pill"></span>
+        </button>
+        <div class="drawer-tabs">
+          <button type="button" class="btn" id="drawer-tab-world">🌍 World</button>
+          <button type="button" class="btn active" id="drawer-tab-ledger">📜 General</button>
+          <button type="button" class="btn" id="drawer-tab-character">🧙‍♂️ Hero</button>
+          <button type="button" class="btn" id="drawer-tab-ticker">⚡ Ticker</button>
+          <button type="button" class="btn btn-icon-compact" id="btn-toggle-gamemaster" aria-label="Hide Gamemaster Panel" title="Hide Gamemaster Panel">⇥</button>
+        </div>
+      </div>
+      <div class="character-sheet" id="character-sheet"></div>
+      <div class="ticker-panel" id="ticker-panel">
+        <div class="ticker-header" id="ticker-header-toggle" title="Click to toggle Activity Ticker">
+          <span>⚡ Live Guild Activity Ticker</span>
+          <span id="fps-counter">60 FPS</span>
+        </div>
+        <div class="ticker-entries" id="ticker-entries"></div>
+      </div>
+    </aside>
+  </main>
+
+  <div id="demolition-modal" class="modal-overlay">
+    <div class="modal-dialog modal-dialog-danger">
+      <div class="modal-title-danger" id="demolish-modal-title">💣 Demolish Workshop Room</div>
+      <div class="modal-body-danger" id="demolish-modal-body"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="btn-cancel-demolish-room">Cancel</button>
+        <button type="button" class="btn btn-danger-cta" id="btn-confirm-demolish-room">💣 Confirm Demolish Room</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="summon-adventurer-modal" class="modal-overlay">
+    <div class="modal-dialog modal-dialog-summon">
+      <div class="modal-header-row">
+        <div class="modal-title-summon">✨ Summon New Guild Adventurer</div>
+        <button type="button" class="btn modal-close-btn" id="btn-close-summon-modal" aria-label="Close Summon Modal">✕</button>
+      </div>
+      <div class="modal-form-grid">
+        <label class="modal-field-label" for="summon-directory-select">Workshop Room Directory</label>
+        <select id="summon-directory-select" class="modal-input" aria-label="Workshop Room Directory"></select>
+        <label class="modal-field-label" for="summon-agent-class">Adventurer Class (Agent)</label>
+        <select id="summon-agent-class" class="modal-input modal-select-agent" aria-label="Adventurer Class (Agent)">
+          <option value="build">⚔️ build (Warrior / Feature Smith)</option>
+          <option value="plan">📐 plan (Scout / Strategist)</option>
+          <option value="document">📜 document (Mage / Lore &amp; Specs)</option>
+        </select>
+        <label class="modal-field-label" for="summon-title-input">Quest Title (Optional)</label>
+        <input id="summon-title-input" class="modal-input" aria-label="Quest Title (Optional)" type="text" placeholder="Optional quest title (e.g. Feature Builder)" />
+        <label class="modal-field-label" for="summon-prompt-input">Opening Command Scroll (Optional Prompt)</label>
+        <div id="summon-skill-browser-slot"></div>
+        <textarea id="summon-prompt-input" class="modal-input modal-textarea" aria-label="Opening Command Scroll (Optional Prompt)" rows="3" placeholder="Optional opening Command Scroll prompt (supports @skill)..."></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="btn-cancel-summon-adventurer">Cancel</button>
+        <select id="summon-action-agent-select" class="command-scroll-agent-select summon-action-agent-select" aria-label="Summon OpenCode Agent Mode" title="Select OpenCode Agent Mode for summoned Adventurer"><option value="build">⚔️ build</option><option value="plan">📐 plan</option><option value="document">📜 document</option></select>
+        <button type="button" class="btn btn-summon-cta" id="btn-confirm-summon-adventurer">✨ Summon Adventurer</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/web/app-main.ts"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+services:
+  pixel-guild-visualizer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: opencode-pixel-guild-visualizer:latest
+    container_name: opencode-pixel-guild-visualizer
+    restart: unless-stopped
+    ports:
+      - "4310:4310"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=4310
+      - OPENCODE_DOCKER_HOST=host.docker.internal
+      - OPENCODE_SERVICE_FILE=/opencode-state/service.json
+      - OPENCODE_SERVICE_URL=${OPENCODE_SERVICE_URL:-}
+      - OPENCODE_SERVICE_PASSWORD=${OPENCODE_SERVICE_PASSWORD:-}
+    volumes:
+      - ~/.local/state/opencode:/opencode-state:ro
+      - ./data:/app/data:rw
+      - .:/app
+      - ..:/workspaces:rw
+      # Legacy read-only feature mount ref: docs/features:/app/docs/features:ro
