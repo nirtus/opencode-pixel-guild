@@ -1,5 +1,7 @@
 .git
 .gitignore
+docker-compose.override.yml
+docker-compose.*.yml
 node_modules
 data/
 *.sqlite*

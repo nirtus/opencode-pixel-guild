@@ -13,7 +13,7 @@ ENV NODE_ENV=production \
     PORT=4310 \
     OPENCODE_DOCKER_HOST=host.docker.internal
 
-COPY package.json tsconfig.json GLOSSARY.md ./
+COPY package.json tsconfig.json ./
 COPY src ./src
 COPY docs ./docs
 
