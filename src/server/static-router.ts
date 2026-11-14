@@ -18,6 +18,7 @@ const SKETCHES_HTML_PATH = resolve(
   "../../docs/features/ui-ux-and-craftpix-overhaul/sketches/craftpix-guild-hall-sketches.html",
 );
 const EXAMPLES_DIR = resolve(__dirname, "../../docs/examples");
+const DOCS_DIR = resolve(__dirname, "../../docs");
 
 interface CachedCompiledFile {
   mtimeMs: number;
@@ -79,6 +80,18 @@ export function tryServeStaticAsset(
         "Cache-Control": "no-store",
       });
       res.end(method === "HEAD" ? "" : sketchHtml);
+      return true;
+    }
+  }
+
+  if (pathname.startsWith("/docs/video/") || pathname.startsWith("/docs/images/")) {
+    const relDoc = normalize(pathname.slice("/docs/".length)).replace(/^(\.\.(\/|\\|$))+/, "");
+    const docPath = resolve(DOCS_DIR, relDoc);
+    if (docPath.startsWith(DOCS_DIR + sep) && existsSync(docPath) && !statSync(docPath).isDirectory()) {
+      const mime = docPath.endsWith(".mp4") ? "video/mp4" : docPath.endsWith(".gif") ? "image/gif" : "image/png";
+      const buf = readFileSync(docPath);
+      res.writeHead(200, { "Content-Type": mime, "Cache-Control": "public, max-age=86400" });
+      res.end(method === "HEAD" ? "" : buf);
       return true;
     }
   }
