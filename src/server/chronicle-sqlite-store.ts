@@ -300,15 +300,16 @@ export function createGuildChronicleStore(options: CreateGuildChronicleStoreOpti
       const deletedRoomSet = new Set(deletedRoomIds);
       const tributeLedger = loadOperatorTributeLedger(db, operatorId, characters, rooms);
 
+      const scopedDaemonUrl = operatorId.includes("@@") ? operatorId.slice(operatorId.indexOf("@@") + 2) : undefined;
       for (const room of Object.values(rooms)) {
         if (room?.locationDirectory) normalizeLocationDirectory(room.locationDirectory);
       }
       for (const [roomId, room] of Object.entries(rooms)) {
-        if (deletedRoomSet.has(roomId) || isDeletedHostDirectory(room?.locationDirectory || roomId)) delete rooms[roomId];
+        if (deletedRoomSet.has(roomId) || isDeletedHostDirectory(room?.locationDirectory || roomId, undefined, scopedDaemonUrl)) delete rooms[roomId];
       }
-      roomOrder = roomOrder.filter((id) => Boolean(rooms[id]) && !deletedRoomSet.has(id) && !isDeletedHostDirectory(id));
+      roomOrder = roomOrder.filter((id) => Boolean(rooms[id]) && !deletedRoomSet.has(id) && !isDeletedHostDirectory(id, undefined, scopedDaemonUrl));
       for (const [charId, ch] of Object.entries(characters)) {
-        if (!rooms[ch.roomId] || isDeletedHostDirectory(ch.locationDirectory || ch.roomId)) delete characters[charId];
+        if (!rooms[ch.roomId] || isDeletedHostDirectory(ch.locationDirectory || ch.roomId, undefined, scopedDaemonUrl)) delete characters[charId];
       }
       for (const [gateId, gate] of Object.entries(questGates)) {
         if (!rooms[gate.roomId] || !characters[gate.sessionId]) delete questGates[gateId];
@@ -346,15 +347,18 @@ export function createGuildChronicleStore(options: CreateGuildChronicleStoreOpti
 
   function deleteOperatorData(operatorId: string): void {
     if (closed || !operatorId) return;
-    lastSnapshotSigByOp.delete(operatorId);
+    for (const k of lastSnapshotSigByOp.keys()) {
+      if (k === operatorId || k.startsWith(`${operatorId}@@`)) lastSnapshotSigByOp.delete(k);
+    }
     for (const k of lastSessionMsgSig.keys()) {
-      if (k.startsWith(`${operatorId}::`)) lastSessionMsgSig.delete(k);
+      if (k.startsWith(`${operatorId}::`) || k.startsWith(`${operatorId}@@`)) lastSessionMsgSig.delete(k);
     }
     try {
+      const likePrefix = `${operatorId}@@%`;
       db.prepare("DELETE FROM operators WHERE operator_id = ?").run(operatorId);
-      db.prepare("DELETE FROM world_snapshots WHERE operator_id = ?").run(operatorId);
-      db.prepare("DELETE FROM session_messages WHERE operator_id = ?").run(operatorId);
-      db.prepare("DELETE FROM session_tribute_ledger WHERE operator_id = ?").run(operatorId);
+      db.prepare("DELETE FROM world_snapshots WHERE operator_id = ? OR operator_id LIKE ?").run(operatorId, likePrefix);
+      db.prepare("DELETE FROM session_messages WHERE operator_id = ? OR operator_id LIKE ?").run(operatorId, likePrefix);
+      db.prepare("DELETE FROM session_tribute_ledger WHERE operator_id = ? OR operator_id LIKE ?").run(operatorId, likePrefix);
     } catch { /* ignore */ }
   }
 

@@ -1,4 +1,4 @@
-import { isDeletedHostDirectory, normalizeLocationDirectory } from "../state/world-reducer.ts";
+import { isDeletedHostDirectory, isSystemRootOrHomeDirectory, normalizeLocationDirectory } from "../state/world-reducer.ts";
 import { invalidateGitStatusCache, isLocalGitRepository, scanGitStatusAsync } from "./git-status-scanner.ts";
 import { deriveProjectTaskProgress, invalidateTaskProgressCache } from "./issue-tracker-scanner.ts";
 import type { LocationReconciliationSnapshot, ReconnectLogEntry, TelemetryEvent } from "../types/domain.ts";
@@ -85,7 +85,7 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
     for (const proj of projects) {
       if (isDeletedHostDirectory(proj.directory, undefined, daemonUrl)) continue;
       const rootDir = normalizeLocationDirectory(proj.directory);
-      if (proj.id && proj.id !== "global" && rootDir !== "/" && !/^\/(?:home|Users|c\/Users)\/[^/]+$/i.test(rootDir)) {
+      if (proj.id && proj.id !== "global" && !isSystemRootOrHomeDirectory(rootDir)) {
         projectRootById.set(proj.id, rootDir);
       }
       discoveredDirs.set(rootDir, { directory: rootDir, rawDirectory: proj.directory, projectId: proj.id, projectName: proj.name, isWorktree: false, parentProjectDirectory: null });
@@ -143,9 +143,8 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
         (state.activeSessionIds ?? []).filter((id) => !deletedSessionIds.has(id)).length;
 
       if (
-        (locMeta.directory === "/" ||
-          locMeta.directory.includes("/.local/share/opencode/worktree/") ||
-          /^\/(?:home|Users|c\/Users)\/[^/]+$/i.test(locMeta.directory)) &&
+        (isSystemRootOrHomeDirectory(locMeta.directory) ||
+          locMeta.directory.includes("/.local/share/opencode/worktree/")) &&
         totalSessionsInLoc === 0
       ) continue;
 

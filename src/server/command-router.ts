@@ -168,13 +168,15 @@ export async function handleGuildCommandRoute(
       ? rawBody.directory.trim()
       : charBefore?.locationDirectory;
   if (command === "adventurer.summon" && resolvedDirectory) {
+    const activeDaemonUrl = snapshotBefore.daemonUrl || ctx.daemonUrl;
     const hostParentPrefix = await inferHostWorkspaceParentPrefix(ctx);
     const { rawDirectory } = resolveRequestedWorldDirectory(
       resolvedDirectory,
       hostParentPrefix,
+      activeDaemonUrl,
     );
     resolvedDirectory = rawDirectory;
-    if (isDeletedHostDirectory(rawDirectory, undefined, snapshotBefore.daemonUrl)) {
+    if (isDeletedHostDirectory(rawDirectory, undefined, activeDaemonUrl)) {
       sendSummonFailed(res, activeAdapter, snapshotBefore, Date.now(), rawDirectory, `Directory does not exist on host: ${rawDirectory}`);
       return;
     }

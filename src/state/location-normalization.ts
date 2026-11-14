@@ -34,6 +34,18 @@ function resolveActiveWslUncPrefix(): string | null {
 
 const ACTIVE_WSL_UNC_PREFIX = resolveActiveWslUncPrefix();
 let knownVisualizerParentNorm: string | null = null;
+const remoteDaemonDirs = new Set<string>();
+
+export function markDirectoryDaemonScope(rawDir: string, daemonUrl?: string | null): void {
+  if (!rawDir || !rawDir.trim() || !daemonUrl || !daemonUrl.trim()) return;
+  const norm = normalizeLocationDirectory(rawDir).toLowerCase();
+  if (!norm || norm === "/") return;
+  if (!isLocalDaemonEndpoint(daemonUrl)) {
+    remoteDaemonDirs.add(norm);
+  } else {
+    remoteDaemonDirs.delete(norm);
+  }
+}
 
 export const SQUAD_LINEAGE_PALETTE = [
   "#10b981",
@@ -140,10 +152,18 @@ export function toDaemonDirectoryPath(rawDir: string): string {
 export function resolveLocalProjectDir(
   projectDir: string,
   checkExists?: (candidate: string) => boolean,
+  daemonUrl?: string | null,
 ): string | null {
   if (!projectDir) return null;
+  if (daemonUrl !== undefined && daemonUrl !== null && !isLocalDaemonEndpoint(daemonUrl)) {
+    return null;
+  }
   const trimmed = projectDir.trim();
   if (!trimmed) return null;
+  const isDefaultFsCheck = !checkExists || checkExists === nodeExistsSync;
+  if (isDefaultFsCheck && remoteDaemonDirs.has(normalizeLocationDirectory(trimmed).toLowerCase())) {
+    return null;
+  }
 
   const candidates: string[] = [trimmed];
   const posixMount = toPosixMountPath(trimmed);
@@ -219,6 +239,11 @@ export function resolveLocalProjectDir(
 
 const SHARED_HOST_ROOT_REGEX =
   /^\/(?:[a-z]|mnt(?:\/[a-z])?|Users|home|[a-z]\/Users|tmp|var(?:\/folders)?)$/i;
+
+export function isSystemRootOrHomeDirectory(normDir: string): boolean {
+  if (!normDir || normDir === "/") return true;
+  return /^\/(?:[a-z]|(?:[a-z]\/)?(?:home|Users)(?:\/[^/]+)?)$/i.test(normDir);
+}
 
 export function isLocalDaemonEndpoint(daemonUrl?: string | null): boolean {
   if (!daemonUrl || !daemonUrl.trim()) return true;

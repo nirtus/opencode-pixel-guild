@@ -4,6 +4,8 @@ dist/
 *.log
 .env
 .env.*
+docker-compose.override.yml
+docker-compose.*.yml
 .DS_Store
 /data/
 data/

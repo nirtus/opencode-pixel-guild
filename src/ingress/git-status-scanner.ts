@@ -2,6 +2,7 @@ import { execFile, execFileSync } from "node:child_process";
 import { existsSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { normalizeLocationDirectory, resolveLocalProjectDir } from "../state/location-normalization.ts";
+import { computeRemoteGitStatusAsync, getRemoteDirectoryRunner } from "./remote-git-ops.ts";
 
 export interface RoomGitFileEntry {
   readonly path: string; readonly indexStatus: string; readonly worktreeStatus: string;
@@ -196,7 +197,8 @@ export function invalidateGitStatusCache(resolvedDir?: string): void {
 
 export function isLocalGitRepository(projectDir: string): boolean {
   const resolved = resolveLocalProjectDir(projectDir, existsSync);
-  return Boolean(resolved && existsSync(join(resolved, ".git")));
+  if (resolved && existsSync(join(resolved, ".git"))) return true;
+  return Boolean(getCachedGitStatus(projectDir)?.isGitRepo);
 }
 
 export function scanGitStatusSync(projectDir: string, ttlMs = 30_000): ScannedGitStatus {
@@ -219,8 +221,10 @@ export async function scanGitStatusAsync(
     if (cached) return cached;
   }
   const resolved = resolveLocalProjectDir(projectDir, existsSync);
-  if (!resolved) return { ...EMPTY_SCANNED_GIT, files: [] };
-  const inFlightKey = normalizeLocationDirectory(resolved);
+  const remoteRunner = !resolved ? getRemoteDirectoryRunner(projectDir) : null;
+  if (!resolved && !remoteRunner) return { ...EMPTY_SCANNED_GIT, files: [] };
+  const targetDir = resolved ?? remoteRunner!.rawDirectory;
+  const inFlightKey = normalizeLocationDirectory(targetDir);
   if (!options?.force) {
     const existing = inFlightGitScans.get(inFlightKey);
     if (existing) return existing;
@@ -230,9 +234,9 @@ export async function scanGitStatusAsync(
   scanPromise = (async () => {
     const release = await acquireAsyncGitSlot();
     try {
-      const computed = await computeGitStatusAsync(resolved);
+      const computed = resolved ? await computeGitStatusAsync(resolved) : await computeRemoteGitStatusAsync(remoteRunner!);
       if (options?.force || getDirGitEpoch(inFlightKey) === startEpoch) {
-        storeCachedGitStatus(projectDir, resolved, computed);
+        storeCachedGitStatus(projectDir, targetDir, computed);
         return computed;
       }
       return getCachedGitStatus(projectDir, ttlMs) ?? computed;
@@ -260,7 +264,7 @@ function parsePorcelainBranchHeader(headerLine: string) {
   return { branch: rawBranch?.trim() || null, upstream: rawUpstream?.trim() || null, ahead, behind };
 }
 
-function parsePorcelainStatus(rawPorcelain: string) {
+export function parsePorcelainStatus(rawPorcelain: string) {
   let branch: string | null = null;
   let upstream: string | null = null;
   let ahead = 0;
@@ -291,7 +295,7 @@ function parsePorcelainStatus(rawPorcelain: string) {
   };
 }
 
-function accumulateNumstat(rawStat: string, numstatByPath: Map<string, { additions: number; deletions: number }>): void {
+export function accumulateNumstat(rawStat: string, numstatByPath: Map<string, { additions: number; deletions: number }>): void {
   for (const line of rawStat.split(/\r?\n/)) {
     if (!line.trim()) continue;
     const [addStr, delStr, p] = line.split("\t");
@@ -304,7 +308,7 @@ function accumulateNumstat(rawStat: string, numstatByPath: Map<string, { additio
   }
 }
 
-function buildFilesFromNumstat(
+export function buildFilesFromNumstat(
   rawEntries: Array<{ path: string; indexStatus: string; worktreeStatus: string; staged: boolean }>,
   numstatByPath: Map<string, { additions: number; deletions: number }>,
   unstagedDiffOk: boolean,
@@ -317,9 +321,9 @@ function buildFilesFromNumstat(
     });
 }
 
-const BASE_STATUS_ARGS = ["--no-optional-locks", "-c", "core.checkStat=minimal", "-c", "core.filemode=false", "-c", "core.autocrlf=true", "status", "--porcelain=v1", "-b"];
-const UNSTAGED_DIFF_ARGS = ["--no-optional-locks", "-c", "core.checkStat=minimal", "-c", "core.filemode=false", "-c", "core.autocrlf=true", "diff", "--ignore-cr-at-eol", "--numstat"];
-const STAGED_DIFF_ARGS = ["--no-optional-locks", "-c", "core.checkStat=minimal", "-c", "core.filemode=false", "-c", "core.autocrlf=true", "diff", "--cached", "--ignore-cr-at-eol", "--numstat"];
+export const BASE_STATUS_ARGS = ["--no-optional-locks", "-c", "core.checkStat=minimal", "-c", "core.filemode=false", "-c", "core.autocrlf=true", "status", "--porcelain=v1", "-b"];
+export const UNSTAGED_DIFF_ARGS = ["--no-optional-locks", "-c", "core.checkStat=minimal", "-c", "core.filemode=false", "-c", "core.autocrlf=true", "diff", "--ignore-cr-at-eol", "--numstat"];
+export const STAGED_DIFF_ARGS = ["--no-optional-locks", "-c", "core.checkStat=minimal", "-c", "core.filemode=false", "-c", "core.autocrlf=true", "diff", "--cached", "--ignore-cr-at-eol", "--numstat"];
 
 function computeGitStatusSync(resolved: string): ScannedGitStatus {
   if (!existsSync(join(resolved, ".git"))) return { ...EMPTY_SCANNED_GIT, files: [] };

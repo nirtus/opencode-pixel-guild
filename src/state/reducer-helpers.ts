@@ -9,7 +9,7 @@ import { resolvePreparationStationDisplayName } from "../encounter/index.ts";
 import { applyArmoryTransition, resolveToolCategory, syncCharacterWorkflow } from "./armory-and-workflow.ts";
 import { createInitialContextMana, syncCharacterTributeRecord } from "./context-mana.ts";
 import { deriveEquipmentLoadout } from "./equipment-loadout.ts";
-import { deriveProjectName, isDeletedHostDirectory, normalizeLocationDirectory } from "./location-normalization.ts";
+import { deriveProjectName, isDeletedHostDirectory, isSystemRootOrHomeDirectory, normalizeLocationDirectory } from "./location-normalization.ts";
 import type { HydratedToolRecordInput, InternalWorldStoreState, MutationCollector } from "./reducer-types.ts";
 
 const STATUS_PRIORITY: Record<PluginStatusKind, number> = { connected: 4, needs_auth: 3, failed: 2, disabled: 1 };
@@ -347,7 +347,7 @@ export function pruneDeletedHostRooms(state: InternalWorldStoreState, collector?
   for (const roomId of roomIds) {
     const r = state.rooms[roomId];
     const isDeleted = r ? isDeletedHostDirectory(r.locationDirectory || roomId, undefined, state.daemonUrl) : isDeletedHostDirectory(roomId, undefined, state.daemonUrl);
-    const isEmptyHome = Boolean(r && r.characterIds.length === 0 && /^\/(?:home|Users|c\/Users)\/[^/]+$/i.test(roomId));
+    const isEmptyHome = Boolean(r && r.characterIds.length === 0 && roomId !== "/" && isSystemRootOrHomeDirectory(roomId));
     if (!r || isDeleted || isEmptyHome) {
       if (r) {
         for (const charId of r.characterIds) {

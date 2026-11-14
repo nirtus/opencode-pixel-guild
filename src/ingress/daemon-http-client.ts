@@ -1,28 +1,11 @@
-import {
-  isDeletedHostDirectory,
-  normalizeLocationDirectory,
-  toDaemonDirectoryPath,
-} from "../state/world-reducer.ts";
-import type {
-  GuildCommandRequest,
-  ReconnectLogEntry,
-  TelemetryEvent,
-} from "../types/domain.ts";
-import type {
-  DeleteRoomResourcesInput,
-  DeleteRoomResourcesResult,
-  OpenCodeDaemonClientPort,
-} from "./daemon-types.ts";
+import { isDeletedHostDirectory, isLocalDaemonEndpoint, isSystemRootOrHomeDirectory, normalizeLocationDirectory, toDaemonDirectoryPath } from "../state/world-reducer.ts";
+import type { GuildCommandRequest, ReconnectLogEntry, TelemetryEvent } from "../types/domain.ts";
+import type { DeleteRoomResourcesInput, DeleteRoomResourcesResult, OpenCodeDaemonClientPort } from "./daemon-types.ts";
 import { executeDaemonCommand } from "./daemon-command-ops.ts";
-import {
-  deleteSingleSession,
-  executeDaemonShellCommand,
-  executeDeleteRoomResources,
-} from "./daemon-session-ops.ts";
-import {
-  evictIdleMessageHydrationCache,
-  fetchDaemonLocationState,
-} from "./daemon-location-state.ts";
+import { deleteSingleSession, executeDaemonShellCommand, executeDeleteRoomResources } from "./daemon-session-ops.ts";
+import { evictIdleMessageHydrationCache, fetchDaemonLocationState } from "./daemon-location-state.ts";
+import { listDaemonWorkspaceDirectories, probeDaemonDirectory } from "./daemon-workspace-ops.ts";
+import { registerRemoteDirectoryRunner } from "./remote-git-ops.ts";
 import { hydrateSessionMessages } from "./daemon-message-hydration.ts";
 import { mapOpenCodeSseFrameToTelemetryEvents } from "./daemon-sse-mapper.ts";
 import { fetchWithDockerHostFallback } from "./opencode-pair-redeemer.ts";
@@ -37,7 +20,7 @@ export function createHttpOpenCodeDaemonClient(
 ): OpenCodeDaemonClientPort {
   const rootUrl = baseUrl.trim().replace(/\/+$/, "");
   const sseRetryDelayMs = options?.sseRetryDelayMs ?? 1500;
-  const timeoutMs = options?.timeoutMs ?? 3500;
+  const timeoutMs = options?.timeoutMs ?? (isLocalDaemonEndpoint(rootUrl) ? 3500 : 10000);
   let cachedProjects: Awaited<ReturnType<OpenCodeDaemonClientPort["getProjects"]>> | null = null;
   let cachedProjectsAtMs = 0;
   let cachedLocations: Awaited<ReturnType<OpenCodeDaemonClientPort["getLocations"]>> | null = null;
@@ -58,6 +41,9 @@ export function createHttpOpenCodeDaemonClient(
     if (norm && (overwrite || !rawDirByNormDir.has(norm))) {
       rawDirByNormDir.set(norm, trimmed);
     }
+    registerRemoteDirectoryRunner(trimmed, rootUrl, (dir, cmd) =>
+      executeDaemonShellCommand(rootUrl, headers, resolveDaemonDir(dir), cmd, options?.fetchImpl),
+    );
   }
 
   function resolveDaemonDir(dir: string): string {
@@ -202,18 +188,11 @@ export function createHttpOpenCodeDaemonClient(
       }
       anySuccessResponse = false;
       lastTransportError = null;
-      const [debugLocations, projects, recentSessions] = await Promise.all([
-        fetchJson<Array<{ directory: string; projectId?: string }>>(
-          "/api/debug/location",
-        ),
+      const [currentLoc, debugLocations, projects, recentSessions] = await Promise.all([
+        fetchJson<{ directory?: string; worktree?: string; project?: { id?: string; canonical?: string; directory?: string } }>("/api/location"),
+        fetchJson<Array<{ directory: string; projectId?: string }>>("/api/debug/location"),
         fetchProjects(),
-        fetchJson<
-          Array<{
-            projectID?: string;
-            projectId?: string;
-            location?: { directory?: string };
-          }>
-        >("/api/session?limit=100"),
+        fetchJson<Array<{ projectID?: string; projectId?: string; directory?: string; location?: { directory?: string } }>>("/api/session?limit=100"),
       ]);
       if (!anySuccessResponse && lastTransportError) {
         throw lastTransportError;
@@ -228,25 +207,27 @@ export function createHttpOpenCodeDaemonClient(
         recordDaemonDirectory(directory);
         const norm = normalizeLocationDirectory(directory);
         if (!norm || seenNormDirs.has(norm)) return;
-        if (/^\/home\/[^/]+$/.test(norm) && !sessionDirs.has(norm)) return;
+        if (isSystemRootOrHomeDirectory(norm) && !sessionDirs.has(norm)) return;
         seenNormDirs.add(norm);
         combined.push({ directory, projectId });
       }
 
       if (Array.isArray(recentSessions)) {
         for (const s of recentSessions) {
-          const dir = s?.location?.directory;
+          const dir = s?.location?.directory ?? s?.directory;
           if (typeof dir === "string" && dir.trim()) {
             sessionDirs.add(normalizeLocationDirectory(dir));
             addLocation(dir, s.projectID ?? s.projectId);
           }
         }
       }
+      const curLocDir = currentLoc?.project?.canonical ?? currentLoc?.project?.directory ?? currentLoc?.directory ?? currentLoc?.worktree;
+      if (typeof curLocDir === "string" && curLocDir.trim()) {
+        addLocation(curLocDir, currentLoc?.project?.id);
+      }
       if (Array.isArray(debugLocations)) {
         for (const loc of debugLocations) {
-          if (loc && typeof loc.directory === "string") {
-            addLocation(loc.directory, loc.projectId);
-          }
+          if (loc && typeof loc.directory === "string") addLocation(loc.directory, loc.projectId);
         }
       }
       for (const proj of projects) {
@@ -260,6 +241,14 @@ export function createHttpOpenCodeDaemonClient(
 
     async getLocationState(directory: string) {
       return fetchDaemonLocationState(rootUrl, headers, fetchJson, resolveDaemonDir(directory));
+    },
+
+    async listWorkspaceDirectories(parentDirectory?: string) {
+      return listDaemonWorkspaceDirectories(fetchJson, parentDirectory);
+    },
+
+    async probeDirectory(directory: string) {
+      return probeDaemonDirectory(fetchJson, directory);
     },
 
     async getSessionLogAfter(sessionId: string, afterCursor: number) {

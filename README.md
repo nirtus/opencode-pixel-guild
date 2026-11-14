@@ -2,6 +2,10 @@
 
 **OpenCode Pixel Guild Visualizer** (`opencode-pixel-guild-visualizer`) is a real-time 2D RPG and workshop companion for **OpenCode V2**. It turns live OpenCode hosts, projects, worktrees, root sessions, subagents, tool calls, skills, and debugging turns into an interactive **Guild Floorplan** where heroes craft features inside a shared **Workshop Room** and battle **Bug Monsters** in the **Dungeon Wilds**.
 
+![OpenCode Pixel Guild Visualizer — 4-Scene Intro Sizzle Preview](./docs/images/opencode-pixel-guild-intro-preview.gif)
+
+> **🎬 [Watch Full 1080p Introduction Video (`docs/video/opencode-pixel-guild-intro.mp4`)](./docs/video/opencode-pixel-guild-intro.mp4)** · **📖 [YouTube Publish & Chapters Guide](./docs/video/youtube-publish-guide.md)** · **🚀 [`awesome-opencode` Submission & Launch Guide](./docs/awesome-opencode-submission.md)** · **✨ [Replay Interactive Tour Live (`/?demo=intro-tour`)](http://127.0.0.1:4310/?demo=intro-tour)**
+
 ![Unified Host Workshop Room & Guild Master Ledger](./docs/images/unviewed-session-result-overview.png)
 
 ---
@@ -16,6 +20,7 @@
    - [Option 1: Run with Docker Compose (Recommended)](#option-1-run-with-docker-compose-recommended)
    - [Option 2: Run Locally with Node.js 22+](#option-2-run-locally-with-nodejs-22)
    - [Environment Variables](#environment-variables)
+   - [Agent Plugin & Skill Setup (`graphify`, `superpowers`, `mattpocock/skills`)](#agent-plugin--skill-setup-graphify-superpowers-mattpocockskills)
 6. [How to Use the Visualizer](#how-to-use-the-visualizer)
    - [1. Register or Log In at the Operator Auth Gate](#1-register-or-log-in-at-the-operator-auth-gate)
    - [2. Pair Local or Remote OpenCode Machines](#2-pair-local-or-remote-opencode-machines)
@@ -43,6 +48,8 @@
 | ![Split Chamber Choreography](./docs/images/smooth-rounded-pathing-choreography.png) | ![Dungeon Wilds Bug Combat](./docs/images/per-bug-monster-combat-targeting-wilds.png) |
 | **Character Sheet (`Chat` Dispatch Log & Result Review)** | **Assembly Commit Ledger (Interactive Git CRUD)** |
 | ![Character Sheet Dispatch Log](./docs/images/unviewed-session-result-sheet.png) | ![Assembly Commit Ledger](./docs/images/verified-desktop-02-ledger-assembly-commit.png) |
+| **4-Scene Intro Tour (`/?demo=intro-tour` Full-Bleed Sizzle)** | **YouTube 1080p Master & Chapters** |
+| ![Intro Demo Tour Scene 4 Combat](./docs/images/intro-demo-video.png) | [🎬 `opencode-pixel-guild-intro.mp4` (1080p 30 FPS)](./docs/video/opencode-pixel-guild-intro.mp4) · [📖 YouTube Chapters](./docs/video/youtube-publish-guide.md) |
 
 ---
 
@@ -109,8 +116,8 @@
 
 1. **Clone the repository:**
    ```bash
-   git clone <repository-url>
-   cd opencode-game-visualizer
+   git clone https://github.com/nirtus/opencode-pixel-guild.git
+   cd opencode-pixel-guild
    ```
 
 2. **Build and start the container on port `4310`:**
@@ -136,6 +143,9 @@ npm start
 
 # Run the automated test suite
 npm test
+
+# Re-record the 1080p MP4 intro video and README animated GIF preview
+npm run demo:video
 ```
 
 ### Environment Variables
@@ -149,6 +159,10 @@ npm test
 | `OPENCODE_SERVICE_FILE` | `~/.local/state/opencode/service.json` | Path to the local OpenCode service discovery file. |
 | `OPENCODE_DAEMON_PORT` | `4096` | Default OpenCode daemon port used when resolving local pairing links inside Docker. |
 | `OPENCODE_DOCKER_HOST` | `host.docker.internal` | Hostname used inside Docker to reach a daemon on the host machine. |
+
+### Agent Plugin & Skill Setup (`graphify`, `superpowers`, `mattpocock/skills`)
+
+To install, configure, and verify **`graphify`** (knowledge graph CLI, git hooks, and `docs/graphify-out/` AST index), **`superpowers`**, and **`mattpocock/skills` (all 27 engineering & productivity skills + `/setup-matt-pocock-skills`)** across OpenCode V2/V1 or any other coding agent harness, follow the portable 5-stage runbook in `docs/agents/plugin-setup.md`.
 
 ---
 
@@ -169,7 +183,7 @@ npm test
 
 - Run `opencode pair --remote` (or `opencode pair --url http://<LAN-IP>:4096`) on your OpenCode host.
 - In the **OpenCode Machines** tab (`+ Pair`), paste the pairing link/QR text, scan the QR code with your camera, or upload/paste a QR screenshot, then click **Redeem & Pair Machine**.
-- Click any paired machine pill in the top header bar to switch your active **Workshop Room** to that host, or click **Detect & Pair Local OpenCode** for local auto-discovery.
+- Click any paired machine pill in the top header bar to switch your active **Workshop Room** to that host (isolating all **Workshop Rooms**, `0`-session registered worlds, **Guild Characters**, **OpenCode Agent Modes**, **Lifetime Tribute**, and **Goal Assembly Site** / **Assembly Commit Ledger** state to the selected machine), or click **Detect & Pair Local OpenCode** for local auto-discovery.
 
 ---
 
@@ -180,7 +194,7 @@ npm test
 | ![All Worlds Game Master Scope](./docs/images/world-selection-game-master-scope.png) | ![Single World Game Master Scope](./docs/images/world-selection-single-world-scope.png) |
 
 - **Project Worlds Bar (`Worlds:`)**: Select `🌐 All` to view all projects together with composite **Project Mini-Assemblies** (`★ DONE`, `⚙️ IN PROGRESS`, `📐 OPEN`, `✨ READY`), or click a project pill (e.g., `opencode-game-visualizer` or `arcane-engine`) to focus its heroes with an underfoot **World Focus Aura** and scope the **Spectator Drawer** to that project.
-- **Add Project Worlds (`＋`)**: Click `＋` at the end of the `Worlds:` bar to register a workspace folder or immediately summon an adventurer into it.
+- **Add Project Worlds (`＋`)**: Click `＋` at the end of the `Worlds:` bar to browse workspace folders discovered directly on the currently active **OpenCode Machine Pairing**, register a folder as a new project world, or immediately summon an adventurer into it.
 - **Chamber Focus (`World:` Toolbar)**: Switch between `Auto` (expands **Dungeon Wilds** automatically during outdoor bug hunts), `Room`, `Wilds`, and `Both` (`65% / 35%` split).
 - **Camera & Layout Controls**: Drag to pan, scroll or click `-` / `+` to zoom, drag the vertical divider to resize the desktop split, or toggle `Hide World` / `⇥` to collapse either pane.
 

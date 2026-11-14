@@ -5,42 +5,14 @@ import { renderWorkshopRoom } from "./canvas-room-painter.ts";
 import { deriveProjectBugMonsters, hasHeroFightingMonster, renderOutdoorWilderness } from "./canvas-wilds-painter.ts";
 import { resolveHeroWorldCanvasPosition } from "./wilds-bug-targeting.ts";
 import { stepClientChoreography } from "./client-choreography.ts";
-import {
-  clientState,
-  getSelectedProjectRoom,
-  getVisibleProjectCharacters,
-  persistClientUiWindowState,
-} from "./client-state.ts";
-import {
-  getEffectiveViewportWidth,
-  initPointerAndCameraControls,
-  shouldRenderCanvasFrameAtTimestamp,
-  syncViewportCameraFit,
-} from "./pointer-and-camera.ts";
-import {
-  reconcileSidePanel,
-  reconcileTicker,
-} from "./side-panel-reconciler.ts";
-import { type ResolvedCharacterSlot } from "./station-and-workflow-routing.ts";
-import {
-  initTopBarControls,
-  reconcileTopBar,
-} from "./top-bar-reconciler.ts";
-import {
-  initSummonAdventurerControls,
-  syncSummonModalDom,
-} from "./summon-adventurer-controller.ts";
-import {
-  getOperatorHeaders,
-  syncOperatorAuthGate,
-  withOperatorQuery,
-} from "./operator-pairing-controller.ts";
-import {
-  clearCachedGitState,
-  invalidateRoomGitCache,
-  refreshRoomGitState,
-  wasRoomGitMutatedRecently,
-} from "./commit-ledger-controller.ts";
+import { clientState, getSelectedProjectRoom, getVisibleProjectCharacters, persistClientUiWindowState } from "./client-state.ts";
+import { getEffectiveViewportWidth, initPointerAndCameraControls, shouldRenderCanvasFrameAtTimestamp, syncViewportCameraFit } from "./pointer-and-camera.ts";
+import { reconcileSidePanel, reconcileTicker } from "./side-panel-reconciler.ts";
+import { initTopBarControls, reconcileTopBar } from "./top-bar-reconciler.ts";
+import { initSummonAdventurerControls, syncSummonModalDom } from "./summon-adventurer-controller.ts";
+import { getOperatorHeaders, syncOperatorAuthGate, withOperatorQuery } from "./operator-pairing-controller.ts";
+import { clearCachedGitState, invalidateRoomGitCache, refreshRoomGitState, wasRoomGitMutatedRecently } from "./commit-ledger-controller.ts";
+import { initIntroDemoDirector, isIntroDemoModeActive, paintIntroDemoOverlay, renderFallbackDemoSimulatorHeroes, stepIntroDemoDirector } from "./intro-demo-director.ts";
 import { applyAuthoritativeSnapshot } from "./snapshot-gate.ts";
 
 export { clearCachedGitState, hitTestSceneFrame, stepClientChoreography };
@@ -95,15 +67,22 @@ function renderCanvasFrame(timestampMs: number): void {
   }
   lastRenderedFrameTs = timestampMs;
 
-  const effectiveTs = isHeadlessBrowser
-    ? (headlessFramesRendered < 8 ? (headlessSimTimeMs += 250) : headlessSimTimeMs)
-    : timestampMs;
+  const isDemoTour = isIntroDemoModeActive();
+  const effectiveTs = isDemoTour
+    ? timestampMs
+    : isHeadlessBrowser
+      ? (headlessFramesRendered < 8 ? (headlessSimTimeMs += 250) : headlessSimTimeMs)
+      : timestampMs;
   const t = effectiveTs * 0.001;
   const dtMs = isHeadlessBrowser ? (headlessFramesRendered < 8 ? 250 : 16) : Math.min(80, Math.max(8, timestampMs - clientState.lastFrameTs));
   clientState.lastFrameTs = effectiveTs;
 
   // Phase 1: Pure pre-render choreography, particle, flare & hitbox step
-  stepClientChoreography(dtMs / 1000, effectiveTs);
+  if (isDemoTour) {
+    stepIntroDemoDirector(effectiveTs);
+  } else {
+    stepClientChoreography(dtMs / 1000, effectiveTs);
+  }
   syncViewportCameraFit(canvas);
 
   // Phase 2: Stateless Canvas2D painting
@@ -129,27 +108,29 @@ function renderCanvasFrame(timestampMs: number): void {
   // 1. Left Chamber: Workshop Room (anchored to cw x ch) — painted when Room is visible
   if (effective !== "wilds") {
     renderWorkshopRoom(ctx, cw, ch, t);
-
-    for (const sp of clientState.snapParticles) {
-      const spPos = anchorWorldPoint(sp.x, sp.y, cw, ch, wildsW);
-      ctx.save();
-      ctx.fillStyle = sp.color;
-      ctx.beginPath();
-      ctx.arc(
-        spPos.x + sp.vx * (1 - sp.life) * 35,
-        spPos.y + sp.vy * (1 - sp.life) * 35,
-        sp.size * sp.life,
-        0,
-        Math.PI * 2,
-      );
-      ctx.fill();
-      ctx.restore();
-    }
   }
 
   // 2. Right Chamber: Outdoor Bug-Hunting Dungeon Wilds (anchored to wildsW x ch) — painted when Wilds is visible
   if (effective !== "workshop") {
     renderOutdoorWilderness(ctx, cw, wildsW, ch, t, effectiveTs);
+  }
+
+  for (const sp of clientState.snapParticles) {
+    if (effective === "workshop" && sp.x >= 800) continue;
+    if (effective === "wilds" && sp.x < 800) continue;
+    const spPos = anchorWorldPoint(sp.x, sp.y, cw, ch, wildsW);
+    ctx.save();
+    ctx.fillStyle = sp.color;
+    ctx.beginPath();
+    ctx.arc(
+      spPos.x + sp.vx * (1 - sp.life) * 35,
+      spPos.y + sp.vy * (1 - sp.life) * 35,
+      sp.size * sp.life,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+    ctx.restore();
   }
 
   // 3. Summoning Rituals & Characters (stateless read from clientState, 1:1 unstretched sprites)
@@ -202,19 +183,13 @@ function renderCanvasFrame(timestampMs: number): void {
       );
     }
   } else if (clientState.currentSnapshot.activeAdapter === "demo-simulator") {
-    const demoSlots: Array<[number, number, ResolvedCharacterSlot, string, string, string]> = [
-      [195, 135, { x: 195, y: 135, station: "Library", role: "SCOUT", workflowIntent: "information-gathering", overheadLabel: "Reading File", isActing: true }, "Archivist", "#2b547e", "#62b6ea"],
-      [600, 155, { x: 600, y: 155, station: "Forge", role: "WARRIOR", workflowIntent: "feature-build", overheadLabel: "Running Shell", isActing: true }, "Forge Smith", "#34673d", "#7ce04b"],
-      [118, 265, { x: 118, y: 265, station: "Tinker", role: "MAGE", workflowIntent: "feature-build", overheadLabel: "Crafting Code", isActing: true }, "Artificer", "#c83d28", "#e6a82e"],
-      [118, 445, { x: 118, y: 445, station: "Armory", role: "WARRIOR", workflowIntent: "debugging-hunt", overheadLabel: "Equipping Gear", isActing: true }, "Vanguard", "#4d387a", "#b784f7"],
-    ];
-    for (const [dx, dy, dSlot, dName, dCol, dAcc] of demoSlots) {
-      const dp = anchorWorldPoint(dx, dy, cw, ch, wildsW);
-      drawCharacterHero(ctx, dp.x, dp.y, dSlot, dName, dCol, dAcc, false, false, true, t, false, false, undefined, dName);
-    }
+    renderFallbackDemoSimulatorHeroes(ctx, cw, ch, wildsW, t);
   }
 
   ctx.restore();
+  if (isDemoTour) {
+    paintIntroDemoOverlay(ctx, canvas.width, canvas.height);
+  }
   if (!isHeadlessBrowser || headlessFramesRendered < 8) {
     headlessFramesRendered++;
     scheduleNextCanvasFrame();
@@ -318,6 +293,14 @@ function openLiveEventStream(): void {
 }
 
 async function connectCompanionBackend(): Promise<void> {
+  if (initIntroDemoDirector(renderCanvasFrame)) {
+    syncViewportCameraFit(canvas, true);
+    reconcileTopBar(scheduleHudSync);
+    reconcileSidePanel(scheduleHudSync);
+    reconcileTicker();
+    scheduleHudSync();
+    return;
+  }
   try {
     await syncOperatorAuthGate(scheduleHudSync);
     const res = await fetch("/api/guild/snapshot", {

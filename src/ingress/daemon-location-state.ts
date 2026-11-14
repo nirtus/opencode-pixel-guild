@@ -1,25 +1,10 @@
-import {
-  normalizeLocationDirectory,
-  toDaemonDirectoryPath,
-} from "../state/world-reducer.ts";
-import {
-  mergeQuestGateFields,
-  normalizeQuestGateFields,
-  type QuestGateSource,
-  type SessionTokenTelemetry,
-} from "../types/domain.ts";
+import { normalizeLocationDirectory, toDaemonDirectoryPath } from "../state/world-reducer.ts";
+import { mergeQuestGateFields, normalizeQuestGateFields, type QuestGateSource, type SessionTokenTelemetry } from "../types/domain.ts";
 import type { OpenCodeDaemonLocationPayload } from "./daemon-types.ts";
+import { hydrateSessionMessages, type SessionMessageHydration } from "./daemon-message-hydration.ts";
 import {
-  hydrateSessionMessages,
-  type SessionMessageHydration,
-} from "./daemon-message-hydration.ts";
-import {
-  mapDaemonSessionTokens,
-  mergeDaemonPluginsAndMcps,
-  normalizeDaemonModels,
-  type RawDaemonMcpResponse,
-  type RawDaemonModelItem,
-  type RawDaemonPluginItem,
+  mapDaemonSessionTokens, mergeDaemonPluginsAndMcps, normalizeDaemonModels,
+  type RawDaemonMcpResponse, type RawDaemonModelItem, type RawDaemonPluginItem,
 } from "./daemon-mcp-normalizer.ts";
 
 const TEN_MINUTES_MS = 600_000;
@@ -36,20 +21,12 @@ interface CachedStaticCatalog {
 }
 
 const staticCatalogCache = new Map<string, CachedStaticCatalog>();
-const idleMessageHydrationCache = new Map<
-  string,
-  { updatedAtMs: number; hydration: SessionMessageHydration }
->();
+const idleMessageHydrationCache = new Map<string, { updatedAtMs: number; hydration: SessionMessageHydration }>();
 
 export function evictIdleMessageHydrationCache(sessionId?: string): void {
-  if (!sessionId) {
-    idleMessageHydrationCache.clear();
-    return;
-  }
+  if (!sessionId) { idleMessageHydrationCache.clear(); return; }
   const suffix = `::${sessionId}`;
-  for (const key of idleMessageHydrationCache.keys()) {
-    if (key.endsWith(suffix)) idleMessageHydrationCache.delete(key);
-  }
+  for (const key of idleMessageHydrationCache.keys()) if (key.endsWith(suffix)) idleMessageHydrationCache.delete(key);
 }
 
 interface RawDaemonSessionItem {
@@ -98,7 +75,8 @@ export async function fetchDaemonLocationState(
   const cacheKey = `${rootUrl}::${normTargetDir}`;
   const cacheNowMs = Date.now();
   const cachedCatalog = staticCatalogCache.get(cacheKey);
-  const isWorktreeOrRoot = Boolean(rootUrl) && normTargetDir === "/";
+  const hostCatalog = rootUrl ? staticCatalogCache.get(rootUrl) : undefined;
+  const isWorktreeOrRoot = Boolean(rootUrl) && (normTargetDir === "/" || /^\/[a-z]$/i.test(normTargetDir));
   const hasValidCache = Boolean(isWorktreeOrRoot || (cachedCatalog && cachedCatalog.expiresAtMs > cacheNowMs && rootUrl));
 
   if (isWorktreeOrRoot) {
@@ -111,7 +89,7 @@ export async function fetchDaemonLocationState(
     }
   }
 
-  const [skills, plugins, mcps, agents, rawModels, rawSessions, rawRootSessions, activeSessions, permissions, forms] =
+  const [fetchedSkills, fetchedPlugins, fetchedMcps, fetchedAgents, fetchedRawModels, rawSessions, rawRootSessions, activeSessions, permissions, forms] =
     await Promise.all([
       hasValidCache ? Promise.resolve(cachedCatalog?.skills ?? null) : fetchJson<Array<{ id: string; name?: string; description?: string }>>(`/api/skill${query}`, locHeaders),
       hasValidCache ? Promise.resolve(cachedCatalog?.plugins ?? null) : fetchJson<RawDaemonPluginItem[]>(`/api/plugin${query}`, locHeaders),
@@ -125,15 +103,31 @@ export async function fetchDaemonLocationState(
       isWorktreeOrRoot ? Promise.resolve(null) : fetchJson<RawDaemonGateItem[]>(`/api/form${query}`, locHeaders),
     ]);
 
-  if (!hasValidCache && rootUrl) {
-    staticCatalogCache.set(cacheKey, { expiresAtMs: cacheNowMs + STATIC_CATALOG_TTL_MS, skills, plugins, mcps, agents, rawModels });
+  const skills = fetchedSkills ?? cachedCatalog?.skills ?? hostCatalog?.skills ?? null;
+  const plugins = fetchedPlugins ?? cachedCatalog?.plugins ?? hostCatalog?.plugins ?? null;
+  const mcps = fetchedMcps ?? cachedCatalog?.mcps ?? hostCatalog?.mcps ?? null;
+  const agents = fetchedAgents ?? cachedCatalog?.agents ?? hostCatalog?.agents ?? null;
+  const rawModels = fetchedRawModels ?? cachedCatalog?.rawModels ?? hostCatalog?.rawModels ?? null;
+
+  if (!hasValidCache && rootUrl && (skills || plugins || mcps || agents || rawModels)) {
+    const entry = { expiresAtMs: cacheNowMs + STATIC_CATALOG_TTL_MS, skills, plugins, mcps, agents, rawModels };
+    staticCatalogCache.set(cacheKey, entry);
+    staticCatalogCache.set(rootUrl, entry);
   }
 
   const { models, modelLimitByKey } = normalizeDaemonModels(rawModels);
   const mergedPlugins = mergeDaemonPluginsAndMcps(mcps, plugins);
 
+  const fallbackGlobalSessions =
+    !Array.isArray(rawSessions) && !Array.isArray(rawRootSessions)
+      ? await fetchJson<RawDaemonSessionItem[]>("/api/session?limit=100")
+      : null;
   const mergedRawSessionsMap = new Map<string, RawDaemonSessionItem>();
-  for (const s of [...(Array.isArray(rawSessions) ? rawSessions : []), ...(Array.isArray(rawRootSessions) ? rawRootSessions : [])]) {
+  for (const s of [
+    ...(Array.isArray(rawSessions) ? rawSessions : []),
+    ...(Array.isArray(rawRootSessions) ? rawRootSessions : []),
+    ...(Array.isArray(fallbackGlobalSessions) ? fallbackGlobalSessions : []),
+  ]) {
     const sid = s?.sessionId ?? s?.id;
     if (sid && !mergedRawSessionsMap.has(sid)) {
       mergedRawSessionsMap.set(sid, s);
