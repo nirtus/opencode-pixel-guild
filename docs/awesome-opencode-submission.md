@@ -2,10 +2,10 @@
 
 This runbook contains the verified, schema-validated submission packages and one-command `gh` workflows for listing and showcasing **OpenCode Pixel Guild** (`https://github.com/nirtus/opencode-pixel-guild`) across every official and community OpenCode V2 directory:
 
-1. **[`awesome-opencode/awesome-opencode`](https://github.com/awesome-opencode/awesome-opencode)** — `data/projects/opencode-pixel-guild.yaml` ([Live PR #1043](https://github.com/awesome-opencode/awesome-opencode/pull/1043)) + **`Projects` Discussions Showcase** (matching `OpenChamber` [#55](https://github.com/awesome-opencode/awesome-opencode/discussions/55) & `opencode-helper` [#460](https://github.com/awesome-opencode/awesome-opencode/discussions/460))
-2. **[Official OpenCode Ecosystem Docs (`anomalyco/opencode`)](https://github.com/anomalyco/opencode/blob/dev/services/site/src/docs/v1/content/ecosystem.mdx)** — `services/site/src/docs/v1/content/ecosystem.mdx` (`## Projects` table on `dev` branch)
-3. **[`opencode.cafe` (`R44VC0RP/opencode.cafe`)](https://github.com/R44VC0RP/opencode.cafe)** — `bulk/plugins.json` PR + [`opencode.cafe/submit`](https://www.opencode.cafe/submit) web form (also auto-syndicates into [`opencode-mercato`](https://github.com/ThomasSanna/opencode-mercato))
-4. **[`Tommertom/opencode-plugin-marketplace`](https://github.com/Tommertom/opencode-plugin-marketplace)** — `plugins/opencode-pixel-guild.plugin.json` (validated against `schema/plugin.schema.json`)
+1. **[`awesome-opencode/awesome-opencode`](https://github.com/awesome-opencode/awesome-opencode)** — `data/projects/opencode-pixel-guild.yaml` ([**Live PR #1043**](https://github.com/awesome-opencode/awesome-opencode/pull/1043)) + [**Live `Projects` Discussion #1044**](https://github.com/awesome-opencode/awesome-opencode/discussions/1044)
+2. **[Official OpenCode Ecosystem Docs (`anomalyco/opencode`)](https://github.com/anomalyco/opencode/blob/dev/services/site/src/docs/v1/content/ecosystem.mdx)** — `services/site/src/docs/v1/content/ecosystem.mdx` (`## Projects` table on `dev` branch, [**Live PR #63949**](https://github.com/anomalyco/opencode/pull/63949))
+3. **[`opencode.cafe` (`R44VC0RP/opencode.cafe`)](https://github.com/R44VC0RP/opencode.cafe)** — `bulk/plugins.json` ([**Live PR #18**](https://github.com/R44VC0RP/opencode.cafe/pull/18)) + [`opencode.cafe/submit`](https://www.opencode.cafe/submit) web form (auto-syndicating into [`opencode-mercato`](https://github.com/ThomasSanna/opencode-mercato))
+4. **[`Tommertom/opencode-plugin-marketplace`](https://github.com/Tommertom/opencode-plugin-marketplace)** — `plugins/opencode-pixel-guild.plugin.json` ([**Live PR #9**](https://github.com/Tommertom/opencode-plugin-marketplace/pull/9))
 5. **Community Channels** — Official OpenCode Discord (`https://opencode.ai/discord`), Reddit (`r/opencode`, `r/opencodeCLI`, `r/LocalLLaMA`), and Hacker News (`Show HN`)
 
 ---
@@ -21,6 +21,7 @@ Per [`anomalyco/opencode#building-on-opencode`](https://github.com/anomalyco/ope
 ## 1. `awesome-opencode/awesome-opencode` (`data/projects/` PR & `Projects` Discussion Showcase)
 
 - **Live Pull Request**: [`awesome-opencode/awesome-opencode#1043`](https://github.com/awesome-opencode/awesome-opencode/pull/1043)
+- **Live Projects Showcase Discussion**: [`awesome-opencode/awesome-opencode#1044`](https://github.com/awesome-opencode/awesome-opencode/discussions/1044)
 - **Fork Branch & YAML File**: [`nirtus/awesome-opencode@add-opencode-pixel-guild` (`data/projects/opencode-pixel-guild.yaml`)](https://github.com/nirtus/awesome-opencode/blob/add-opencode-pixel-guild/data/projects/opencode-pixel-guild.yaml)
 - **Projects Discussions Category**: [`https://github.com/awesome-opencode/awesome-opencode/discussions/categories/projects`](https://github.com/awesome-opencode/awesome-opencode/discussions/categories/projects)
 
@@ -113,6 +114,8 @@ EOF
 
 ## 2. Official OpenCode Ecosystem Page (`anomalyco/opencode`)
 
+- **Live Pull Request**: [`anomalyco/opencode#63949`](https://github.com/anomalyco/opencode/pull/63949)
+- **Fork Branch**: [`nirtus/opencode@docs/add-opencode-pixel-guild`](https://github.com/nirtus/opencode/blob/docs/add-opencode-pixel-guild/services/site/src/docs/v1/content/ecosystem.mdx)
 - **Live Page**: [`https://opencode.ai/docs/ecosystem`](https://opencode.ai/docs/ecosystem)
 - **Repository & Target Branch**: [`anomalyco/opencode`](https://github.com/anomalyco/opencode) (`dev` branch)
 - **Exact File Path**: [`services/site/src/docs/v1/content/ecosystem.mdx`](https://github.com/anomalyco/opencode/blob/dev/services/site/src/docs/v1/content/ecosystem.mdx)
@@ -185,6 +188,8 @@ EOF
 
 ## 3. `opencode.cafe` (`R44VC0RP/opencode.cafe` + `opencode-mercato` Auto-Syndication)
 
+- **Live Pull Request**: [`R44VC0RP/opencode.cafe#18`](https://github.com/R44VC0RP/opencode.cafe/pull/18)
+- **Fork Branch**: [`nirtus/opencode.cafe@add-opencode-pixel-guild`](https://github.com/nirtus/opencode.cafe/blob/add-opencode-pixel-guild/bulk/plugins.json)
 - **Live Directory**: [`https://www.opencode.cafe`](https://www.opencode.cafe) (officially linked at the top of `opencode.ai/docs/ecosystem`)
 - **Web Submission Form**: [`https://www.opencode.cafe/submit`](https://www.opencode.cafe/submit)
 - **GitHub Repository**: [`https://github.com/R44VC0RP/opencode.cafe`](https://github.com/R44VC0RP/opencode.cafe) (`bulk/plugins.json`)
@@ -251,6 +256,8 @@ gh pr create \
 
 ## 4. `Tommertom/opencode-plugin-marketplace` (`opencode-plugin-market.web.app`)
 
+- **Live Pull Request**: [`Tommertom/opencode-plugin-marketplace#9`](https://github.com/Tommertom/opencode-plugin-marketplace/pull/9)
+- **Fork Branch**: [`nirtus/opencode-plugin-marketplace@add-opencode-pixel-guild`](https://github.com/nirtus/opencode-plugin-marketplace/blob/add-opencode-pixel-guild/plugins/opencode-pixel-guild.plugin.json)
 - **Live Website**: [`https://opencode-plugin-market.web.app`](https://opencode-plugin-market.web.app)
 - **Repository**: [`https://github.com/Tommertom/opencode-plugin-marketplace`](https://github.com/Tommertom/opencode-plugin-marketplace)
 - **Exact File Path**: `plugins/opencode-pixel-guild.plugin.json` (validated against [`schema/plugin.schema.json`](https://github.com/Tommertom/opencode-plugin-marketplace/blob/main/schema/plugin.schema.json))
