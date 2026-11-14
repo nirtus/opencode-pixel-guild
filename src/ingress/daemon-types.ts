@@ -129,6 +129,12 @@ export interface OpenCodeDaemonClientPort {
     sessionId: string,
     directory?: string,
   ): Promise<import("./daemon-message-hydration.ts").SessionMessageHydration | null>;
+  listWorkspaceDirectories?(
+    parentDirectory?: string,
+  ): Promise<import("./daemon-workspace-ops.ts").DaemonWorkspaceListResult>;
+  probeDirectory?(
+    directory: string,
+  ): Promise<{ exists: boolean; isGitRepo: boolean; resolvedDirectory?: string }>;
   subscribeEvents?(
     onEvent: (event: TelemetryEvent) => void,
     onReconnect?: () => void,

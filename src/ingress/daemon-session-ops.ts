@@ -282,7 +282,7 @@ export async function executeDaemonShellCommand(
     const startRes = await doFetch(`${rootUrl}/api/shell${query}`, {
       method: "POST",
       headers: { ...locHeaders, "Content-Type": "application/json" },
-      body: JSON.stringify({ command }),
+      body: JSON.stringify({ command, ...(daemonDir ? { cwd: daemonDir } : {}) }),
     });
     if (!startRes.ok) {
       return { ok: false, output: `Daemon /api/shell returned HTTP ${startRes.status}` };

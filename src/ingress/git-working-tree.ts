@@ -3,14 +3,18 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import { normalizeLocationDirectory, resolveLocalProjectDir } from "../state/location-normalization.ts";
 import {
   clearStaleGitIndexLock, enqueueRepoMutation, extractGitErrorMessage, getCachedGitStatus,
-  type GitSyncResult, type GitWorkingTreePort, invalidateGitStatusCache,
+  type GitSyncResult, type GitWorkingTreePort, invalidateGitStatusCache, isLocalGitRepository,
   peekCachedGitStatus, type RoomGitFileEntry, type RoomGitWorkingTreeState, runGitAsync,
   type ScannedGitStatus, scanGitStatusAsync, scanGitStatusSync,
 } from "./git-status-scanner.ts";
+import {
+  getRemoteDirectoryRunner, remoteGitCreateCommit, remoteGitDiscardFiles,
+  remoteGitGetFileDiff, remoteGitStageFiles, remoteGitUnstageFiles,
+} from "./remote-git-ops.ts";
 
 export {
   getCachedGitStatus,
-  type GitSyncResult, type GitWorkingTreePort, invalidateGitStatusCache, peekCachedGitStatus,
+  type GitSyncResult, type GitWorkingTreePort, invalidateGitStatusCache, isLocalGitRepository, peekCachedGitStatus,
   type RoomGitFileEntry, type RoomGitWorkingTreeState, type ScannedGitStatus, scanGitStatusAsync, scanGitStatusSync,
 };
 
@@ -20,10 +24,7 @@ export function isSafeGitRefName(ref: string | null | undefined): boolean {
 
 export function createLiveGitWorkingTreeAdapter(): GitWorkingTreePort {
   invalidateGitStatusCache();
-  const draftsByRoom = new Map<
-    string,
-    { title: string; body: string; lastCommittedAtMs: number | null }
-  >();
+  const draftsByRoom = new Map<string, { title: string; body: string; lastCommittedAtMs: number | null }>();
 
   function buildStateFromScanned(
     roomDir: string,
@@ -31,24 +32,12 @@ export function createLiveGitWorkingTreeAdapter(): GitWorkingTreePort {
     lastError: string | null = null,
   ): RoomGitWorkingTreeState {
     const roomKey = normalizeLocationDirectory(roomDir);
-    const draft = draftsByRoom.get(roomKey) ?? {
-      title: "",
-      body: "",
-      lastCommittedAtMs: null,
-    };
+    const draft = draftsByRoom.get(roomKey) ?? { title: "", body: "", lastCommittedAtMs: null };
     return {
-      isGitRepo: scanned.isGitRepo,
-      branch: scanned.branch,
-      upstream: scanned.upstream ?? null,
-      ahead: scanned.ahead ?? 0,
-      behind: scanned.behind ?? 0,
-      headCommit: scanned.headCommit,
-      isClean: scanned.files.length === 0,
-      files: scanned.files,
-      draftCommitTitle: draft.title,
-      draftCommitBody: draft.body,
-      lastCommittedAtMs: draft.lastCommittedAtMs,
-      lastError,
+      isGitRepo: scanned.isGitRepo, branch: scanned.branch, upstream: scanned.upstream ?? null,
+      ahead: scanned.ahead ?? 0, behind: scanned.behind ?? 0, headCommit: scanned.headCommit,
+      isClean: scanned.files.length === 0, files: scanned.files,
+      draftCommitTitle: draft.title, draftCommitBody: draft.body, lastCommittedAtMs: draft.lastCommittedAtMs, lastError,
     };
   }
 
@@ -69,12 +58,14 @@ export function createLiveGitWorkingTreeAdapter(): GitWorkingTreePort {
     },
     async syncRepository(roomDir, options) {
       const resolved = resolveLocalProjectDir(roomDir, existsSync);
-      if (!resolved) {
+      const remoteRunner = !resolved ? getRemoteDirectoryRunner(roomDir) : null;
+      const runRemote = options?.runRemoteCommand ?? remoteRunner?.runShellCommand;
+      if (!resolved && !runRemote) {
         const msg = "Project directory not found on host";
         return { ok: false, error: msg, state: await buildStateAsync(roomDir, msg, { force: true }) };
       }
-      return enqueueRepoMutation(resolved, async () => {
-        clearStaleGitIndexLock(resolved);
+      return enqueueRepoMutation(resolved ?? remoteRunner?.rawDirectory ?? roomDir, async () => {
+        if (resolved) clearStaleGitIndexLock(resolved);
         invalidateGitStatusCache(roomDir);
         const before = await scanGitStatusAsync(roomDir, { force: true });
         if (!before.isGitRepo) {
@@ -87,27 +78,29 @@ export function createLiveGitWorkingTreeAdapter(): GitWorkingTreePort {
         let syncWarning: string | null = null;
         let latestScanned = before;
         let needsFinalScan = false;
-        const remotesRaw = await runGitAsync(resolved, ["remote"], 5000).catch(() => "");
+        const remotesRaw = resolved
+          ? await runGitAsync(resolved, ["remote"], 5000).catch(() => "")
+          : ((await runRemote?.(roomDir, "git remote").catch(() => ({ ok: false, output: "" })))?.output ?? "");
         const remotes = remotesRaw.split(/\r?\n/).map((r) => r.trim()).filter(Boolean);
         if (remotes.length > 0 && before.branch && before.branch !== "HEAD") {
           const remoteName = before.upstream?.split("/")[0] || (remotes.includes("origin") ? "origin" : remotes[0]!);
           if (!isSafeGitRefName(remoteName) || !isSafeGitRefName(before.branch)) {
             syncWarning = "Unsafe git remote or branch name";
           } else {
-            let preferRemoteShell = Boolean(options?.runRemoteCommand && existsSync("/.dockerenv"));
+            let preferRemoteShell = !resolved || Boolean(runRemote && existsSync("/.dockerenv"));
             const tryGitOrRemote = async (gitArgs: string[], shellCmd: string) => {
-              if (!preferRemoteShell) {
+              if (!preferRemoteShell && resolved) {
                 try {
                   await runGitAsync(resolved, gitArgs, 15_000);
                   return { ok: true, error: null };
                 } catch (localErr) {
                   const msg = extractGitErrorMessage(localErr, "Git remote operation failed");
-                  if (!options?.runRemoteCommand) return { ok: false, error: msg };
+                  if (!runRemote) return { ok: false, error: msg };
                   preferRemoteShell = true;
                 }
               }
-              if (options?.runRemoteCommand) {
-                const fb = await options.runRemoteCommand(roomDir, shellCmd).catch(() => ({ ok: false, output: "Git remote operation failed" }));
+              if (runRemote) {
+                const fb = await runRemote(roomDir, shellCmd).catch(() => ({ ok: false, output: "Git remote operation failed" }));
                 if (fb.ok) return { ok: true, error: null };
                 return { ok: false, error: fb.output || "Git remote operation failed" };
               }
@@ -117,7 +110,9 @@ export function createLiveGitWorkingTreeAdapter(): GitWorkingTreePort {
             const gcm = "/mnt/c/Program\\ Files/Git/mingw64/bin/git-credential-manager.exe";
             const fallbackGit = `GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git -c core.filemode=false -c core.autocrlf=true -c 'credential.helper=${gcm}'`;
             const buildHostGitCmd = (subCmd: string) =>
-              `run_git() { if [ -x "${winGit}" ] && pwd | grep -q '^/mnt/[a-zA-Z]'; then "${winGit}" "$@" || "${winGit}" "$@"; else ${fallbackGit} "$@" || ${fallbackGit} "$@"; fi; }; run_git ${subCmd}`;
+              resolved
+                ? `run_git() { if [ -x "${winGit}" ] && pwd | grep -q '^/mnt/[a-zA-Z]'; then "${winGit}" "$@" || "${winGit}" "$@"; else ${fallbackGit} "$@" || ${fallbackGit} "$@"; fi; }; run_git ${subCmd}`
+                : `git -c core.filemode=false -c core.autocrlf=true ${subCmd}`;
             const fetchRes = await tryGitOrRemote(["fetch", "--prune", remoteName], buildHostGitCmd(`fetch --prune ${remoteName}`));
             if (fetchRes.ok) {
               syncedRemote = true;
@@ -127,16 +122,20 @@ export function createLiveGitWorkingTreeAdapter(): GitWorkingTreePort {
                 if (!isSafeGitRefName(latestScanned.branch)) {
                   syncWarning = "Unsafe git remote or branch name";
                 } else {
+                  const pullCmd = resolved
+                    ? `${buildHostGitCmd(`pull --rebase --autostash ${remoteName} ${latestScanned.branch!}`)} || (git rebase --abort >/dev/null 2>&1; exit 1)`
+                    : buildHostGitCmd(`pull --rebase --autostash ${remoteName} ${latestScanned.branch!}`);
                   const pullRes = await tryGitOrRemote(
                     ["-c", "core.filemode=false", "-c", "core.autocrlf=true", "pull", "--rebase", "--autostash", remoteName, latestScanned.branch!],
-                    `${buildHostGitCmd(`pull --rebase --autostash ${remoteName} ${latestScanned.branch!}`)} || (git rebase --abort >/dev/null 2>&1; exit 1)`,
+                    pullCmd,
                   );
                   if (pullRes.ok) {
                     pulled = true;
                     invalidateGitStatusCache(roomDir);
                     latestScanned = await scanGitStatusAsync(roomDir, { force: true });
                   } else {
-                    await runGitAsync(resolved, ["rebase", "--abort"], 5000).catch(() => {});
+                    if (resolved) await runGitAsync(resolved, ["rebase", "--abort"], 5000).catch(() => {});
+                    else await runRemote?.(roomDir, "git rebase --abort").catch(() => {});
                     syncWarning = pullRes.error;
                     needsFinalScan = true;
                   }
@@ -180,20 +179,16 @@ export function createLiveGitWorkingTreeAdapter(): GitWorkingTreePort {
     },
     async getFileDiff(roomDir, filePath) {
       const resolved = resolveLocalProjectDir(roomDir, existsSync);
-      if (!resolved || !filePath || filePath.startsWith("-")) return "";
+      if (!resolved) {
+        const remoteRunner = getRemoteDirectoryRunner(roomDir);
+        return remoteRunner ? remoteGitGetFileDiff(remoteRunner, filePath) : "";
+      }
+      if (!filePath || filePath.startsWith("-")) return "";
       try {
         const resolvedRoot = resolve(resolved);
         const fullUntracked = resolve(resolvedRoot, filePath);
         const rel = relative(resolvedRoot, fullUntracked).replace(/\\/g, "/");
-        if (
-          !rel ||
-          rel.startsWith("..") ||
-          isAbsolute(rel) ||
-          rel === ".git" ||
-          rel.startsWith(".git/") ||
-          rel === "data" ||
-          rel.startsWith("data/")
-        ) {
+        if (!rel || rel.startsWith("..") || isAbsolute(rel) || rel === ".git" || rel.startsWith(".git/") || rel === "data" || rel.startsWith("data/")) {
           return "";
         }
         const unstagedDiff = await runGitAsync(
@@ -211,10 +206,7 @@ export function createLiveGitWorkingTreeAdapter(): GitWorkingTreePort {
         if (diff) return diff.slice(0, 4000);
         if (existsSync(fullUntracked) && statSync(fullUntracked).isFile()) {
           const raw = readFileSync(fullUntracked, "utf8").slice(0, 2400);
-          return `--- /dev/null\n+++ b/${rel}\n${raw
-            .split(/\r?\n/)
-            .map((l: string) => `+${l}`)
-            .join("\n")}`.slice(0, 4000);
+          return `--- /dev/null\n+++ b/${rel}\n${raw.split(/\r?\n/).map((l: string) => `+${l}`).join("\n")}`.slice(0, 4000);
         }
         return "";
       } catch {
@@ -223,23 +215,27 @@ export function createLiveGitWorkingTreeAdapter(): GitWorkingTreePort {
     },
     async stageFiles(roomDir, paths) {
       const resolved = resolveLocalProjectDir(roomDir, existsSync);
-      if (!resolved) return buildStateAsync(roomDir, "Project directory not found on host");
-      return enqueueRepoMutation(resolved, async () => {
-        clearStaleGitIndexLock(resolved);
+      const remoteRunner = !resolved ? getRemoteDirectoryRunner(roomDir) : null;
+      if (!resolved && !remoteRunner) return buildStateAsync(roomDir, "Project directory not found on host");
+      return enqueueRepoMutation(resolved ?? remoteRunner!.rawDirectory, async () => {
+        if (!resolved && remoteRunner) {
+          const lastError = await remoteGitStageFiles(remoteRunner, paths);
+          invalidateGitStatusCache(roomDir);
+          return buildStateAsync(roomDir, lastError, { force: true });
+        }
+        clearStaleGitIndexLock(resolved!);
         let lastError: string | null = null;
         try {
           if (paths === "all") {
             try {
-              await runGitAsync(resolved, ["-c", "core.autocrlf=true", "add", "-A"], 10_000);
+              await runGitAsync(resolved!, ["-c", "core.autocrlf=true", "add", "-A"], 10_000);
             } catch {
               const cur = getCachedGitStatus(roomDir) ?? (await scanGitStatusAsync(roomDir));
               const targetPaths = cur.files.map((f) => f.path);
-              if (targetPaths.length > 0) {
-                await runGitAsync(resolved, ["-c", "core.autocrlf=true", "add", "--", ...targetPaths], 10_000);
-              }
+              if (targetPaths.length > 0) await runGitAsync(resolved!, ["-c", "core.autocrlf=true", "add", "--", ...targetPaths], 10_000);
             }
           } else if (paths.length > 0) {
-            await runGitAsync(resolved, ["-c", "core.autocrlf=true", "add", "--", ...paths], 10_000);
+            await runGitAsync(resolved!, ["-c", "core.autocrlf=true", "add", "--", ...paths], 10_000);
           }
         } catch (err) {
           lastError = extractGitErrorMessage(err, "Failed to stage files");
@@ -250,22 +246,28 @@ export function createLiveGitWorkingTreeAdapter(): GitWorkingTreePort {
     },
     async unstageFiles(roomDir, paths) {
       const resolved = resolveLocalProjectDir(roomDir, existsSync);
-      if (!resolved) return buildStateAsync(roomDir, "Project directory not found on host");
-      return enqueueRepoMutation(resolved, async () => {
-        clearStaleGitIndexLock(resolved);
+      const remoteRunner = !resolved ? getRemoteDirectoryRunner(roomDir) : null;
+      if (!resolved && !remoteRunner) return buildStateAsync(roomDir, "Project directory not found on host");
+      return enqueueRepoMutation(resolved ?? remoteRunner!.rawDirectory, async () => {
+        if (!resolved && remoteRunner) {
+          const lastError = await remoteGitUnstageFiles(remoteRunner, paths);
+          invalidateGitStatusCache(roomDir);
+          return buildStateAsync(roomDir, lastError, { force: true });
+        }
+        clearStaleGitIndexLock(resolved!);
         let lastError: string | null = null;
         try {
           if (paths === "all") {
             try {
-              await runGitAsync(resolved, ["reset", "HEAD"], 10_000);
+              await runGitAsync(resolved!, ["reset", "HEAD"], 10_000);
             } catch {
-              await runGitAsync(resolved, ["rm", "--cached", "-r", "."], 10_000);
+              await runGitAsync(resolved!, ["rm", "--cached", "-r", "."], 10_000);
             }
           } else if (paths.length > 0) {
             try {
-              await runGitAsync(resolved, ["reset", "HEAD", "--", ...paths], 10_000);
+              await runGitAsync(resolved!, ["reset", "HEAD", "--", ...paths], 10_000);
             } catch {
-              await runGitAsync(resolved, ["rm", "--cached", "--", ...paths], 10_000);
+              await runGitAsync(resolved!, ["rm", "--cached", "--", ...paths], 10_000);
             }
           }
         } catch (err) {
@@ -278,20 +280,22 @@ export function createLiveGitWorkingTreeAdapter(): GitWorkingTreePort {
     async updateDraft(roomDir, title, body = "") {
       const roomKey = normalizeLocationDirectory(roomDir);
       const prev = draftsByRoom.get(roomKey);
-      draftsByRoom.set(roomKey, {
-        title,
-        body,
-        lastCommittedAtMs: prev?.lastCommittedAtMs ?? null,
-      });
+      draftsByRoom.set(roomKey, { title, body, lastCommittedAtMs: prev?.lastCommittedAtMs ?? null });
       const scanned = peekCachedGitStatus(roomDir) ?? (await scanGitStatusAsync(roomDir));
       return buildStateFromScanned(roomDir, scanned);
     },
     async discardFiles(roomDir, paths) {
       const resolved = resolveLocalProjectDir(roomDir, existsSync);
-      if (!resolved) return buildStateAsync(roomDir, "Project directory not found on host");
-      return enqueueRepoMutation(resolved, async () => {
-        clearStaleGitIndexLock(resolved);
+      const remoteRunner = !resolved ? getRemoteDirectoryRunner(roomDir) : null;
+      if (!resolved && !remoteRunner) return buildStateAsync(roomDir, "Project directory not found on host");
+      return enqueueRepoMutation(resolved ?? remoteRunner!.rawDirectory, async () => {
         const current = getCachedGitStatus(roomDir) ?? (await scanGitStatusAsync(roomDir));
+        if (!resolved && remoteRunner) {
+          const lastError = await remoteGitDiscardFiles(remoteRunner, paths, current.files);
+          invalidateGitStatusCache(roomDir);
+          return buildStateAsync(roomDir, lastError, { force: true });
+        }
+        clearStaleGitIndexLock(resolved!);
         const rawTargets = paths === "all" ? current.files.map((f) => f.path) : [...paths];
         const cleaned = rawTargets.map((p) => p.trim()).filter(Boolean);
         let lastError: string | null = null;
@@ -299,15 +303,12 @@ export function createLiveGitWorkingTreeAdapter(): GitWorkingTreePort {
         const trackedPaths: string[] = [];
         for (const relPath of cleaned) {
           const entry = current.files.find((f) => f.path === relPath);
-          if (entry && entry.indexStatus === "?" && entry.worktreeStatus === "?") {
-            untrackedPaths.push(relPath);
-          } else {
-            trackedPaths.push(relPath);
-          }
+          if (entry && entry.indexStatus === "?" && entry.worktreeStatus === "?") untrackedPaths.push(relPath);
+          else trackedPaths.push(relPath);
         }
         for (const relPath of untrackedPaths) {
           try {
-            rmSync(join(resolved, relPath), { force: true, recursive: true });
+            rmSync(join(resolved!, relPath), { force: true, recursive: true });
           } catch (err) {
             lastError = extractGitErrorMessage(err, `Failed to discard ${relPath}`);
           }
@@ -315,9 +316,9 @@ export function createLiveGitWorkingTreeAdapter(): GitWorkingTreePort {
         if (trackedPaths.length > 0) {
           try {
             try {
-              await runGitAsync(resolved, ["reset", "-q", "HEAD", "--", ...trackedPaths], 10_000);
+              await runGitAsync(resolved!, ["reset", "-q", "HEAD", "--", ...trackedPaths], 10_000);
             } catch { /* Ignore unstage error before checkout */ }
-            await runGitAsync(resolved, ["checkout", "--", ...trackedPaths], 10_000);
+            await runGitAsync(resolved!, ["checkout", "--", ...trackedPaths], 10_000);
           } catch (err) {
             lastError = extractGitErrorMessage(err, "Failed to discard tracked files");
           }
@@ -328,47 +329,52 @@ export function createLiveGitWorkingTreeAdapter(): GitWorkingTreePort {
     },
     async createCommit(roomDir, title, body = "") {
       const resolved = resolveLocalProjectDir(roomDir, existsSync);
+      const remoteRunner = !resolved ? getRemoteDirectoryRunner(roomDir) : null;
       const roomKey = normalizeLocationDirectory(roomDir);
       const draft = draftsByRoom.get(roomKey);
       const cleanTitle = (title || draft?.title || "").trim();
       const cleanBody = (body || draft?.body || "").trim();
-      if (!resolved || !cleanTitle) {
+      if ((!resolved && !remoteRunner) || !cleanTitle) {
         const msg = "Commit title and valid Git repository are required";
         return { ok: false, error: msg, state: await buildStateAsync(roomDir, msg) };
       }
-      return enqueueRepoMutation(resolved, async () => {
-        clearStaleGitIndexLock(resolved);
-        try {
+      return enqueueRepoMutation(resolved ?? remoteRunner!.rawDirectory, async () => {
+        invalidateGitStatusCache(roomDir);
+        const before = await scanGitStatusAsync(roomDir, { force: true });
+        if (!before.isGitRepo) {
+          const msg = "Selected project is not a Git repository";
+          return { ok: false, error: msg, state: buildStateFromScanned(roomDir, before, msg) };
+        }
+        if (before.files.length === 0) {
+          const msg = "Working tree is clean — nothing to commit";
+          return { ok: false, error: msg, state: buildStateFromScanned(roomDir, before, msg) };
+        }
+        if (!resolved && remoteRunner) {
+          const errMsg = await remoteGitCreateCommit(remoteRunner, cleanTitle, cleanBody, before.files.some((f) => f.staged));
           invalidateGitStatusCache(roomDir);
-          const before = await scanGitStatusAsync(roomDir, { force: true });
-          if (!before.isGitRepo) {
-            const msg = "Selected project is not a Git repository";
-            return { ok: false, error: msg, state: buildStateFromScanned(roomDir, before, msg) };
-          }
-          if (before.files.length === 0) {
-            const msg = "Working tree is clean — nothing to commit";
-            return { ok: false, error: msg, state: buildStateFromScanned(roomDir, before, msg) };
-          }
+          if (errMsg) return { ok: false, error: errMsg, state: await buildStateAsync(roomDir, errMsg, { force: true }) };
+          draftsByRoom.set(roomKey, { title: "", body: "", lastCommittedAtMs: Date.now() });
+          const nextState = await buildStateAsync(roomDir, null, { force: true });
+          return { ok: true, commitHash: nextState.headCommit?.hash, subject: nextState.headCommit?.subject ?? cleanTitle, state: nextState };
+        }
+        clearStaleGitIndexLock(resolved!);
+        try {
           if (!before.files.some((f) => f.staged)) {
             try {
-              await runGitAsync(resolved, ["-c", "core.autocrlf=true", "add", "-A"], 10_000);
+              await runGitAsync(resolved!, ["-c", "core.autocrlf=true", "add", "-A"], 10_000);
             } catch {
               const targetPaths = before.files.map((f) => f.path);
-              await runGitAsync(resolved, ["-c", "core.autocrlf=true", "add", "--", ...targetPaths], 10_000);
+              await runGitAsync(resolved!, ["-c", "core.autocrlf=true", "add", "--", ...targetPaths], 10_000);
             }
           }
           const commitArgs = ["commit", "-m", cleanTitle];
           if (cleanBody) commitArgs.push("-m", cleanBody);
           try {
-            await runGitAsync(resolved, commitArgs, 10_000);
+            await runGitAsync(resolved!, commitArgs, 10_000);
           } catch (commitErr) {
             const msg = extractGitErrorMessage(commitErr, "");
             if (/author identity unknown|please tell me who you are/i.test(msg)) {
-              await runGitAsync(
-                resolved,
-                ["-c", "user.name=Guild Operator", "-c", "user.email=guild@opencode.local", ...commitArgs],
-                10_000,
-              );
+              await runGitAsync(resolved!, ["-c", "user.name=Guild Operator", "-c", "user.email=guild@opencode.local", ...commitArgs], 10_000);
             } else {
               throw commitErr;
             }
@@ -376,12 +382,7 @@ export function createLiveGitWorkingTreeAdapter(): GitWorkingTreePort {
           invalidateGitStatusCache(roomDir);
           draftsByRoom.set(roomKey, { title: "", body: "", lastCommittedAtMs: Date.now() });
           const nextState = await buildStateAsync(roomDir, null, { force: true });
-          return {
-            ok: true,
-            commitHash: nextState.headCommit?.hash,
-            subject: nextState.headCommit?.subject ?? cleanTitle,
-            state: nextState,
-          };
+          return { ok: true, commitHash: nextState.headCommit?.hash, subject: nextState.headCommit?.subject ?? cleanTitle, state: nextState };
         } catch (err) {
           const errMsg = extractGitErrorMessage(err, "git commit failed");
           invalidateGitStatusCache(roomDir);

@@ -44,6 +44,10 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
   const persistAll = (): void => chronicleStore.saveOperators([...operators.values()].map((r) => r.profile));
   const buildAuthHeaders = (password?: string): Record<string, string> =>
     password ? { Authorization: "Basic " + Buffer.from(`opencode:${password}`).toString("base64") } : {};
+  const getMachineScopeKey = (opId: string, url?: string | null): string => {
+    const clean = url?.trim().replace(/\/+$/, "").toLowerCase();
+    return clean ? `${opId}@@${clean}` : opId;
+  };
 
   function createRuntime(
     operatorId: string,
@@ -54,20 +58,23 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
   ): OperatorWorkspaceRuntime {
     const profile = createInitialOperatorProfile(operatorId, input);
     const reducer = createWorldStateReducer({ initialAdapter: "opencode-client", daemonUrl: profile.daemonUrl });
-    const persistedSnap = chronicleStore?.loadSnapshot(operatorId);
+    const getStoreKey = (url?: string | null) => getMachineScopeKey(operatorId, url ?? reducer.getSnapshot().daemonUrl ?? profile.daemonUrl);
+    const initKey = getStoreKey(profile.daemonUrl);
+    const persistedSnap = chronicleStore?.loadSnapshot(initKey) ?? (initKey !== operatorId && profile.pairedMachines.length <= 1 ? chronicleStore?.loadSnapshot(operatorId) : null);
     if (persistedSnap) reducer.hydrateFromSnapshot?.(persistedSnap);
     const sseClients = new Set<ServerResponse>();
     let saveTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleSnapshotSave = () => {
       if (!chronicleStore || saveTimer) return;
-      saveTimer = setTimeout(() => { saveTimer = null; chronicleStore.saveSnapshot(operatorId, reducer.getSnapshot()); }, 1200);
+      saveTimer = setTimeout(() => { saveTimer = null; chronicleStore.saveSnapshot(getStoreKey(), reducer.getSnapshot()); }, 1200);
       saveTimer.unref?.();
     };
     const unsubscribeReducer = reducer.subscribe((emission: GuildStateEmission) => {
       if (emission.delta.kind === "session.deleted" || emission.delta.kind === "room.deleted") {
         if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-        for (const id of emission.delta.changedCharacterIds) chronicleStore?.deleteSessionMessages(operatorId, id);
-        chronicleStore?.saveSnapshot(operatorId, emission.snapshot);
+        const curKey = getStoreKey();
+        for (const id of emission.delta.changedCharacterIds) chronicleStore?.deleteSessionMessages(curKey, id);
+        chronicleStore?.saveSnapshot(curKey, emission.snapshot);
       } else if (emission.delta.kind !== "timer.tick") scheduleSnapshotSave();
       if (sseClients.size === 0) return;
       const payload = `data: ${JSON.stringify(emission)}\n\n`;
@@ -84,6 +91,10 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
         const cleanUrl = targetUrl.trim();
         const prevSnap = reducer.getSnapshot();
         const isDifferentMachine = prevSnap.daemonUrl !== null && prevSnap.daemonUrl !== cleanUrl;
+        if (saveTimer) {
+          clearTimeout(saveTimer); saveTimer = null;
+          if (prevSnap.daemonUrl) chronicleStore?.saveSnapshot(getStoreKey(prevSnap.daemonUrl), prevSnap);
+        }
         runtime.clientAdapter?.stop();
         runtime.daemonPassword = password;
         runtime.profile.daemonUrl = cleanUrl;
@@ -113,13 +124,13 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
         }
         const dc = (options.createDaemonClient ?? createHttpOpenCodeDaemonClient)(effectiveUrl, effectiveHeaders);
         const ca = createOpenCodeClientAdapter({ discoverDaemon: async () => ({ url: effectiveUrl }), client: dc });
-        if (!isDifferentMachine) {
-          if (prevSnap.deletedSessionIds?.length) ca.evictDeletedSessions?.(prevSnap.deletedSessionIds);
-          if (prevSnap.deletedRoomIds?.length) ca.evictDeletedRooms?.(prevSnap.deletedRoomIds);
-        }
+        const targetKey = getStoreKey(cleanUrl);
+        const baseSnap = isDifferentMachine ? chronicleStore?.loadSnapshot(targetKey) : prevSnap;
+        if (baseSnap?.deletedSessionIds?.length) ca.evictDeletedSessions?.(baseSnap.deletedSessionIds);
+        if (baseSnap?.deletedRoomIds?.length) ca.evictDeletedRooms?.(baseSnap.deletedRoomIds);
         const stagingReducer = createWorldStateReducer({ initialAdapter: "opencode-client", daemonUrl: cleanUrl });
-        if (!isDifferentMachine && (Object.keys(prevSnap.rooms).length > 0 || Object.keys(prevSnap.characters).length > 0 || Object.keys(prevSnap.tributeLedger ?? {}).length > 0 || (prevSnap.deletedSessionIds?.length ?? 0) > 0 || (prevSnap.deletedRoomIds?.length ?? 0) > 0)) {
-          stagingReducer.hydrateFromSnapshot?.(prevSnap, reducer.getCatalog());
+        if (baseSnap && (Object.keys(baseSnap.rooms ?? {}).length > 0 || Object.keys(baseSnap.characters ?? {}).length > 0 || Object.keys(baseSnap.tributeLedger ?? {}).length > 0 || (baseSnap.deletedSessionIds?.length ?? 0) > 0 || (baseSnap.deletedRoomIds?.length ?? 0) > 0)) {
+          stagingReducer.hydrateFromSnapshot?.(baseSnap, isDifferentMachine ? undefined : reducer.getCatalog());
         }
         let targetReducer: WorldStateReducer = stagingReducer;
         const proxyReducer = {
@@ -131,13 +142,12 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
         try {
           await ca.start(proxyReducer);
           const stagedSnap = stagingReducer.getSnapshot();
-          const curDel = reducer.getSnapshot().deletedSessionIds ?? [];
-          const curDelRooms = reducer.getSnapshot().deletedRoomIds ?? [];
+          const curDel = isDifferentMachine ? (baseSnap?.deletedSessionIds ?? []) : (reducer.getSnapshot().deletedSessionIds ?? []);
+          const curDelRooms = isDifferentMachine ? (baseSnap?.deletedRoomIds ?? []) : (reducer.getSnapshot().deletedRoomIds ?? []);
+          const baseTribute = baseSnap?.tributeLedger ?? {};
           if (isDifferentMachine || Object.keys(stagedSnap.rooms).length > 0 || (stagedSnap.deletedRoomIds?.length ?? 0) > 0 || curDelRooms.length > 0) {
             reducer.reset?.({ adapter: "opencode-client", daemonUrl: cleanUrl });
-            const mergedSnap = isDifferentMachine
-              ? { ...stagedSnap, tributeLedger: { ...(prevSnap.tributeLedger ?? {}), ...(stagedSnap.tributeLedger ?? {}) } }
-              : { ...stagedSnap, tributeLedger: { ...(prevSnap.tributeLedger ?? {}), ...(stagedSnap.tributeLedger ?? {}) }, deletedSessionIds: [...new Set([...(stagedSnap.deletedSessionIds ?? []), ...curDel])], deletedRoomIds: [...new Set([...(stagedSnap.deletedRoomIds ?? []), ...curDelRooms])] };
+            const mergedSnap = { ...stagedSnap, tributeLedger: { ...baseTribute, ...(stagedSnap.tributeLedger ?? {}) }, deletedSessionIds: [...new Set([...(stagedSnap.deletedSessionIds ?? []), ...curDel])], deletedRoomIds: [...new Set([...(stagedSnap.deletedRoomIds ?? []), ...curDelRooms])] };
             reducer.hydrateFromSnapshot?.(mergedSnap, stagingReducer.getCatalog());
           }
           targetReducer = reducer;
@@ -147,7 +157,7 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
             if (m.daemonUrl === cleanUrl) { m.reachable = true; m.lastSyncedAtMs = runtime.profile.lastSyncedAtMs; m.errorMessage = null; }
           }
           const finalSnap = reducer.getSnapshot();
-          if (Object.keys(finalSnap.rooms).length > 0 || (finalSnap.deletedRoomIds?.length ?? 0) > 0) chronicleStore?.saveSnapshot(operatorId, finalSnap);
+          chronicleStore?.saveSnapshot(targetKey, finalSnap);
           persistAll();
           return true;
         } catch (err) {
@@ -197,7 +207,7 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
         };
       },
       close() {
-        if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; chronicleStore?.saveSnapshot(operatorId, reducer.getSnapshot()); }
+        if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; chronicleStore?.saveSnapshot(getStoreKey(), reducer.getSnapshot()); }
         runtime.clientAdapter?.stop();
         for (const client of runtime.sseClients) if (!client.writableEnded) client.end();
         runtime.sseClients.clear();
