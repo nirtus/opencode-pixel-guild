@@ -30,6 +30,7 @@
    - [5. Inspect, Chat With & Steer Heroes in the Character Sheet](#5-inspect-chat-with--steer-heroes-in-the-character-sheet)
    - [6. Summon New Adventurers & Demolish Rooms](#6-summon-new-adventurers--demolish-rooms)
    - [7. Mobile & Home-Screen Web App Experience](#7-mobile--home-screen-web-app-experience)
+7. [OpenCode Ecosystem & Disclaimer](#opencode-ecosystem--disclaimer)
 
 ---
 
@@ -258,3 +259,10 @@ Click any hero on the canvas or in the roster to open their **Character Sheet** 
 
 - **Bottom Navigation Bar**: Switch between `🌍 World`, `📜 General`, `🧙 Hero`, and `⚡ Ticker` with live badge counters and Quest Gate alert indicators.
 - **Mobile-Adapted Floorplan & Drawer**: Simplifies the central **Goal Assembly Site** into a high-contrast progress ring on compact screens and scrolls the `General` ledger as a unified mobile page with full safe-area support.
+
+---
+
+## OpenCode Ecosystem & Disclaimer
+
+- **Ecosystem & Directory Submissions**: See [`docs/awesome-opencode-submission.md`](./docs/awesome-opencode-submission.md) for the validated submission packages and runbooks across [`awesome-opencode`](https://github.com/awesome-opencode/awesome-opencode), the official [`anomalyco/opencode` Ecosystem docs](https://opencode.ai/docs/ecosystem), [`opencode.cafe`](https://www.opencode.cafe), and [`opencode-plugin-marketplace`](https://opencode-plugin-market.web.app).
+- **Non-Affiliation Disclaimer**: *OpenCode Pixel Guild Visualizer (`opencode-pixel-guild`) is an independent, community-built project and is not built by or affiliated with the OpenCode or Anomaly team in any way.*
