@@ -4,7 +4,8 @@
 
 ![OpenCode Pixel Guild Visualizer — 4-Scene Intro Sizzle Preview](./docs/images/opencode-pixel-guild-intro-preview.gif)
 
-> **🎬 [Watch Full 1080p Introduction Video (`docs/video/opencode-pixel-guild-intro.mp4`)](./docs/video/opencode-pixel-guild-intro.mp4)** · **📖 [YouTube Publish & Chapters Guide](./docs/video/youtube-publish-guide.md)** · **🚀 [`awesome-opencode` Submission & Launch Guide](./docs/awesome-opencode-submission.md)** · **✨ [Replay Interactive Tour Live (`/?demo=intro-tour`)](http://127.0.0.1:4310/?demo=intro-tour)**
+> **🎬 [Watch Full 1080p Introduction Video (`docs/video/opencode-pixel-guild-intro.mp4`)](./docs/video/opencode-pixel-guild-intro.mp4)**
+ **✨ [Replay Interactive Tour Live (`/?demo=intro-tour`)](http://127.0.0.1:4310/?demo=intro-tour)**
 
 ![Unified Host Workshop Room & Guild Master Ledger](./docs/images/unviewed-session-result-overview.png)
 

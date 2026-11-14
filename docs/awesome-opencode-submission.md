@@ -2,6 +2,9 @@
 
 This runbook contains the complete, schema-validated submission package for adding **OpenCode Pixel Guild** (`https://github.com/nirtus/opencode-pixel-guild`) to [`awesome-opencode`](https://github.com/awesome-opencode/awesome-opencode/blob/main/contributing.md) under `data/projects/opencode-pixel-guild.yaml`.
 
+- **Live Pull Request**: [`awesome-opencode/awesome-opencode#1043`](https://github.com/awesome-opencode/awesome-opencode/pull/1043)
+- **Fork Branch & YAML File**: [`nirtus/awesome-opencode@add-opencode-pixel-guild` (`data/projects/opencode-pixel-guild.yaml`)](https://github.com/nirtus/awesome-opencode/blob/add-opencode-pixel-guild/data/projects/opencode-pixel-guild.yaml)
+
 ---
 
 ## 1. Entry Requirements Audit (`contributing.md`)
