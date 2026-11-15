@@ -221,7 +221,12 @@ Clicking empty floor space (or pressing `Escape`) opens the **Guild Master Ledge
 | ![Project Browser & Assembly](./docs/images/single-row-project-browser.png) | ![Assembly Commit Ledger CRUD](./docs/images/verified-desktop-02-ledger-assembly-commit.png) |
 
 - Select a project repository using the single-row project switcher at the top of **Goal Assembly Site**.
+- On the 2D **Goal Assembly Site** in the center of the **Workshop Room**, **Assembly Parts** scale dynamically across 5 bounded visual volume levels (`Level 0 READY`, `Level 1 LIGHT` for `1–4` items, `Level 2 STD` for `5–12` items, `Level 3 HVY` for `13–24` items, and `Level 4 BULK` for `25+` items), grouping large change sets into at most `4–6` stacked cluster sockets (`#01–#06`, `X/Y ITEMS`) so any number of items fits cleanly inside the assembly square while the full per-file breakdown remains inspectable in `Assembly & Commit`.
 - Inspect uncommitted working-tree files (`[STAGED]`, `[MOD]`, `[NEW]`), stage or unstage changes, discard edits, sync with upstream (`🔄 Sync Git`), and click **Seal & Commit** to commit changes and reset the assembly platform.
+
+| Standard Volume Level (`LVL 2 STD · 0/5`) | Bulk Volume Level (`LVL 4 BULK · 0/74`) |
+| :---: | :---: |
+| ![Standard Goal Assembly Volume Level](./docs/images/dynamic-assembly-standard-level.png) | ![Bulk Goal Assembly Volume Level](./docs/images/dynamic-assembly-volume-levels.png) |
 
 ---
 

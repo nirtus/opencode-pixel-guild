@@ -1,13 +1,16 @@
-import type {
-  GoalAssemblyPlatformLayout,
-  GoalAssemblyState,
-  MultiProjectAssemblyPlatformLayout,
-  ProjectMiniAssemblyState,
+import {
+  type GoalAssemblyPlatformLayout,
+  type GoalAssemblyState,
+  type MultiProjectAssemblyPlatformLayout,
+  type ProjectMiniAssemblyState,
+  resolveGoalAssemblyVolumeLevel,
 } from "../encounter/index.ts";
 import type { SceneHitboxSpec } from "../scene/index.ts";
 import { fillStroke, INK, rrect } from "./asset-manifests.ts";
 
 export const GOAL_ASSEMBLY_MULTI_BAY_BOUNDS_PX = Object.freeze({ x: 280, y: 264, w: 220, h: 160 });
+export const GOAL_ASSEMBLY_DECK_BOUNDS_PX = Object.freeze({ x: 286, y: 274, w: 148, h: 132 });
+const SOCKET_FITTED_PALETTE = ["#d97706", "#059669", "#2563eb", "#b45309", "#7c3aed"] as const;
 
 export function appendGoalAssemblySceneHitboxes(
   hitboxes: SceneHitboxSpec[],
@@ -26,30 +29,16 @@ export function appendGoalAssemblySceneHitboxes(
       const proj = projectAssemblies[bay.bayIndex];
       if (!proj) continue;
       hitboxes.push({
-        priority: 7,
-        roomId: proj.roomId || roomId,
-        x: bay.x,
-        y: bay.y,
-        w: bay.w,
-        h: bay.h,
+        priority: 7, roomId: proj.roomId || roomId, x: bay.x, y: bay.y, w: bay.w, h: bay.h,
         target: {
-          kind: "goal-assembly-socket",
-          partIndex: bay.bayIndex,
-          partId: proj.shortTag,
+          kind: "goal-assembly-socket", partIndex: bay.bayIndex, partId: proj.shortTag,
           name: `${proj.crestIcon} ${proj.projectName} [${proj.shortTag}]`,
           status: proj.isComplete || proj.fittedCount > 0 ? "fitted" : "unbuilt",
-          taskTitle: proj.featureSlug,
-          projectId: proj.projectId,
-          projectName: proj.projectName,
-          shortTag: proj.shortTag,
-          crestIcon: proj.crestIcon,
-          partyKey: proj.partyKey,
-          projectStatus: proj.status,
-          projectStatusLabel: proj.statusLabel,
-          fittedCount: proj.fittedCount,
-          totalParts: proj.totalParts,
-          percentComplete: proj.percentComplete,
-          featureSlug: proj.featureSlug,
+          taskTitle: proj.featureSlug, projectId: proj.projectId, projectName: proj.projectName,
+          shortTag: proj.shortTag, crestIcon: proj.crestIcon, partyKey: proj.partyKey,
+          projectStatus: proj.status, projectStatusLabel: proj.statusLabel,
+          fittedCount: proj.fittedCount, totalParts: proj.totalParts,
+          percentComplete: proj.percentComplete, featureSlug: proj.featureSlug,
           milestoneName: proj.milestone.name,
         },
       });
@@ -59,23 +48,21 @@ export function appendGoalAssemblySceneHitboxes(
   for (const socket of layout.sockets) {
     const part = assembly.parts[socket.partIndex];
     if (!part) continue;
+    const endIdx = socket.endPartIndex ?? socket.partIndex;
+    const batchParts = assembly.parts.slice(socket.partIndex, endIdx + 1);
+    const fittedInBatch = batchParts.filter((p) => p.status === "fitted").length;
+    const isBatch = batchParts.length > 1;
+    const firstId = part.id || String(socket.partIndex + 1).padStart(2, "0");
+    const lastId = (batchParts[batchParts.length - 1] ?? part).id || String(endIdx + 1).padStart(2, "0");
+    const rangeLabel = isBatch ? `#${firstId}–#${lastId}` : `#${firstId}`;
+    const displayName = isBatch ? `${rangeLabel} (${fittedInBatch}/${batchParts.length} fitted · ${part.name})` : part.name;
+    const socketStatus = fittedInBatch >= batchParts.length && batchParts.length > 0 ? "fitted" : "unbuilt";
     hitboxes.push({
-      priority: 7,
-      roomId,
-      x: socket.x,
-      y: socket.y,
-      w: socket.w,
-      h: socket.h,
+      priority: 7, roomId, x: socket.x, y: socket.y, w: socket.w, h: socket.h,
       target: {
-        kind: "goal-assembly-socket",
-        partIndex: socket.partIndex,
-        partId: part.id,
-        name: part.name,
-        status: part.status,
-        taskTitle: part.name,
-        shortTag: part.shortTag,
-        crestIcon: part.crestIcon,
-        partyKey: part.partyKey,
+        kind: "goal-assembly-socket", partIndex: socket.partIndex, partId: isBatch ? rangeLabel : part.id,
+        name: displayName, status: socketStatus, taskTitle: displayName,
+        shortTag: part.shortTag, crestIcon: part.crestIcon, partyKey: part.partyKey,
       },
     });
   }
@@ -115,15 +102,23 @@ export function drawClockworkGear(
 }
 
 function drawMiniAssemblyPartPips(c: CanvasRenderingContext2D, proj: ProjectMiniAssemblyState, x: number, y: number, w: number, h: number): void {
-  const maxPips = Math.min(8, Math.max(1, proj.totalParts));
-  const gap = maxPips > 5 ? 2 : 3;
+  const vol = resolveGoalAssemblyVolumeLevel(proj.totalParts, proj.fittedCount);
+  const maxPips = Math.min(4, Math.max(1, proj.totalParts));
+  const gap = 3;
   const pipW = Math.max(4, Math.floor((w - (maxPips - 1) * gap) / maxPips));
 
   for (let i = 0; i < maxPips; i += 1) {
-    const part = proj.parts[i];
-    const isFitted = proj.status === "complete" || (part ? part.status === "fitted" : i < proj.fittedCount);
+    const startIdx = Math.floor((i * proj.totalParts) / maxPips);
+    const endIdx = Math.max(startIdx, Math.floor(((i + 1) * proj.totalParts) / maxPips) - 1);
+    const batchParts = proj.parts.slice(startIdx, endIdx + 1);
+    const fittedInBatch = batchParts.filter((p) => p.status === "fitted").length;
+    const isFitted = proj.status === "complete" || (batchParts.length > 0 ? fittedInBatch >= Math.ceil(batchParts.length * 0.5) : i < proj.fittedCount);
     const px = x + i * (pipW + gap);
     c.save();
+    if (vol.level >= 3 && h >= 5) {
+      rrect(c, px + 1, y - 1.5, Math.max(2, pipW - 2), h, 1.5);
+      fillStroke(c, "rgba(15, 23, 42, 0.7)", isFitted ? "#fbbf24" : "#475569", 0.8);
+    }
     if (proj.status === "complete") {
       rrect(c, px, y, pipW, h, 2);
       fillStroke(c, "#10b981", "#fde047", 1.2);
@@ -260,6 +255,129 @@ export function renderMultiProjectMiniAssembliesOnCanvas(
       c.fillText("✨ READY 0/0", bay.x + bay.w * 0.5, footerY);
     }
 
+    c.restore();
+  }
+}
+
+export function renderSingleProjectAssemblyDeckOnCanvas(
+  c: CanvasRenderingContext2D,
+  assembly: GoalAssemblyState,
+  layout: GoalAssemblyPlatformLayout,
+): void {
+  const db = GOAL_ASSEMBLY_DECK_BOUNDS_PX;
+  const vol = layout.volumeLevel;
+
+  if (vol.level >= 2) {
+    c.save();
+    rrect(c, db.x + 8, db.y + 5, db.w - 16, 15, 4);
+    const tierStroke = assembly.isComplete
+      ? "#10b981"
+      : vol.level >= 4
+        ? "#f59e0b"
+        : vol.level === 3
+          ? "#38bdf8"
+          : "#94a3b8";
+    fillStroke(c, "rgba(15, 23, 42, 0.9)", tierStroke, 1.3);
+
+    for (let lvl = 1; lvl <= 4; lvl += 1) {
+      const pipX = db.x + 13 + (lvl - 1) * 6;
+      const pipY = db.y + 9;
+      rrect(c, pipX, pipY, 4, 7, 1);
+      c.fillStyle = lvl <= vol.level ? (assembly.isComplete ? "#10b981" : "#fbbf24") : "rgba(71, 85, 105, 0.55)";
+      c.fill();
+    }
+
+    c.font = "bold 6.8px monospace";
+    c.fillStyle = assembly.isComplete ? "#fef08a" : "#e2e8f0";
+    c.textAlign = "right";
+    c.fillText(
+      `LVL ${vol.level} ${vol.code} · ${assembly.fittedCount}/${assembly.totalParts}`,
+      db.x + db.w - 12,
+      db.y + 15,
+    );
+    c.restore();
+  }
+
+  for (let i = 0; i < layout.sockets.length; i += 1) {
+    const socket = layout.sockets[i]!;
+    const part = assembly.parts[socket.partIndex];
+    if (!part) continue;
+    const endIdx = socket.endPartIndex ?? socket.partIndex;
+    const batchParts = assembly.parts.slice(socket.partIndex, endIdx + 1);
+    const batchTotal = Math.max(1, batchParts.length);
+    const fittedInBatch = batchParts.filter((p) => p.status === "fitted").length;
+    const isBatch = batchTotal > 1;
+    const fullyBuilt = fittedInBatch >= batchTotal;
+    const partiallyBuilt = fittedInBatch > 0 && !fullyBuilt;
+    const fillHex = SOCKET_FITTED_PALETTE[i % SOCKET_FITTED_PALETTE.length]!;
+
+    c.save();
+    const layers = Math.min(3, Math.max(1, socket.stackLayers || 1));
+    if (layers >= 2) {
+      for (let l = layers - 1; l >= 1; l -= 1) {
+        const offset = l * 1.6;
+        rrect(
+          c,
+          socket.x + offset,
+          Math.max(db.y + 2, socket.y - offset),
+          Math.max(6, socket.w - offset),
+          socket.h,
+          4,
+        );
+        fillStroke(c, "rgba(15, 23, 42, 0.85)", fullyBuilt ? "#fbbf24" : "#475569", 1);
+      }
+    }
+
+    if (fullyBuilt) {
+      rrect(c, socket.x, socket.y, socket.w, socket.h, 4);
+      fillStroke(c, fillHex, "#fbbf24", 1.6);
+      if (socket.h >= 34) {
+        const cx = socket.x + socket.w * 0.5;
+        const cy = socket.y + socket.h * 0.52;
+        const r = Math.max(3.2, Math.min(socket.w, socket.h) * 0.13);
+        c.beginPath();
+        c.arc(cx, cy, r, 0, Math.PI * 2);
+        fillStroke(c, "#fef08a", INK, 1.2);
+      }
+    } else if (partiallyBuilt) {
+      rrect(c, socket.x, socket.y, socket.w, socket.h, 4);
+      fillStroke(c, "rgba(15, 23, 42, 0.9)", "#f59e0b", 1.5);
+      const progW = Math.max(4, Math.floor((socket.w - 4) * (fittedInBatch / batchTotal)));
+      rrect(c, socket.x + 2, socket.y + 2, progW, Math.max(4, socket.h - 4), 2.5);
+      c.fillStyle = fillHex;
+      c.globalAlpha = 0.72;
+      c.fill();
+      c.globalAlpha = 1;
+    } else {
+      c.globalAlpha = 0.68;
+      c.setLineDash([3, 2]);
+      rrect(c, socket.x, socket.y, socket.w, socket.h, 4);
+      fillStroke(c, "rgba(15, 23, 42, 0.78)", "#7ce8ff", 1.3);
+      c.setLineDash([]);
+    }
+
+    c.font = "bold 7.2px monospace";
+    c.fillStyle = fullyBuilt || partiallyBuilt ? "#fef9c3" : "#7ce8ff";
+    c.textAlign = "center";
+    const firstId = part.id || String(socket.partIndex + 1).padStart(2, "0");
+    const lastId = batchParts[batchParts.length - 1]?.id || String(endIdx + 1).padStart(2, "0");
+    const topLabel = isBatch ? `#${firstId}–#${lastId}` : `#${firstId}`;
+    c.fillText(topLabel, socket.x + socket.w * 0.5, socket.y + Math.min(11, socket.h * 0.38));
+
+    if (socket.h >= 24) {
+      c.font = "bold 6.2px monospace";
+      c.fillStyle = fullyBuilt ? "#fde68a" : partiallyBuilt ? "#fcd34d" : "#93c5fd";
+      if (isBatch) {
+        const countLabel = socket.w >= 48 ? `${fittedInBatch}/${batchTotal} ITEMS` : `${fittedInBatch}/${batchTotal}`;
+        c.fillText(countLabel, socket.x + socket.w * 0.5, socket.y + socket.h - 4);
+      } else {
+        const baseName = (part.name || "").split("/").pop()?.replace(/\.[a-z0-9]+$/i, "").trim();
+        const subLabel = (baseName || part.shortTag || "").slice(0, Math.max(6, Math.floor(socket.w / 5)));
+        if (subLabel) {
+          c.fillText(subLabel, socket.x + socket.w * 0.5, socket.y + socket.h - 4);
+        }
+      }
+    }
     c.restore();
   }
 }

@@ -199,23 +199,25 @@ export function deriveProjectMiniAssemblies(params: {
   return Object.freeze(results);
 }
 
+export const MAX_MULTI_PROJECT_BAYS = 6;
+
 export function computeMultiProjectAssemblyPlatformLayout(
   projectAssemblies: ReadonlyArray<{ readonly projectId: string; readonly roomId?: string }>,
   platformPx: { readonly x: number; readonly y: number; readonly w: number; readonly h: number },
 ): MultiProjectAssemblyPlatformLayout {
-  const count = projectAssemblies.length;
+  const count = Math.min(projectAssemblies.length, MAX_MULTI_PROJECT_BAYS);
   if (count === 0) return Object.freeze({ cols: 1, rows: 1, bays: Object.freeze([]) });
 
-  const cols = count === 1 ? 1 : count === 2 ? 2 : count === 3 ? 3 : count === 4 ? 2 : count <= 6 ? 3 : 4;
+  const cols = count === 1 ? 1 : count === 2 ? 2 : count === 3 ? 3 : count === 4 ? 2 : 3;
   const rows = Math.ceil(count / cols);
   const padX = 6;
   const padY = 6;
   const gapX = 6;
   const gapY = 6;
-  const availW = Math.max(24, platformPx.w - padX * 2);
-  const availH = Math.max(24, platformPx.h - padY * 2);
-  const bayW = Math.max(18, Math.floor((availW - (cols - 1) * gapX) / cols));
-  const bayH = Math.max(18, Math.floor((availH - (rows - 1) * gapY) / rows));
+  const availW = Math.max(12, platformPx.w - padX * 2);
+  const availH = Math.max(12, platformPx.h - padY * 2);
+  const bayW = Math.max(8, Math.floor((availW - (cols - 1) * gapX) / cols));
+  const bayH = Math.max(8, Math.floor((availH - (rows - 1) * gapY) / rows));
 
   const bays: ProjectMiniAssemblyBaySpec[] = [];
   for (let i = 0; i < count; i += 1) {

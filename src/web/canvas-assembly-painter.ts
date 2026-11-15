@@ -11,8 +11,10 @@ import {
 import { fillStroke, INK, rrect, withShadow } from "./asset-manifests.ts";
 import {
   drawClockworkGear,
+  GOAL_ASSEMBLY_DECK_BOUNDS_PX,
   GOAL_ASSEMBLY_MULTI_BAY_BOUNDS_PX,
   renderMultiProjectMiniAssembliesOnCanvas,
+  renderSingleProjectAssemblyDeckOnCanvas,
 } from "./canvas-mini-assembly-painter.ts";
 import {
   clientState,
@@ -21,8 +23,7 @@ import {
   isMobileViewport,
 } from "./client-state.ts";
 
-export { GOAL_ASSEMBLY_MULTI_BAY_BOUNDS_PX };
-export const GOAL_ASSEMBLY_DECK_BOUNDS_PX = Object.freeze({ x: 286, y: 274, w: 148, h: 132 });
+export { GOAL_ASSEMBLY_DECK_BOUNDS_PX, GOAL_ASSEMBLY_MULTI_BAY_BOUNDS_PX };
 
 export interface ArtificerMachineTelemetry {
   readonly completionRatio: number;
@@ -100,8 +101,6 @@ export function drawStationLabel(c: CanvasRenderingContext2D, text: string, x: n
   c.fillText(text, x, y);
   c.restore();
 }
-
-const SOCKET_FITTED_PALETTE = ["#d97706", "#059669", "#2563eb", "#b45309", "#7c3aed"] as const;
 
 export function renderMobileGoalAssemblyCore(
   c: CanvasRenderingContext2D,
@@ -324,47 +323,7 @@ export function renderGoalAssemblySite(c: CanvasRenderingContext2D, t: number, w
     c.fillText("0/0 PARTS · CLEAN", db.x + db.w * 0.5, db.y + db.h * 0.62);
     c.restore();
   } else {
-    for (const socket of layout.sockets) {
-      const part = assembly.parts[socket.partIndex];
-      if (!part) continue;
-      const built = part.status === "fitted";
-      const fillHex = SOCKET_FITTED_PALETTE[socket.partIndex % SOCKET_FITTED_PALETTE.length];
-
-      c.save();
-      if (built) {
-        rrect(c, socket.x, socket.y, socket.w, socket.h, 4);
-        fillStroke(c, fillHex, "#fbbf24", 1.6);
-        if (socket.h >= 34) {
-          const cx = socket.x + socket.w * 0.5;
-          const cy = socket.y + socket.h * 0.54;
-          const r = Math.max(3.2, Math.min(socket.w, socket.h) * 0.14);
-          c.beginPath();
-          c.arc(cx, cy, r, 0, Math.PI * 2);
-          fillStroke(c, "#fef08a", INK, 1.2);
-        }
-      } else {
-        c.globalAlpha = 0.65;
-        c.setLineDash([3, 2]);
-        rrect(c, socket.x, socket.y, socket.w, socket.h, 4);
-        fillStroke(c, "rgba(15, 23, 42, 0.78)", "#7ce8ff", 1.3);
-        c.setLineDash([]);
-      }
-
-      c.font = "bold 7.5px monospace";
-      c.fillStyle = built ? "#fef9c3" : "#7ce8ff";
-      c.textAlign = "center";
-      c.fillText(`#${part.id}`, socket.x + socket.w * 0.5, socket.y + Math.min(11, socket.h * 0.42));
-      if (socket.h >= 24) {
-        const baseName = (part.name || "").split("/").pop()?.replace(/\.[a-z0-9]+$/i, "").trim();
-        const subLabel = (baseName || part.shortTag || "").slice(0, Math.max(6, Math.floor(socket.w / 5)));
-        if (subLabel) {
-          c.font = "bold 6px monospace";
-          c.fillStyle = built ? "#fde68a" : "#93c5fd";
-          c.fillText(subLabel, socket.x + socket.w * 0.5, socket.y + socket.h - 4);
-        }
-      }
-      c.restore();
-    }
+    renderSingleProjectAssemblyDeckOnCanvas(c, assembly, layout);
   }
 
   const featureTitle = featureSlug
