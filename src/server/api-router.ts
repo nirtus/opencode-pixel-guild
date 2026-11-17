@@ -1,8 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type {
-  DeleteRoomResourcesResult,
-  OpenCodeClientAdapter,
-  OpenCodeDaemonClientPort,
+import {
+  buildHydratedSessionEvents,
+  type DeleteRoomResourcesResult,
+  type OpenCodeClientAdapter,
+  type OpenCodeDaemonClientPort,
 } from "../ingress/index.ts";
 import {
   DEMO_SCENARIO_PRESETS,
@@ -222,15 +223,13 @@ export async function tryHandleGuildApiRoute(
         const charNow = activeReducer.getSnapshot().characters[sessionId];
         if (hydrated && charNow) {
           const locationDirectory = dir ?? charNow.roomId ?? "/";
+          const existingQGateId = charNow.questGate?.kind === "question" ? charNow.questGate.gateId : null;
+          for (const hEv of buildHydratedSessionEvents(hydrated, sessionId, locationDirectory, existingQGateId, false)) {
+            activeReducer.dispatch(hEv);
+          }
+          const charAfter = activeReducer.getSnapshot().characters[sessionId];
           const pq = hydrated.pendingQuestion;
           const pqDone = Boolean(pq && hydrated.recentTools?.some((t) => t.status === "completed" && (t.callId === pq.gateId || t.toolName.trim().toLowerCase() === "question")));
-          activeReducer.dispatch({
-            type: "session.upserted", timestampMs: Date.now(), sessionId,
-            locationDirectory, preserveActivityTimestamp: true,
-            lastAssistantText: pqDone ? undefined : hydrated.lastAssistantText, lastUserPromptText: hydrated.lastUserPromptText,
-            messages: hydrated.messages, recentTools: hydrated.recentTools,
-          } as any);
-          const charAfter = activeReducer.getSnapshot().characters[sessionId];
           const lastRole = charAfter?.messages?.[charAfter.messages.length - 1]?.role;
           if (pq && !pqDone && lastRole !== "user") {
             activeReducer.dispatch({

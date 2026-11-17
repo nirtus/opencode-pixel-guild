@@ -149,18 +149,14 @@ export function reconcileInteractiveCommandSlot(
   const hasGate = Boolean(activeGate);
   const urlExpand = typeof window !== "undefined" && new URLSearchParams(window.location?.search || "").get("scroll") === "1";
   if (urlExpand) clientState.isCommandScrollExpanded = true;
-  const isExpanded = Boolean(clientState.isCommandScrollExpanded) && !hasGate;
+  const isExpanded = Boolean(clientState.isCommandScrollExpanded);
   const syncCardCollapseState = () => {
     const cardEl = slotEl.querySelector(".command-scroll-card") as HTMLElement | null;
     if (!cardEl) return;
-    const nowHasGate = Boolean(
-      sheet.pendingQuestGate &&
-        !isClientGateResolved(sheet.pendingQuestGate.gateId, sheet.sessionId, sheet.pendingQuestGate.prompt),
-    );
-    const nowExpanded = Boolean(clientState.isCommandScrollExpanded) && !nowHasGate;
-    cardEl.classList?.toggle("is-gate-hidden", nowHasGate);
+    const nowExpanded = Boolean(clientState.isCommandScrollExpanded);
+    cardEl.classList?.toggle("is-gate-hidden", false);
     cardEl.classList?.toggle("is-expanded", nowExpanded);
-    cardEl.classList?.toggle("is-collapsed", !nowExpanded && !nowHasGate);
+    cardEl.classList?.toggle("is-collapsed", !nowExpanded);
     const toggleLabelEl = slotEl.querySelector("#scroll-toggle-label") as HTMLElement | null;
     if (toggleLabelEl) toggleLabelEl.textContent = nowExpanded ? "Collapse ▾" : "Compose [/] ▴";
   };
@@ -221,7 +217,7 @@ export function reconcileInteractiveCommandSlot(
     currentInputText: draftPrompt,
   });
 
-  const cardStateClass = hasGate ? "is-gate-hidden" : isExpanded ? "is-expanded" : "is-collapsed";
+  const cardStateClass = isExpanded ? "is-expanded" : "is-collapsed";
   slotEl.innerHTML = `
     ${renderQuestGateCardHtml(sheet, rawChar)}
     <div class="sheet-card command-scroll-card ${cardStateClass}">
@@ -326,6 +322,10 @@ export function reconcileInteractiveCommandSlot(
         onStateChanged,
       );
       if (ok) {
+        if (sheet.pendingQuestGate) {
+          clientState.collapsedGateIds.delete(sheet.pendingQuestGate.gateId);
+          markClientGateResolved(sheet.pendingQuestGate.gateId, true, sheet.sessionId, sheet.pendingQuestGate.prompt);
+        }
         if (textarea) textarea.value = "";
         clientState.draftPromptsBySession.delete(sheet.sessionId);
         syncSkillBrowserSelectionState(slotEl, skillScopeId, "");

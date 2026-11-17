@@ -175,6 +175,12 @@ input.is-hidden { display: none !important; }
 .gate-card-question { border-color: #38bdf8; background: rgba(12, 74, 110, 0.28); width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; overflow-x: hidden; overflow-y: visible; }
 .gate-title-question { color: #7dd3fc; gap: 6px; min-width: 0; }
 .gate-title-permission > span:first-child, .gate-title-question > span:first-child { min-width: 0; white-space: normal; overflow-wrap: break-word; word-break: break-word; }
+.gate-header-actions { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.btn-gate-collapse { font-size: 9.5px; padding: 2px 6px; min-height: 20px; background: rgba(15, 23, 42, 0.65); border-color: #38bdf8; color: #bae6fd; white-space: nowrap; }
+.btn-gate-bypass { font-size: 9.5px; padding: 2px 6px; min-height: 20px; background: rgba(127, 29, 29, 0.55); border-color: #f87171; color: #fecaca; white-space: nowrap; }
+.gate-card-permission.is-collapsed, .gate-card-question.is-collapsed { padding: 4px 8px; margin-bottom: 4px; }
+.gate-card-permission.is-collapsed .sheet-card-title, .gate-card-question.is-collapsed .sheet-card-title { margin-bottom: 0; }
+.gate-card-permission.is-collapsed .gate-card-body, .gate-card-question.is-collapsed .gate-card-body { display: none !important; }
 .gate-marker-question { color: #fcd34d; flex-shrink: 0; }
 .gate-prompt-text { font-size: 11px; color: #fef3c7; margin-bottom: 6px; overflow-wrap: break-word; word-break: break-word; max-width: 100%; min-width: 0; }
 .gate-prompt-text .chat-md-body { font-size: 11px; color: #fef3c7; line-height: 1.5; }

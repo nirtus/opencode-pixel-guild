@@ -233,9 +233,9 @@ export function mapOpenCodeSseFrameToTelemetryEvents(rawPayload: unknown): Telem
     }];
   }
 
-  if (type === "permission.replied" || type === "permission.resolved") {
+  if (type === "permission.replied" || type === "permission.resolved" || type === "permission.rejected" || type === "permission.cancelled") {
     const sessionId = resolveSessionId();
-    const gateId = props.requestID ?? props.gateId ?? props.permissionID ?? props.id ?? "";
+    const gateId = props.requestID ?? props.gateId ?? props.permissionID ?? props.id ?? (sessionId ? `perm:${sessionId}` : "");
     return sessionId && gateId ? [{ type: "permission.resolved", timestampMs, sessionId, gateId }] : [];
   }
 
@@ -253,10 +253,10 @@ export function mapOpenCodeSseFrameToTelemetryEvents(rawPayload: unknown): Telem
     }];
   }
 
-  if (type === "form.replied" || type === "form.resolved" || type === "form.cancelled" || type === "question.replied" || type === "question.resolved") {
+  if (type === "form.replied" || type === "form.resolved" || type === "form.cancelled" || type === "form.rejected" || type === "question.replied" || type === "question.resolved" || type === "question.rejected" || type === "question.cancelled" || type === "question.dismissed") {
     const formObj = (props.form && typeof props.form === "object" ? props.form : props) as Record<string, any>;
     const sessionId = resolveSessionId(formObj) || resolveSessionId(props);
-    const gateId = formObj.gateId ?? formObj.formID ?? formObj.id ?? props.gateId ?? props.formID ?? props.id ?? "";
+    const gateId = formObj.gateId ?? formObj.formID ?? formObj.requestID ?? formObj.questionID ?? formObj.callID ?? formObj.id ?? props.gateId ?? props.formID ?? props.requestID ?? props.questionID ?? props.callID ?? props.id ?? (sessionId ? `question:${sessionId}` : "");
     return sessionId && gateId ? [{ type: "question.resolved", timestampMs, sessionId, gateId }] : [];
   }
 
@@ -336,8 +336,10 @@ export function mapOpenCodeSseFrameToTelemetryEvents(rawPayload: unknown): Telem
       return [{ type: "session.compacting", timestampMs, sessionId }];
     }
     if (part.type === "tool" && sessionId) {
-      const toolName = String(part.tool ?? part.name ?? "tool");
-      const callId = part.callID ?? part.id;
+      const callId = String(part.callID ?? part.id ?? "") || undefined;
+      const rawName = typeof part.tool === "string" && part.tool.trim() ? part.tool.trim() : typeof part.name === "string" && part.name.trim() ? part.name.trim() : "";
+      if (callId && rawName) rememberToolCallName(callId, rawName);
+      const toolName = rawName || (callId ? toolNameByCallId.get(callId) : undefined) || "tool";
       const status = part.state?.status;
       if (status === "running" || status === "pending") return [{ type: "tool.started", timestampMs, sessionId, callId, toolName, toolInput: part.state?.input ?? part.input ?? null }];
       if (status === "completed" || status === "error" || status === "failed") return [{ type: "tool.completed", timestampMs, sessionId, callId, toolName, outputPreview: extractToolOutputPreview(part as any) }];

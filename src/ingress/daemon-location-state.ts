@@ -3,7 +3,7 @@ import { mergeQuestGateFields, normalizeQuestGateFields, type QuestGateSource, t
 import type { OpenCodeDaemonLocationPayload } from "./daemon-types.ts";
 import { hydrateSessionMessages, type SessionMessageHydration } from "./daemon-message-hydration.ts";
 import {
-  mapDaemonSessionTokens, mergeDaemonPluginsAndMcps, normalizeDaemonModels,
+  fetchOpenTuiSessionIds, mapDaemonSessionTokens, mergeDaemonPluginsAndMcps, normalizeDaemonModels,
   type RawDaemonMcpResponse, type RawDaemonModelItem, type RawDaemonPluginItem,
 } from "./daemon-mcp-normalizer.ts";
 
@@ -89,7 +89,7 @@ export async function fetchDaemonLocationState(
     }
   }
 
-  const [fetchedSkills, fetchedPlugins, fetchedMcps, fetchedAgents, fetchedRawModels, rawSessions, rawRootSessions, activeSessions, permissions, forms] =
+  const [fetchedSkills, fetchedPlugins, fetchedMcps, fetchedAgents, fetchedRawModels, rawSessions, rawRootSessions, activeSessions, permissions, forms, openTuiSessionIds] =
     await Promise.all([
       hasValidCache ? Promise.resolve(cachedCatalog?.skills ?? null) : fetchJson<Array<{ id: string; name?: string; description?: string }>>(`/api/skill${query}`, locHeaders),
       hasValidCache ? Promise.resolve(cachedCatalog?.plugins ?? null) : fetchJson<RawDaemonPluginItem[]>(`/api/plugin${query}`, locHeaders),
@@ -101,6 +101,7 @@ export async function fetchDaemonLocationState(
       fetchJson<Array<string | { id?: string; sessionId?: string }> | Record<string, { type?: string; status?: string }>>(`/api/session/active${query}`, locHeaders),
       isWorktreeOrRoot ? Promise.resolve(null) : fetchJson<RawDaemonGateItem[]>(`/api/permission/request${query}`, locHeaders),
       isWorktreeOrRoot ? Promise.resolve(null) : fetchJson<RawDaemonGateItem[]>(`/api/form${query}`, locHeaders),
+      fetchOpenTuiSessionIds(fetchJson, daemonDir),
     ]);
 
   const skills = fetchedSkills ?? cachedCatalog?.skills ?? hostCatalog?.skills ?? null;
@@ -249,6 +250,9 @@ export async function fetchDaemonLocationState(
 
   const mostRecentRootSessionId = sortedRootSessions[0]?.sessionId ?? sortedRootSessions[0]?.id ?? null;
   const topRootSlice = sortedRootSessions.slice(0, 60).map((s) => s.sessionId ?? s.id).filter((id): id is string => Boolean(id));
+  const openTuiRootIds = sortedRootSessions
+    .filter((s) => { const sid = s.sessionId ?? s.id; return Boolean(sid && !s.archived && !s.time?.archived && openTuiSessionIds.has(sid)); })
+    .map((s) => (s.sessionId ?? s.id)!);
   const unviewedRootIds = sortedRootSessions
     .filter((s) => isUnviewedRootSession(s, activeIdSet))
     .slice(0, 60)
@@ -264,7 +268,7 @@ export async function fetchDaemonLocationState(
         .slice(0, 30)
         .map((s) => s.sessionId ?? s.id)
         .filter((id): id is string => Boolean(id));
-  const hydrateSessionIds = new Set<string>([...activeIdSet, ...(isWorktreeOrRoot ? [] : [...topRootSlice, ...unviewedRootIds, ...recentChildIds]), ...pendingGateSessionIds]);
+  const hydrateSessionIds = new Set<string>([...activeIdSet, ...(isWorktreeOrRoot ? [] : [...topRootSlice, ...openTuiRootIds, ...unviewedRootIds, ...recentChildIds]), ...pendingGateSessionIds]);
 
   const messageHydrationBySession = new Map<string, SessionMessageHydration>();
   await Promise.all(
@@ -278,7 +282,7 @@ export async function fetchDaemonLocationState(
         const cachedHyd = idleMessageHydrationCache.get(cacheEntryKey);
         const cachedMsgs = cachedHyd?.hydration.messages ?? [];
         const hasCompletedTurn = cachedMsgs.length > 0 && cachedMsgs[cachedMsgs.length - 1]?.role !== "user";
-        if (cachedHyd && cachedHyd.updatedAtMs === sUpdatedAt && hasCompletedTurn) {
+        if (cachedHyd && cachedHyd.updatedAtMs === sUpdatedAt && hasCompletedTurn && !cachedHyd.hydration.pendingQuestion) {
           messageHydrationBySession.set(sessionId, cachedHyd.hydration);
           return;
         }
@@ -286,7 +290,7 @@ export async function fetchDaemonLocationState(
       const hydration = await hydrateSessionMessages(fetchJson, sessionId, query, locHeaders);
       if (hydration !== null) {
         messageHydrationBySession.set(sessionId, hydration);
-        if (isIdle && rootUrl) idleMessageHydrationCache.set(cacheEntryKey, { updatedAtMs: sUpdatedAt, hydration });
+        if (isIdle && !hydration.pendingQuestion && rootUrl) idleMessageHydrationCache.set(cacheEntryKey, { updatedAtMs: sUpdatedAt, hydration });
       }
     }),
   );
@@ -298,6 +302,7 @@ export async function fetchDaemonLocationState(
     const rUpdated = resolveSessionActivityMs(rs);
     const rViewed = rs.time?.viewed;
     return (
+      openTuiSessionIds.has(rsid) ||
       activeIdSet.has(rsid) ||
       pendingGateSessionIds.has(rsid) ||
       isUnviewedRootSession(rs, activeIdSet) ||
@@ -358,9 +363,10 @@ export async function fetchDaemonLocationState(
     const mappedTokens = mapDaemonSessionTokens(s, shortModelId, catalogLimit, msgHydration?.latestContextTokens);
 
     const isChild = Boolean(s.parentId ?? s.parentID);
+    const isOpenInTui = !isArchived && openTuiSessionIds.has(sessionId);
     const isOpenInOpenCode = isChild
       ? activeIdSet.has(sessionId) || pendingGateSessionIds.has(sessionId)
-      : activeIdSet.has(sessionId) || pendingGateSessionIds.has(sessionId) || hasUnviewedResult || isRecentlyActive || (!hasAnyRecentlyOpenRoot && sessionId === mostRecentRootSessionId);
+      : isOpenInTui || activeIdSet.has(sessionId) || pendingGateSessionIds.has(sessionId) || hasUnviewedResult || isRecentlyActive || (!hasAnyRecentlyOpenRoot && sessionId === mostRecentRootSessionId);
 
     sessions.push({
       sessionId, parentId: s.parentId ?? s.parentID ?? null, title: s.title,

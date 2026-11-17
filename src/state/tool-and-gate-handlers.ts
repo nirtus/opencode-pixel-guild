@@ -6,11 +6,11 @@ import { applyArmoryTransition, cleanChatMessagePrefix, resolveToolCategory, syn
 import { updateContextMana } from "./context-mana.ts";
 import { deriveEquipmentLoadout } from "./equipment-loadout.ts";
 import { normalizeLocationDirectory } from "./location-normalization.ts";
-import { buildQuestionToolQuestGate, clearAllResolvedQuestGates, clearResolvedQuestGateSession, handleQuestGateOpened, handleQuestGateResolved, isQuestGateAlreadyResolved, recordResolvedQuestGate } from "./quest-gate-handlers.ts";
+import { buildQuestionToolQuestGate, clearAllResolvedQuestGates, clearResolvedQuestGateSession, handleQuestGateOpened, handleQuestGateResolved, isQuestGateAlreadyResolved, recordResolvedQuestGate, settleCharacterQuestGate } from "./quest-gate-handlers.ts";
 import { allocateNextToolSequence, bumpCharacterRevision, ensurePluginAlcove, ensureRoom, equipSkillGrimoire, resolveWorkstationAnchorTile, sortRecentToolsNewestFirst, transitionCharacterState } from "./reducer-helpers.ts";
 import type { InternalWorldStoreState, MutationCollector } from "./reducer-types.ts";
 
-export { buildQuestionToolQuestGate, clearAllResolvedQuestGates, clearResolvedQuestGateSession, handleQuestGateOpened, handleQuestGateResolved, isQuestGateAlreadyResolved, recordResolvedQuestGate };
+export { buildQuestionToolQuestGate, clearAllResolvedQuestGates, clearResolvedQuestGateSession, handleQuestGateOpened, handleQuestGateResolved, isQuestGateAlreadyResolved, recordResolvedQuestGate, settleCharacterQuestGate };
 
 export function handleToolStarted(
   state: InternalWorldStoreState, event: Extract<TelemetryEvent, { type: "tool.started" }>, collector: MutationCollector,
@@ -25,9 +25,8 @@ export function handleToolStarted(
     event.toolName.trim().toLowerCase() === "subagent" || event.toolName.trim().toLowerCase() === "task";
   const isQuestionTool = event.toolName.trim().toLowerCase() === "question";
   if (isQuestionTool && isQuestGateAlreadyResolved(state, event.callId)) return;
-  if (!isQuestionTool && char.questGate?.kind === "question") {
-    recordResolvedQuestGate(state, char.questGate.gateId);
-    delete state.questGates[char.questGate.gateId]; char.questGate = null;
+  if (!isQuestionTool && char.questGate) {
+    settleCharacterQuestGate(state, char);
   }
   const preservedWorkstation =
     char.activeWorkstation ?? char.recentTools.find((r) => r.toolName.toLowerCase() !== "question")?.workstation ?? "Arcane Lectern";
@@ -207,10 +206,11 @@ export function handleToolCompleted(
     ]);
   }
 
-  if (event.toolName.trim().toLowerCase() === "question" && char.questGate?.kind === "question") {
-    recordResolvedQuestGate(state, char.questGate.gateId);
-    delete state.questGates[char.questGate.gateId];
-    char.questGate = null;
+  if (
+    char.questGate?.kind === "question" &&
+    (event.toolName.trim().toLowerCase() === "question" || (event.callId && event.callId === char.questGate.gateId))
+  ) {
+    settleCharacterQuestGate(state, char);
   }
   const stillRunning = char.recentTools.find((r) => r.status === "running");
   if (stillRunning) {
@@ -315,6 +315,9 @@ export function handleMessageUserPrompt(
     ].slice(-60);
   }
   char.isOpenInOpenCode = true;
+  if (!isHistoricalEcho) {
+    settleCharacterQuestGate(state, char);
+  }
   if (alreadyProgressedTurn) {
     for (const skillId of event.skills ?? []) equipSkillGrimoire(state, char, skillId, "prompt-attachment", event.timestampMs, undefined, null, false);
     bumpCharacterRevision(state, char.characterId);
@@ -325,15 +328,6 @@ export function handleMessageUserPrompt(
   char.hasUnviewedResult = false; char.turnOutcome = null;
   if (!(event as { preserveActivityTimestamp?: boolean }).preserveActivityTimestamp) {
     clearResolvedQuestGateSession(state, char.sessionId, { keepSpecificGateIds: true });
-  }
-  if (char.questGate) {
-    recordResolvedQuestGate(state, char.questGate.gateId);
-    delete state.questGates[char.questGate.gateId]; char.questGate = null;
-  }
-  for (const rec of char.recentTools) {
-    if (rec.status === "running" && rec.toolName.trim().toLowerCase() === "question") {
-      rec.status = "completed"; recordResolvedQuestGate(state, rec.callId);
-    }
   }
   const attachedSkills = new Set<string>(event.skills ?? []);
   const mentionRegex = /(?:^|\s)@([a-zA-Z0-9_-]{2,})/g;

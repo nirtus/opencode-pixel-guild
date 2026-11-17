@@ -1,6 +1,5 @@
 import { isBuiltinOpenCodePlugin } from "../capability/classifier.ts";
-import { detectConversationalQuestionPrompt } from "../ingress/daemon-message-hydration.ts";
-import { LIFECYCLE_TIMERS_MS, mergeQuestGateFields, type QuestGateState, type ReconnectLogEntry, type TelemetryEvent } from "../types/domain.ts";
+import { detectConversationalQuestionPrompt, LIFECYCLE_TIMERS_MS, mergeQuestGateFields, type QuestGateState, type ReconnectLogEntry, type TelemetryEvent } from "../types/domain.ts";
 import { syncCharacterWorkflow } from "./armory-and-workflow.ts";
 import { syncCharacterTributeRecord, updateContextMana } from "./context-mana.ts";
 import { deriveEquipmentLoadout } from "./equipment-loadout.ts";
@@ -369,8 +368,9 @@ export function handleStreamReconnected(
           transitionCharacterState(state, char, "Archived", event.timestampMs, { preserveLastActivity: true });
           collector.changedCharacterIds.add(char.characterId);
         }
-      } else if (char.lifecycleState !== "Archived" || char.hasUnviewedResult) {
-        const explicitlyOpen = Boolean(meta?.isOpenInOpenCode === true) || Boolean(char.hasUnviewedResult);
+      } else if (char.lifecycleState !== "Archived" || char.hasUnviewedResult || char.isOpenInOpenCode === true || meta?.isOpenInOpenCode === true) {
+        const explicitlyOpen = (typeof meta?.isOpenInOpenCode === "boolean" ? meta.isOpenInOpenCode : char.isOpenInOpenCode === true) || Boolean(char.hasUnviewedResult);
+        if (explicitlyOpen) char.isOpenInOpenCode = true;
         const lastRelevantMs = Math.max(char.lastActivityAtMs, char.viewedAtMs ?? 0);
         const nextIdleState = !explicitlyOpen && event.timestampMs - lastRelevantMs >= LIFECYCLE_TIMERS_MS.HISTORICAL_ARCHIVE_IDLE_MS ? "Archived" : "RestingInLounge";
         if (char.lifecycleState === "DistillingContextMana" && ((char.dwellUntilMs !== null && event.timestampMs < char.dwellUntilMs) || (char.dwellUntilMs === null && event.timestampMs - char.stateEnteredAtMs < 15_000))) {

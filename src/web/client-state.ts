@@ -144,6 +144,7 @@ export const clientState = {
   draftPromptsBySession: new Map<string, string>(),
   draftDeliveryBySession: new Map<string, "steer" | "queue">(),
   draftGateAnswersByGateId: new Map<string, Record<string, string | string[]>>(),
+  collapsedGateIds: new Set<string>(),
   isSummonModalOpen: urlParams.get("summon") === "1",
   characterHitboxes: [] as HitboxRect[], sceneHitboxes: [] as SceneHitboxSpec[],
 };

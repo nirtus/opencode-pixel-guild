@@ -1,4 +1,5 @@
 import { isDeletedHostDirectory, isSystemRootOrHomeDirectory, normalizeLocationDirectory } from "../state/world-reducer.ts";
+import { buildHydratedSessionEvents } from "./daemon-message-hydration.ts";
 import { invalidateGitStatusCache, isLocalGitRepository, scanGitStatusAsync } from "./git-status-scanner.ts";
 import { deriveProjectTaskProgress, invalidateTaskProgressCache } from "./issue-tracker-scanner.ts";
 import type { LocationReconciliationSnapshot, ReconnectLogEntry, TelemetryEvent } from "../types/domain.ts";
@@ -323,15 +324,10 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
             void options.client.getSessionMessages(ev.sessionId, rawDir).then((hydrated) => {
               const locDir = roomDir ?? "/";
               if (!hydrated || !activeSink || deletedSessionIds.has(ev.sessionId) || deletedRoomDirs.has(locDir)) return;
-              const pq = hydrated.pendingQuestion;
-              const pqDone = Boolean(pq && hydrated.recentTools?.some((t) => t.status === "completed" && (t.callId === pq.gateId || t.toolName.trim().toLowerCase() === "question")));
-              activeSink({
-                type: "session.upserted", timestampMs: Date.now(), sessionId: ev.sessionId, locationDirectory: locDir,
-                lastAssistantText: pqDone ? undefined : hydrated.lastAssistantText, lastUserPromptText: hydrated.lastUserPromptText,
-                messages: hydrated.messages, recentTools: hydrated.recentTools, preserveActivityTimestamp: true,
-              });
-              if (ev.type === "session.idle" && pq && !pqDone && hydrated.messages?.at(-1)?.role !== "user") {
-                activeSink({ type: "question.requested", timestampMs: Date.now(), sessionId: ev.sessionId, gateId: pq.gateId, title: pq.title || "Waiting for User Input", reason: pq.reason, source: pq.source, fields: pq.fields });
+              const existingGate = activeSnapshotGetter?.().characters?.[ev.sessionId]?.questGate;
+              const existingQGateId = existingGate?.kind === "question" ? existingGate.gateId : null;
+              for (const hEv of buildHydratedSessionEvents(hydrated, ev.sessionId, locDir, existingQGateId, ev.type === "session.idle")) {
+                activeSink(hEv);
               }
             }).catch(() => {});
           }

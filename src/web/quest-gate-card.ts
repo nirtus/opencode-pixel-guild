@@ -27,49 +27,23 @@ export function markClientGateResolved(gateId: string | null | undefined, resolv
   }
 }
 
-function parseMultiValueAnswer(
-  raw: string | string[] | undefined,
-  existingDraft?: string | string[],
-  field?: QuestGateQuestionField,
-): string[] {
+function parseMultiValueAnswer(raw: string | string[] | undefined, existingDraft?: string | string[], field?: QuestGateQuestionField): string[] {
   if (Array.isArray(raw)) return [...raw];
   if (typeof raw === "string" && raw.trim()) {
     const trimmed = raw.trim();
-    if (
-      Array.isArray(existingDraft) &&
-      existingDraft.length > 0 &&
-      existingDraft.join(", ").trim() === trimmed
-    ) {
-      return [...existingDraft];
-    }
-    const exactOpt = field?.options?.find(
-      (o) => (o.value || o.label).trim() === trimmed,
-    );
+    if (Array.isArray(existingDraft) && existingDraft.length > 0 && existingDraft.join(", ").trim() === trimmed) return [...existingDraft];
+    const exactOpt = field?.options?.find((o) => (o.value || o.label).trim() === trimmed);
     if (exactOpt) return [exactOpt.value || exactOpt.label];
-    return trimmed
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    return trimmed.split(",").map((s) => s.trim()).filter(Boolean);
   }
   return [];
 }
 
-function getDraftGateAnswers(
-  sessionId: string,
-  gateId: string,
-): Record<string, string | string[]> {
-  return (
-    clientState.draftGateAnswersByGateId.get(gateId) ??
-    clientState.draftGateAnswersByGateId.get(`session:${sessionId}`) ??
-    {}
-  );
+function getDraftGateAnswers(sessionId: string, gateId: string): Record<string, string | string[]> {
+  return clientState.draftGateAnswersByGateId.get(gateId) ?? clientState.draftGateAnswersByGateId.get(`session:${sessionId}`) ?? {};
 }
 
-function setDraftGateAnswers(
-  sessionId: string,
-  gateId: string,
-  map: Record<string, string | string[]>,
-): void {
+function setDraftGateAnswers(sessionId: string, gateId: string, map: Record<string, string | string[]>): void {
   clientState.draftGateAnswersByGateId.set(gateId, map);
   clientState.draftGateAnswersByGateId.set(`session:${sessionId}`, map);
 }
@@ -79,13 +53,10 @@ function clearDraftGateAnswers(sessionId: string, gateId: string): void {
   clientState.draftGateAnswersByGateId.delete(`session:${sessionId}`);
 }
 
-export function resolveQuestionGateFields(
-  sheet: CharacterSheetViewModel,
-  rawChar: CharacterState,
-): QuestGateQuestionField[] {
+export function resolveQuestionGateFields(sheet: CharacterSheetViewModel, rawChar: CharacterState): QuestGateQuestionField[] {
   const gate = sheet.pendingQuestGate;
-  const rawFields = gate?.fields ?? rawChar.questGate?.fields ?? [];
-  const fields = normalizeQuestGateFields(rawFields);
+  if (gate?.fields?.length && gate.fields.every((f) => f && typeof f.key === "string" && typeof f.question === "string")) return [...gate.fields];
+  const fields = normalizeQuestGateFields(gate?.fields ?? rawChar.questGate?.fields ?? []);
   if (fields.length > 0) return fields;
   const promptText = gate?.prompt || rawChar.questGate?.reason || "";
   const conv = detectConversationalQuestionPrompt(promptText);
@@ -99,6 +70,9 @@ export function renderQuestGateCardHtml(
 ): string {
   const gate = sheet.pendingQuestGate;
   if (!gate || isClientGateResolved(gate.gateId, sheet.sessionId, gate.prompt)) return "";
+  const isCollapsed = clientState.collapsedGateIds.has(gate.gateId);
+  const collapseClass = isCollapsed ? " is-collapsed" : "";
+  const headerActionsHtml = `<span class="gate-header-actions"><button type="button" class="btn btn-gate-collapse" data-gate-collapse-toggle="${escapeHtml(gate.gateId)}" aria-expanded="${isCollapsed ? "false" : "true"}" title="${isCollapsed ? "Expand Quest Gate" : "Collapse Quest Gate"}">${isCollapsed ? "Expand ▸" : "Collapse ▾"}</button><button type="button" class="btn btn-gate-bypass" data-gate-bypass="${escapeHtml(gate.gateId)}" title="Bypass and dismiss Quest Gate">Bypass ✕</button></span>`;
   if (gate.kind === "permission") {
     const isResolving = isGateResolving(gate.gateId);
     const disAttr = isResolving ? " disabled" : "";
@@ -111,17 +85,19 @@ export function renderQuestGateCardHtml(
       sanitizeAndExtractSkillsFromChatText(gate.prompt).cleanText,
     );
     return `
-      <div class="sheet-card gate-card-permission">
+      <div class="sheet-card gate-card-permission${collapseClass}">
         <div class="sheet-card-title gate-title-permission">
           <span>⚠️ Permission Gate: ${formatInlineMarkdown(gate.title)}</span>
-          <span class="gate-marker-bang">!</span>
+          ${headerActionsHtml}
         </div>
-        <div class="gate-prompt-text"><div class="chat-md-body">${promptMdHtml}</div></div>
-        ${resourcesHtml}
-        <div class="gate-actions-row">
-          <button id="btn-gate-allow-once" type="button" class="btn btn-gate-allow-once"${disAttr}>${isResolving ? "⏳ Sending..." : "✓ Allow Once"}</button>
-          <button id="btn-gate-allow-always" type="button" class="btn btn-gate-allow-always"${disAttr}>${isResolving ? "⏳ Sending..." : "✓✓ Always"}</button>
-          <button id="btn-gate-reject" type="button" class="btn btn-gate-reject"${disAttr}>${isResolving ? "⏳ Sending..." : "✕ Reject"}</button>
+        <div class="gate-card-body">
+          <div class="gate-prompt-text"><div class="chat-md-body">${promptMdHtml}</div></div>
+          ${resourcesHtml}
+          <div class="gate-actions-row">
+            <button id="btn-gate-allow-once" type="button" class="btn btn-gate-allow-once"${disAttr}>${isResolving ? "⏳ Sending..." : "✓ Allow Once"}</button>
+            <button id="btn-gate-allow-always" type="button" class="btn btn-gate-allow-always"${disAttr}>${isResolving ? "⏳ Sending..." : "✓✓ Always"}</button>
+            <button id="btn-gate-reject" type="button" class="btn btn-gate-reject"${disAttr}>${isResolving ? "⏳ Sending..." : "✕ Reject"}</button>
+          </div>
         </div>
       </div>
     `;
@@ -177,14 +153,16 @@ export function renderQuestGateCardHtml(
 
   const isSubmittingGate = isGateResolving(gate.gateId);
   return `
-    <div class="sheet-card gate-card-question">
+    <div class="sheet-card gate-card-question${collapseClass}">
       <div class="sheet-card-title gate-title-question">
         <span>❓ Question Gate: ${formatInlineMarkdown(gate.title)}</span>
-        <span class="gate-marker-question">?</span>
+        ${headerActionsHtml}
       </div>
-      ${showPromptText ? `<div class="gate-prompt-text"><div class="chat-md-body">${gatePromptMdHtml}</div></div>` : ""}
-      ${fieldsHtml}
-      <button id="btn-gate-submit-answer" type="button" class="btn btn-gate-submit"${isSubmittingGate ? " disabled" : ""}>${isSubmittingGate ? "⏳ Sending..." : "Send Answer ↵"}</button>
+      <div class="gate-card-body">
+        ${showPromptText ? `<div class="gate-prompt-text"><div class="chat-md-body">${gatePromptMdHtml}</div></div>` : ""}
+        ${fieldsHtml}
+        <button id="btn-gate-submit-answer" type="button" class="btn btn-gate-submit"${isSubmittingGate ? " disabled" : ""}>${isSubmittingGate ? "⏳ Sending..." : "Send Answer ↵"}</button>
+      </div>
     </div>
   `;
 }
@@ -201,6 +179,33 @@ export function bindQuestGateCardControls(
 ): void {
   const gate = sheet.pendingQuestGate;
   if (!gate) return;
+
+  slotEl.querySelector<HTMLButtonElement>("[data-gate-collapse-toggle]")?.addEventListener("click", (ev) => {
+    ev.stopPropagation?.();
+    if (clientState.collapsedGateIds.has(gate.gateId)) clientState.collapsedGateIds.delete(gate.gateId);
+    else clientState.collapsedGateIds.add(gate.gateId);
+    const nowCollapsed = clientState.collapsedGateIds.has(gate.gateId);
+    slotEl.querySelector(".gate-card-question, .gate-card-permission")?.classList?.toggle("is-collapsed", nowCollapsed);
+    const toggleBtn = slotEl.querySelector<HTMLButtonElement>("[data-gate-collapse-toggle]");
+    if (toggleBtn) {
+      toggleBtn.textContent = nowCollapsed ? "Expand ▸" : "Collapse ▾";
+      toggleBtn.setAttribute("aria-expanded", nowCollapsed ? "false" : "true");
+    }
+  });
+
+  slotEl.querySelector<HTMLButtonElement>("[data-gate-bypass]")?.addEventListener("click", async (ev) => {
+    ev.stopPropagation?.();
+    const source: QuestGateSource = gate.source ?? rawChar.questGate?.source ?? (gate.kind === "permission" ? "permission" : "form");
+    clientState.collapsedGateIds.delete(gate.gateId);
+    clearDraftGateAnswers(sheet.sessionId, gate.gateId);
+    markClientGateResolved(gate.gateId, true, sheet.sessionId, gate.prompt);
+    if (rawChar.questGate?.gateId) markClientGateResolved(rawChar.questGate.gateId, true, sheet.sessionId, rawChar.questGate.reason);
+    onStateChanged();
+    await dispatchCommand(
+      { command: "gate.resolve", sessionId: sheet.sessionId, gateId: gate.gateId, directory: rawChar.locationDirectory, kind: gate.kind, source, decision: "dismiss" },
+      onStateChanged,
+    );
+  });
 
   if (gate.kind === "permission") {
     let isResolving = false;

@@ -346,7 +346,13 @@ export async function handleGuildCommandRoute(
       timestampMs: now, sessionId: cmd.sessionId, gateId: cmd.gateId,
     });
     const replyText = cmd.promptText?.trim() || (!isPermission ? formatAnswersAsText(cmd.answers) : "");
-    if (cmd.decision === "reject") {
+    if (cmd.decision === "dismiss") {
+      if (charBefore && !charBefore.activeWorkstation) {
+        emission = activeReducer.dispatch({
+          type: "session.idle", timestampMs: now + 1, sessionId: cmd.sessionId,
+        });
+      }
+    } else if (cmd.decision === "reject") {
       emission = activeReducer.dispatch({
         type: "session.idle", timestampMs: now + 1, sessionId: cmd.sessionId, summary: "Rejected by user",
       });

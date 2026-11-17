@@ -311,6 +311,14 @@ export async function executeDaemonCommand(
 
     if (cmd.command === "gate.resolve") {
       const encSid = encodeURIComponent(cmd.sessionId);
+      if (cmd.decision === "dismiss") {
+        if (cmd.kind === "permission" || cmd.source === "permission") {
+          await postJson(`/api/session/${encSid}/permission/${encodeURIComponent(cmd.gateId)}/reply${query}`, { decision: "reject" }).catch(() => null);
+        } else if (cmd.source === "form") {
+          await postJson(`/api/session/${encSid}/form/${encodeURIComponent(cmd.gateId)}/reject${query}`, {}).catch(() => null);
+        }
+        return { ok: true, sessionId: cmd.sessionId };
+      }
       if (cmd.kind === "permission" || cmd.source === "permission") {
         let res = await postJson(
           `/api/session/${encSid}/permission/${encodeURIComponent(cmd.gateId)}/reply${query}`,

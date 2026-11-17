@@ -6,7 +6,9 @@ import {
 } from "../encounter/index.ts";
 import { hasCharacterUnviewedResult, resolveProjectHeraldry } from "../spatial/index.ts";
 import {
+  detectConversationalQuestionPrompt,
   isSelectablePrimaryAgentMode,
+  normalizeQuestGateFields,
   resolveGuildRoleArchetype,
   type EquipmentLoadout,
   type GuildSnapshot,
@@ -157,24 +159,34 @@ export function buildCharacterSheetViewModel(
         ),
     );
 
-  const pendingQuestGate: PendingQuestGateViewModel | null = character.questGate
-    ? Object.freeze({
-        gateId: character.questGate.gateId,
-        kind: character.questGate.kind,
-        title: character.questGate.title,
-        prompt: character.questGate.reason,
-        detail: character.questGate.reason,
-        badgeSymbol: character.questGate.marker,
-        source:
-          character.questGate.source ??
-          (character.questGate.kind === "permission" ? "permission" : "form"),
-        fields: Object.freeze([...(character.questGate.fields ?? [])]),
-        action: character.questGate.action,
-        resources: character.questGate.resources
-          ? Object.freeze([...character.questGate.resources])
-          : undefined,
-      })
-    : null;
+  let pendingQuestGate: PendingQuestGateViewModel | null = null;
+  if (character.questGate) {
+    const rawGateFields = normalizeQuestGateFields(character.questGate.fields ?? []);
+    const convFallbackFields =
+      character.questGate.kind === "question" && rawGateFields.length === 0
+        ? (detectConversationalQuestionPrompt(character.questGate.reason)?.fields ?? [])
+        : [];
+    const normalizedGateFields =
+      rawGateFields.length > 0
+        ? rawGateFields
+        : convFallbackFields.length > 0
+          ? [...convFallbackFields]
+          : character.questGate.kind === "question"
+            ? normalizeQuestGateFields([{ key: "q0", question: character.questGate.reason || "Your response:" }])
+            : [];
+    pendingQuestGate = Object.freeze({
+      gateId: character.questGate.gateId,
+      kind: character.questGate.kind,
+      title: character.questGate.title,
+      prompt: character.questGate.reason,
+      detail: character.questGate.reason,
+      badgeSymbol: character.questGate.marker,
+      source: character.questGate.source ?? (character.questGate.kind === "permission" ? "permission" : "form"),
+      fields: Object.freeze([...normalizedGateFields]),
+      action: character.questGate.action,
+      resources: character.questGate.resources ? Object.freeze([...character.questGate.resources]) : undefined,
+    });
+  }
 
   const equipmentLoadout: Readonly<EquipmentLoadout> = Object.freeze({
     ...character.equipmentLoadout,

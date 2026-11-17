@@ -1,34 +1,16 @@
+import { classifyCapability, formatInputPreview } from "../capability/classifier.ts";
 import {
-  classifyCapability,
-  formatInputPreview,
-} from "../capability/classifier.ts";
-import {
-  detectConversationalQuestionPrompt,
-  normalizeQuestGateFields,
-  type QuestGateQuestionField,
-  type QuestGateSource,
-  type SessionChatMessage,
-  type ToolExecutionRecord,
+  detectConversationalQuestionPrompt, normalizeQuestGateFields,
+  type QuestGateQuestionField, type QuestGateSource, type SessionChatMessage, type TelemetryEvent, type ToolExecutionRecord,
 } from "../types/domain.ts";
 
 export { detectConversationalQuestionPrompt };
 
 export interface SessionMessageHydration {
-  skills?: string[];
-  latestAgentClass?: string;
-  latestModelId?: string;
-  activeTool?: {
-    callId?: string;
-    toolName: string;
-    toolInput?: Record<string, unknown> | string | null;
-    outputPreview?: string;
-    timestampMs?: number;
-  } | null;
-  recentTools?: ToolExecutionRecord[];
-  latestContextTokens?: number;
-  compactedAtMs?: number | null;
-  lastAssistantText?: string | null;
-  lastUserPromptText?: string | null;
+  skills?: string[]; latestAgentClass?: string; latestModelId?: string;
+  activeTool?: { callId?: string; toolName: string; toolInput?: Record<string, unknown> | string | null; outputPreview?: string; timestampMs?: number } | null;
+  recentTools?: ToolExecutionRecord[]; latestContextTokens?: number; compactedAtMs?: number | null;
+  lastAssistantText?: string | null; lastUserPromptText?: string | null;
   messages?: SessionChatMessage[];
   pendingQuestion?: { gateId: string; title: string; reason: string; source?: QuestGateSource; fields?: readonly QuestGateQuestionField[] } | null;
 }
@@ -156,13 +138,8 @@ export async function hydrateSessionMessages(
       const partToolName = (part.name ?? part.tool ?? "").trim().toLowerCase();
       const status = part.state?.status;
       const isPendingQuestionTool =
-        part.type === "tool" &&
-        partToolName === "question" &&
-        (status === "running" ||
-          status === "pending" ||
-          status === "waiting" ||
-          status === "asked" ||
-          status === "in_progress");
+        part.type === "tool" && partToolName === "question" &&
+        (status === "running" || status === "pending" || status === "waiting" || status === "asked" || status === "in_progress");
       if (isPendingQuestionTool) {
         const rawInput = part.state?.input ?? part.input;
         const fields = normalizeQuestGateFields(rawInput);
@@ -171,8 +148,7 @@ export async function hydrateSessionMessages(
           gateId: part.id ?? part.callID ?? `question:${sessionId}`,
           title: fields[0]?.header || "Waiting for User Input",
           reason: joinedQuestions || fields[0]?.question || formatInputPreview(rawInput) || "Awaiting user answer",
-          source: "form",
-          fields,
+          source: "form", fields,
         };
         break;
       }
@@ -180,33 +156,22 @@ export async function hydrateSessionMessages(
     if (pendingQuestion) break;
 
     if (!checkedNewestAssistantText) {
-      const hasRunningTool = items.some(
-        (p) => p.type === "tool" && (p.state?.status === "running" || p.state?.status === "pending"),
-      );
-      const partsText = items
-        .filter((p) => (p.type === "text" || !p.type) && typeof p.text === "string")
-        .map((p) => p.text!.trim())
-        .filter(Boolean)
-        .join("\n")
-        .trim();
-      const fallbackText =
-        typeof (msg.text ?? msg.info?.text) === "string" ? (msg.text ?? msg.info?.text)!.trim() : "";
+      const hasRunningTool = items.some((p) => p.type === "tool" && (p.state?.status === "running" || p.state?.status === "pending"));
+      const partsText = items.filter((p) => (p.type === "text" || !p.type) && typeof p.text === "string").map((p) => p.text!.trim()).filter(Boolean).join("\n").trim();
+      const fallbackText = typeof (msg.text ?? msg.info?.text) === "string" ? (msg.text ?? msg.info?.text)!.trim() : "";
       const fullText = partsText || fallbackText;
       const hasToolParts = items.some((p) => p.type === "tool" || Boolean(p.tool || p.name));
       if (fullText || hasToolParts) {
         checkedNewestAssistantText = true;
         const msgTime = msg.time?.completed ?? msg.info?.time?.completed ?? msg.time?.created ?? msg.info?.time?.created ?? msg.timestampMs;
-        const isStaleHistoricalTurn =
-          typeof msgTime === "number" && msgTime > 1_000_000_000_000 && Date.now() - msgTime > 3_600_000;
+        const isStaleHistoricalTurn = typeof msgTime === "number" && msgTime > 1_000_000_000_000 && Date.now() - msgTime > 3_600_000;
         if (!hasRunningTool && !isStaleHistoricalTurn && fullText) {
           const convQ = detectConversationalQuestionPrompt(fullText);
           if (convQ) {
             PendingConvCandidate = {
               gateId: `question:${sessionId}:conv:${convQ.gateHash}`,
               title: convQ.title || "Waiting for User Input",
-              reason: convQ.reason,
-              source: "conversational",
-              fields: [],
+              reason: convQ.reason, source: "conversational", fields: convQ.fields,
             };
           }
         }
@@ -375,4 +340,32 @@ export async function hydrateSessionMessages(
     latestContextTokens, compactedAtMs, lastAssistantText, lastUserPromptText,
     messages: hydratedMessages.length > 0 ? hydratedMessages : undefined, pendingQuestion,
   };
+}
+
+export function buildHydratedSessionEvents(
+  hydrated: SessionMessageHydration,
+  sessionId: string,
+  locationDirectory: string,
+  existingQuestionGateId?: string | null,
+  emitIdleOrGateRequest = true,
+): TelemetryEvent[] {
+  const now = Date.now();
+  const pq = hydrated.pendingQuestion;
+  const pqDone = Boolean(pq && hydrated.recentTools?.some((t) => t.status === "completed" && (t.callId === pq.gateId || t.toolName.trim().toLowerCase() === "question")));
+  const lastRole = hydrated.messages?.at(-1)?.role;
+  const events: TelemetryEvent[] = [];
+  if ((!pq || pqDone || lastRole === "user") && existingQuestionGateId) {
+    events.push({ type: "question.resolved", timestampMs: now, sessionId, gateId: existingQuestionGateId });
+  }
+  events.push({
+    type: "session.upserted", timestampMs: now, sessionId, locationDirectory,
+    lastAssistantText: pqDone ? undefined : hydrated.lastAssistantText, lastUserPromptText: hydrated.lastUserPromptText,
+    messages: hydrated.messages, recentTools: hydrated.recentTools, preserveActivityTimestamp: true,
+  } as TelemetryEvent);
+  if (emitIdleOrGateRequest && pq && !pqDone && lastRole !== "user") {
+    events.push({ type: "question.requested", timestampMs: now, sessionId, gateId: pq.gateId, title: pq.title || "Waiting for User Input", reason: pq.reason, source: pq.source, fields: pq.fields });
+  } else if (emitIdleOrGateRequest && existingQuestionGateId && (!pq || pqDone || lastRole === "user")) {
+    events.push({ type: "session.idle", timestampMs: now, sessionId });
+  }
+  return events;
 }

@@ -96,6 +96,38 @@ export function clearAllResolvedQuestGates(state: InternalWorldStoreState): void
   resolvedQuestionReasonsByState.delete(state);
 }
 
+export function settleCharacterQuestGate(
+  state: InternalWorldStoreState,
+  char: CharacterState,
+  options?: { clearLastAssistantText?: boolean; explicitGateId?: string },
+): void {
+  const gateId = options?.explicitGateId ?? char.questGate?.gateId;
+  if (gateId) recordResolvedQuestGate(state, gateId);
+  if (char.questGate?.gateId) recordResolvedQuestGate(state, char.questGate.gateId);
+  if (char.questGate?.kind === "question") {
+    recordResolvedQuestionReason(state, char.sessionId, char.questGate.reason);
+    recordResolvedQuestionReason(state, char.sessionId, char.lastAssistantText);
+  }
+  if (gateId) delete state.questGates[gateId];
+  for (const [gid, g] of Object.entries(state.questGates)) {
+    if (g.sessionId === char.sessionId) {
+      recordResolvedQuestGate(state, gid);
+      if (g.kind === "question") recordResolvedQuestionReason(state, char.sessionId, g.reason);
+      delete state.questGates[gid];
+    }
+  }
+  for (const rec of char.recentTools) {
+    if ((gateId && rec.callId === gateId) || rec.toolName.trim().toLowerCase() === "question") {
+      if (rec.status === "running") rec.status = "completed";
+      recordResolvedQuestGate(state, rec.callId);
+    }
+  }
+  if (options?.clearLastAssistantText) {
+    char.lastAssistantText = null;
+  }
+  char.questGate = null;
+}
+
 function clearResolvedCharacterQuestionGate(
   state: InternalWorldStoreState,
   char: CharacterState,
@@ -311,32 +343,24 @@ export function handleQuestGateResolved(
 ): void {
   const char = state.characters[event.sessionId];
   recordResolvedQuestGate(state, event.gateId);
-  if (char?.questGate?.gateId) {
-    recordResolvedQuestGate(state, char.questGate.gateId);
-  }
-  if (char?.questGate?.kind === "question" || event.type === "question.resolved") {
-    recordResolvedQuestionReason(state, event.sessionId, char?.questGate?.reason);
-    recordResolvedQuestionReason(state, event.sessionId, char?.lastAssistantText);
-  }
   delete state.questGates[event.gateId];
-  for (const [gid, g] of Object.entries(state.questGates)) {
-    if (g.sessionId === event.sessionId) {
-      recordResolvedQuestGate(state, gid);
-      if (g.kind === "question") recordResolvedQuestionReason(state, event.sessionId, g.reason);
-      delete state.questGates[gid];
+  if (!char) {
+    for (const [gid, g] of Object.entries(state.questGates)) {
+      if (g.sessionId === event.sessionId) {
+        recordResolvedQuestGate(state, gid);
+        if (g.kind === "question") recordResolvedQuestionReason(state, event.sessionId, g.reason);
+        delete state.questGates[gid];
+      }
     }
-  }
-  if (!char) return;
-  for (const rec of char.recentTools) {
-    if (rec.callId === event.gateId || rec.toolName.trim().toLowerCase() === "question") {
-      if (rec.status === "running") rec.status = "completed";
-      recordResolvedQuestGate(state, rec.callId);
-    }
+    return;
   }
   if (event.type === "question.resolved") {
-    char.lastAssistantText = null;
+    recordResolvedQuestionReason(state, event.sessionId, char.lastAssistantText);
   }
-  char.questGate = null;
+  settleCharacterQuestGate(state, char, {
+    clearLastAssistantText: event.type === "question.resolved",
+    explicitGateId: event.gateId,
+  });
   if (char.lifecycleState === "BlockedAtQuestGate") {
     if (char.activeWorkstation) {
       char.lifecycleState = "WorkingAtStation";

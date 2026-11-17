@@ -70,9 +70,9 @@
 | **Feature Tasks & Modified Files** | **Goal Assembly Site** & **Project Mini-Assemblies** | Central platform showing per-project **Mini-Assemblies** in `🌐 All` mode or a full-scale assembly platform when a single project is focused. |
 | **Debugging & Failing Tests** | **Dungeon Wilds**, **Lantern Flares** & **Bug Monsters** | Searches pulse **Lantern Flares** through **Fog of War**; fixes and test runs send heroes to fight their bound **Bug Monster**. |
 | **Context Window & Compaction** | **Context Mana** & **Compaction Exhalation** | Context usage bar; compaction plays an in-place **Compaction Exhalation** (`Compacting...`) vapor cloud above the hero. |
-| **Permissions & Questions** | **Quest Gate** (`!` Lock / `?` Question) | Overhead alert marker that pauses the hero and renders interactive approval or question choices in the **Character Sheet**. |
-| **Completed Session Output** | **Unread Session Result** (`✓ Result Ready`) | Finished sessions rest in the **Break Lounge** with a `✓ Result Ready` badge and appear at the top of the **Guild Master Ledger** until viewed. |
-| **User Prompt Dispatch** | **Command Scroll** | Prompt composer (`/` shortcut) for waking idle heroes, steering busy turns, attaching `@skill` grimoires, or stopping execution. |
+| **Permissions & Questions** | **Quest Gate** (`!` Lock / `?` Question) | Overhead alert marker that pauses the hero, synchronizes two-way when answered in OpenCode TUI/CLI/web, and renders collapsible (`Collapse ▾`), bypassable (`Bypass ✕`) approval or question choices in the **Character Sheet**. |
+| **Completed Session Output** | **Unread Session Result** (`✓ Result Ready`) | Finished sessions rest in the **Break Lounge** with a `✓ Result Ready` badge until viewed, and remain resting (never archived) for as long as their session tab stays open in the OpenCode TUI. |
+| **User Prompt Dispatch** | **Command Scroll** | Always-accessible prompt composer (`/` shortcut, available even beneath an active **Quest Gate**) for waking idle heroes, steering busy turns, bypassing a gate, attaching `@skill` grimoires, or stopping execution. |
 | **Working-Tree Git Changes** | **Assembly Commit Ledger** | Built-in Git panel for inspecting diffs, staging or discarding files, syncing remotes, and sealing commits. |
 
 ---
@@ -234,11 +234,13 @@ Clicking empty floor space (or pressing `Escape`) opens the **Guild Master Ledge
 
 Click any hero on the canvas or in the roster to open their **Character Sheet** (`Hero` tab):
 
+![Quest Gate Two-Way Sync, Collapse & Bypass](./docs/images/quest-gate-sync-and-bypass.png)
+
 | `Scrolls & Gear` (Equipment Loadout & Grimoires) | `Tool Log` (Executed Tool & Shell History) |
 | :---: | :---: |
 | ![Character Sheet Scrolls & Gear](./docs/images/verified-desktop-06-hero-scrolls-gear.png) | ![Character Sheet Tool Log](./docs/images/verified-desktop-07-hero-tool-log.png) |
 
-- **`Chat`**: Review the **Adventurer Dispatch Log** (collapsed into one-liners by default; click any row or `Expand All ▾` for full Markdown), resolve `!` Permission and `?` Question **Quest Gates** with clickable option pills, and open the bottom **Command Scroll** composer (`/` shortcut) to attach `@skill` badges, switch **OpenCode Agent Modes**, and steer or stop the hero.
+- **`Chat`**: Review the **Adventurer Dispatch Log** (collapsed into one-liners by default; click any row or `Expand All ▾` for full Markdown), resolve, collapse (`Collapse ▾`), or quietly bypass (`Bypass ✕`) `!` Permission and `?` Question **Quest Gates** with clickable option pills (or answer them directly in OpenCode TUI/CLI/web with automatic two-way sync), and use the always-accessible bottom **Command Scroll** composer (`/` shortcut) to attach `@skill` badges, switch **OpenCode Agent Modes**, and steer, bypass a gate, or stop the hero.
 - **`Details`**: Inspect session ID, model, **Context Mana** utilization (`used / limit` tokens), **Lifetime Tribute** cost, **Workflow Intent**, target station, and subagent lineage.
 - **`Scrolls & Gear`**: View the hero's RPG **Equipment Loadout** (Headgear, Robes, Main-Hand Implement, Off-Hand Relic), equipped **Skill Grimoires**, connected MCP plugins, and tool belt counts.
 - **`Tool Log`**: Browse the chronological history of executed tool and shell calls with input/output previews and station routing tags.

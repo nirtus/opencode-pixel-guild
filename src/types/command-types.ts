@@ -53,7 +53,7 @@ export type GuildCommandRequest =
       readonly directory?: string;
       readonly kind: "permission" | "question";
       readonly source?: QuestGateSource;
-      readonly decision?: "once" | "always" | "reject";
+      readonly decision?: "once" | "always" | "reject" | "dismiss";
       readonly answers?: Readonly<Record<string, string | readonly string[]>>;
       readonly promptText?: string;
     }

@@ -10,6 +10,7 @@ import { applyArmoryTransition, resolveToolCategory, syncCharacterWorkflow } fro
 import { createInitialContextMana, syncCharacterTributeRecord } from "./context-mana.ts";
 import { deriveEquipmentLoadout } from "./equipment-loadout.ts";
 import { deriveProjectName, isDeletedHostDirectory, isSystemRootOrHomeDirectory, normalizeLocationDirectory } from "./location-normalization.ts";
+import { settleCharacterQuestGate } from "./quest-gate-handlers.ts";
 import type { HydratedToolRecordInput, InternalWorldStoreState, MutationCollector } from "./reducer-types.ts";
 
 const STATUS_PRIORITY: Record<PluginStatusKind, number> = { connected: 4, needs_auth: 3, failed: 2, disabled: 1 };
@@ -253,6 +254,19 @@ export function mergeHydratedRecentTools(
   });
 
   char.recentTools = sortRecentToolsNewestFirst([...byCallId.values()]);
+  if (
+    char.questGate?.kind === "question" &&
+    char.recentTools.some(
+      (r) =>
+        r.status === "completed" &&
+        (r.callId === char.questGate?.gateId || r.toolName.trim().toLowerCase() === "question"),
+    )
+  ) {
+    settleCharacterQuestGate(state, char);
+    if (char.lifecycleState === "BlockedAtQuestGate") {
+      char.lifecycleState = char.idleAtMs ? "RestingInLounge" : "Thinking";
+    }
+  }
   if (!char.lastEquippedToolCategory && char.recentTools.length > 0) {
     char.lastEquippedToolCategory = resolveToolCategory({
       toolName: char.recentTools[0].toolName,

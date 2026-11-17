@@ -1,23 +1,13 @@
 import { classifyCapability } from "../capability/classifier.ts";
-import { detectConversationalQuestionPrompt } from "../ingress/daemon-message-hydration.ts";
 import { computeAdjacentSummonTile, layoutWorkshopRoom } from "../spatial/index.ts";
-import {
-  LIFECYCLE_TIMERS_MS,
-  type CharacterLifecycleState, type CharacterState, type SummoningRitualState, type TelemetryEvent, type WorkshopRoomState,
-} from "../types/domain.ts";
+import { detectConversationalQuestionPrompt, LIFECYCLE_TIMERS_MS, type CharacterLifecycleState, type CharacterState, type SummoningRitualState, type TelemetryEvent, type WorkshopRoomState } from "../types/domain.ts";
 import { reconcileCharacterMessages, syncCharacterWorkflow } from "./armory-and-workflow.ts";
 import { updateContextMana } from "./context-mana.ts";
 import { deriveEquipmentLoadout } from "./equipment-loadout.ts";
 import { isDeletedHostDirectory, normalizeLocationDirectory } from "./location-normalization.ts";
-import { openOrUpdateConversationalQuestGate } from "./quest-gate-handlers.ts";
-import {
-  bumpCharacterRevision, createCharacterDefaultState, ensureRoom,
-  equipSkillGrimoire, mergeHydratedRecentTools, retireParentSubagents, transitionCharacterState,
-} from "./reducer-helpers.ts";
-import type {
-  InternalWorldStoreState, MutationCollector, SessionUpsertedEvent,
-  SubagentSpawnedTelemetryEvent,
-} from "./reducer-types.ts";
+import { openOrUpdateConversationalQuestGate, settleCharacterQuestGate } from "./quest-gate-handlers.ts";
+import { bumpCharacterRevision, createCharacterDefaultState, ensureRoom, equipSkillGrimoire, mergeHydratedRecentTools, retireParentSubagents, transitionCharacterState } from "./reducer-helpers.ts";
+import type { InternalWorldStoreState, MutationCollector, SessionUpsertedEvent, SubagentSpawnedTelemetryEvent } from "./reducer-types.ts";
 
 function linkParentAndChild(
   state: InternalWorldStoreState, parent: CharacterState, child: CharacterState,
@@ -168,7 +158,7 @@ export function handleSessionUpserted(
     const isRecentlyViewed = typeof char.viewedAtMs === "number" && char.viewedAtMs > 0 && event.timestampMs - char.viewedAtMs < LIFECYCLE_TIMERS_MS.HISTORICAL_ARCHIVE_IDLE_MS;
     if (char.hasUnviewedResult || isRecentlyViewed) char.isOpenInOpenCode = true;
     if ((char.isOpenInOpenCode || char.hasUnviewedResult || isRecentlyViewed) && char.lifecycleState === "Archived") {
-      transitionCharacterState(state, char, "RestingInLounge", activityTimestampMs, { preserveLastActivity: true });
+      transitionCharacterState(state, char, "RestingInLounge", event.timestampMs, { preserveLastActivity: true });
     }
   }
   if (event.worktreeDirectory) char.locationDirectory = normalizeLocationDirectory(event.worktreeDirectory);
@@ -178,20 +168,16 @@ export function handleSessionUpserted(
   if (event.recentTools && event.recentTools.length > 0) mergeHydratedRecentTools(state, char, event.recentTools, activityTimestampMs);
   const latestMsgRole = char.messages?.[char.messages.length - 1]?.role;
   const hasRunningNonQTool = char.recentTools.some((r) => r.status === "running" && r.toolName.toLowerCase() !== "question");
-  if (latestMsgRole === "user" && char.questGate?.source === "conversational") {
-    delete state.questGates[char.questGate.gateId];
-    char.questGate = null;
-  } else if (event.lastAssistantText && latestMsgRole !== "user" && !hasRunningNonQTool && (!char.questGate || char.questGate.source === "conversational") && char.lifecycleState !== "Archived") {
-    const convQ = detectConversationalQuestionPrompt(char.lastAssistantText);
-    if (convQ) openOrUpdateConversationalQuestGate(state, char, convQ, activityTimestampMs);
+  const convQ = event.lastAssistantText ? detectConversationalQuestionPrompt(char.lastAssistantText) : null;
+  if (char.questGate?.source === "conversational" && (latestMsgRole === "user" || (Boolean(event.lastAssistantText) && !convQ))) {
+    settleCharacterQuestGate(state, char);
+    if (char.lifecycleState === "BlockedAtQuestGate") char.lifecycleState = event.idleAtMs ? "RestingInLounge" : "Thinking";
+  } else if (convQ && latestMsgRole !== "user" && !hasRunningNonQTool && (!char.questGate || char.questGate.source === "conversational") && char.lifecycleState !== "Archived") {
+    openOrUpdateConversationalQuestGate(state, char, convQ, activityTimestampMs);
   }
-  syncCharacterWorkflow(char);
-  char.equipmentLoadout = deriveEquipmentLoadout(char);
-  bumpCharacterRevision(state, char.characterId);
-  collector.changedRoomIds.add(room.roomId);
-  collector.changedCharacterIds.add(char.characterId);
-  collector.deltaSessionId = char.sessionId;
-  collector.deltaRoomId = room.roomId;
+  syncCharacterWorkflow(char); char.equipmentLoadout = deriveEquipmentLoadout(char); bumpCharacterRevision(state, char.characterId);
+  collector.changedRoomIds.add(room.roomId); collector.changedCharacterIds.add(char.characterId);
+  collector.deltaSessionId = char.sessionId; collector.deltaRoomId = room.roomId;
   collector.description = `Upserted ${char.role} ${char.title}`;
 }
 
@@ -265,6 +251,9 @@ export function handleSessionStatus(state: InternalWorldStoreState, event: Extra
     return;
   }
   if (event.status === "thinking" || event.status === "working") {
+    if (char.questGate) {
+      settleCharacterQuestGate(state, char, { clearLastAssistantText: char.questGate.kind === "question" });
+    }
     char.hasUnviewedResult = false; char.isOpenInOpenCode = true; char.reportScroll = null; char.idleAtMs = undefined;
     const p = char.parentId ? state.characters[char.parentId] : undefined;
     if (p) {
