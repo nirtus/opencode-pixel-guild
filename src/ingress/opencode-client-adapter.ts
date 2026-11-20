@@ -1,4 +1,6 @@
 import { isDeletedHostDirectory, isSystemRootOrHomeDirectory, normalizeLocationDirectory } from "../state/world-reducer.ts";
+import { createSweepDigestTracker } from "./adapter-sweep-digests.ts";
+import { appendReconnectedActiveToolEvents, type DiscoveredLocationMeta, mergeLocationReconciliationEntry } from "./adapter-sweep-helpers.ts";
 import { buildHydratedSessionEvents } from "./daemon-message-hydration.ts";
 import { invalidateGitStatusCache, isLocalGitRepository, scanGitStatusAsync } from "./git-status-scanner.ts";
 import { deriveProjectTaskProgress, invalidateTaskProgressCache } from "./issue-tracker-scanner.ts";
@@ -11,12 +13,16 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
   let activeSnapshotGetter: (() => import("../types/domain.ts").GuildSnapshot) | null = null;
   let unsubscribeEvents: (() => void) | null = null;
   let daemonUrl: string | null = null;
+  let runEpoch = 0;
+  let isStopped = false;
+  const isStale = (epoch: number): boolean => isStopped || epoch !== runEpoch || !activeSink;
   const sessionCursors = new Map<string, number>();
   const sessionDirectoryBySessionId = new Map<string, string>();
   const deletedRoomDirs = new Set<string>();
   const deletedSessionIds = new Set<string>();
   const canonicalByWorktreeMap = new Map<string, string>();
   const knownRoomMeta = new Map<string, { rawDirectory: string; projectId?: string; projectName?: string; isWorktree: boolean }>();
+  const sweepDigests = createSweepDigestTracker();
 
   function evictDeletedSessions(ids: Iterable<string>): void {
     for (const id of ids) {
@@ -31,12 +37,14 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
       const norm = normalizeLocationDirectory(raw);
       if (!norm || norm === "/") continue;
       deletedRoomDirs.add(norm);
+      sweepDigests.evictDir(norm);
       for (const [wtDir, canonDir] of canonicalByWorktreeMap.entries()) {
-        if (canonDir === norm) deletedRoomDirs.add(wtDir);
+        if (canonDir === norm) { deletedRoomDirs.add(wtDir); sweepDigests.evictDir(wtDir); }
       }
       for (const knownDir of knownRoomMeta.keys()) {
         if (knownDir.startsWith(`${norm}/.worktrees/`) || knownDir.startsWith(`${norm}/worktree/`)) {
           deletedRoomDirs.add(knownDir);
+          sweepDigests.evictDir(knownDir);
         }
       }
     }
@@ -73,16 +81,18 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
   }
 
   async function runSweepAllLocations(isReconnect = false): Promise<void> {
-    if (!activeSink) return;
+    const epoch = runEpoch;
+    if (isStale(epoch)) return;
     if (isReconnect) options.client.clearCaches?.();
     const curSnap = activeSnapshotGetter?.();
     if (curSnap?.deletedRoomIds?.length) evictDeletedRooms(curSnap.deletedRoomIds);
     if (curSnap?.deletedSessionIds?.length) evictDeletedSessions(curSnap.deletedSessionIds);
     const now = Date.now();
-    const discoveredDirs = new Map<string, { directory: string; rawDirectory: string; projectId?: string; projectName?: string; isWorktree: boolean; parentProjectDirectory: string | null }>();
+    const discoveredDirs = new Map<string, DiscoveredLocationMeta>();
     const projectRootById = new Map<string, string>();
 
     const projects = await options.client.getProjects();
+    if (isStale(epoch)) return;
     for (const proj of projects) {
       if (isDeletedHostDirectory(proj.directory, undefined, daemonUrl)) continue;
       const rootDir = normalizeLocationDirectory(proj.directory);
@@ -99,6 +109,7 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
     }
 
     const locations = await options.client.getLocations();
+    if (isStale(epoch)) return;
     for (const loc of locations) {
       if (isDeletedHostDirectory(loc.directory, undefined, daemonUrl)) continue;
       const normDir = normalizeLocationDirectory(loc.directory);
@@ -131,6 +142,7 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
         return { locMeta, state };
       }),
     );
+    if (isStale(epoch)) return;
 
     for (const { locMeta, state } of locEntries) {
       if (
@@ -160,7 +172,10 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
           ? locMeta.parentProjectDirectory
           : locMeta.directory;
 
-      if (state.skills?.length || state.plugins?.length || state.agents?.length || state.models?.length) {
+      if (
+        (state.skills?.length || state.plugins?.length || state.agents?.length || state.models?.length) &&
+        sweepDigests.shouldEmitCatalog(targetCanonDir, state, isReconnect)
+      ) {
         sweepEvents.push({
           type: "catalog.hydrated", timestampMs: now, locationDirectory: targetCanonDir,
           skills: state.skills, plugins: state.plugins, agents: state.agents, models: state.models,
@@ -169,6 +184,7 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
 
       const activeSetForTasks = new Set(state.activeSessionIds ?? []);
       await scanGitStatusAsync(locMeta.rawDirectory, { ttlMs: activeSetForTasks.size > 0 ? 15_000 : 60_000 });
+      if (isStale(epoch)) return;
       const taskProgress = deriveProjectTaskProgress(locMeta.rawDirectory);
       if (targetCanonDir === locMeta.directory || taskProgress.source === "docs/features") {
         const isLocalGit = isLocalGitRepository(locMeta.rawDirectory);
@@ -177,10 +193,12 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
           isReconnect && taskProgress.totalTasks === 0 && prevProg?.totalTasks === 0 && typeof prevProg.hydratedAtMs === "number"
             ? { ...taskProgress, hydratedAtMs: prevProg.hydratedAtMs }
             : taskProgress;
-        sweepEvents.push({
-          type: "tasks.hydrated", timestampMs: now, ...(isLocalGit ? { roomId: targetCanonDir } : {}),
-          locationDirectory: targetCanonDir, taskProgress: effectiveTaskProgress,
-        });
+        if (sweepDigests.shouldEmitTaskProgress(targetCanonDir, effectiveTaskProgress, prevProg, isLocalGit, isReconnect)) {
+          sweepEvents.push({
+            type: "tasks.hydrated", timestampMs: now, ...(isLocalGit ? { roomId: targetCanonDir } : {}),
+            locationDirectory: targetCanonDir, taskProgress: effectiveTaskProgress,
+          });
+        }
       }
 
       let sessionLogs: Record<string, ReconnectLogEntry[]> | undefined = state.sessionLogs ? { ...state.sessionLogs } : undefined;
@@ -189,6 +207,7 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
           if (sessionLogs?.[sessionMeta.sessionId]) continue;
           const afterCursor = sessionCursors.get(sessionMeta.sessionId) ?? 0;
           const incrementalEntries = await options.client.getSessionLogAfter(sessionMeta.sessionId, afterCursor);
+          if (isStale(epoch)) return;
           if (incrementalEntries.length > 0) {
             sessionLogs ??= {};
             sessionLogs[sessionMeta.sessionId] = incrementalEntries;
@@ -199,72 +218,30 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
         }
       }
 
-      if (
-        deletedRoomDirs.has(locMeta.directory) ||
-        deletedRoomDirs.has(targetCanonDir) ||
-        (locMeta.parentProjectDirectory && deletedRoomDirs.has(locMeta.parentProjectDirectory))
-      ) {
-        continue;
-      }
-      const taggedSessions = Array.isArray(state.sessions)
-        ? state.sessions
-            .filter((s) => !deletedSessionIds.has(s.sessionId) && !(s.parentId && deletedSessionIds.has(s.parentId)))
-            .map((s) => {
-              sessionDirectoryBySessionId.set(s.sessionId, targetCanonDir);
-              return { ...s, locationDirectory: locMeta.directory };
-            })
-        : undefined;
-      const filteredActiveIds = (state.activeSessionIds ?? []).filter((id) => !deletedSessionIds.has(id));
-      const existingCanon = reconciliationByDir.get(targetCanonDir);
-      if (existingCanon) {
-        existingCanon.activeSessionIds = [...new Set([...existingCanon.activeSessionIds, ...filteredActiveIds])];
-        existingCanon.sessions =
-          existingCanon.sessions !== undefined && taggedSessions !== undefined
-            ? [...existingCanon.sessions, ...taggedSessions]
-            : existingCanon.sessions ?? taggedSessions;
-        existingCanon.pendingPermissions = [...(existingCanon.pendingPermissions ?? []), ...(state.pendingPermissions ?? [])];
-        existingCanon.pendingQuestions = [...(existingCanon.pendingQuestions ?? []), ...(state.pendingQuestions ?? [])];
-        if (sessionLogs) existingCanon.sessionLogs = { ...(existingCanon.sessionLogs ?? {}), ...sessionLogs };
-      } else {
-        const canonMeta = discoveredDirs.get(targetCanonDir) ?? locMeta;
-        const entry: LocationReconciliationSnapshot = {
-          locationDirectory: targetCanonDir, projectId: canonMeta.projectId, projectName: canonMeta.projectName,
-          isWorktree: canonMeta.isWorktree, parentProjectDirectory: canonMeta.parentProjectDirectory,
-          activeSessionIds: filteredActiveIds, sessions: taggedSessions,
-          pendingPermissions: state.pendingPermissions ?? [], pendingQuestions: state.pendingQuestions ?? [], sessionLogs,
-        };
-        reconciliationByDir.set(targetCanonDir, entry);
-        reconciliationLocations.push(entry);
-      }
+      if (deletedRoomDirs.has(locMeta.directory) || deletedRoomDirs.has(targetCanonDir) || (locMeta.parentProjectDirectory && deletedRoomDirs.has(locMeta.parentProjectDirectory))) continue;
+      mergeLocationReconciliationEntry({
+        reconciliationByDir, reconciliationLocations, discoveredDirs, locMeta, targetCanonDir,
+        state, deletedSessionIds, sessionDirectoryBySessionId, sessionLogs,
+      });
     }
 
     if (reconciliationLocations.length > 0 || isReconnect) {
       sweepEvents.push({ type: "stream.reconnected", timestampMs: now, locations: reconciliationLocations });
-
-      for (const loc of reconciliationLocations) {
-        const activeSet = new Set(loc.activeSessionIds);
-      const blockedSessionIds = new Set([...(loc.pendingPermissions ?? []).map((p) => p.sessionId), ...(loc.pendingQuestions ?? []).map((q) => q.sessionId)]);
-      for (const sessionMeta of loc.sessions ?? []) {
-        const activeToolName = sessionMeta.activeTool?.toolName;
-        if (activeSet.has(sessionMeta.sessionId) && !blockedSessionIds.has(sessionMeta.sessionId) && activeToolName && activeToolName.trim().toLowerCase() !== "question") {
-          sweepEvents.push({
-            type: "tool.started", timestampMs: Math.max(now, sessionMeta.activeTool?.timestampMs ?? now), sessionId: sessionMeta.sessionId,
-            ...(sessionMeta.activeTool?.callId ? { callId: sessionMeta.activeTool.callId } : {}), toolName: activeToolName, toolInput: sessionMeta.activeTool?.toolInput,
-          });
-        }
-      }
-      }
+      appendReconnectedActiveToolEvents(sweepEvents, reconciliationLocations, now);
     }
 
+    if (isStale(epoch)) return;
     if (sweepEvents.length > 0) {
       if (activeBatchSink) activeBatchSink(sweepEvents);
-      else for (const ev of sweepEvents) activeSink(ev);
+      else for (const ev of sweepEvents) activeSink?.(ev);
     }
   }
 
   async function startLiveSubscription(): Promise<void> {
-    if (unsubscribeEvents || !options.client.subscribeEvents) return;
-    unsubscribeEvents = await options.client.subscribeEvents((rawEv) => {
+    const epoch = runEpoch;
+    if (unsubscribeEvents || !options.client.subscribeEvents || isStale(epoch)) return;
+    const unsub = await options.client.subscribeEvents((rawEv) => {
+      if (isStale(epoch)) return;
       let ev = rawEv;
       if (ev.type === "session.deleted") {
         evictDeletedSessions([ev.sessionId]);
@@ -307,12 +284,16 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
         if (roomDir && rawDir && !deletedRoomDirs.has(roomDir) && (isMutatingTool || ev.type === "session.idle")) {
           invalidateGitStatusCache(rawDir); invalidateTaskProgressCache(rawDir);
           if (!isLocalGitRepository(rawDir)) {
-            activeSink?.({ type: "tasks.hydrated", timestampMs: Date.now(), locationDirectory: roomDir, taskProgress: deriveProjectTaskProgress(rawDir) });
+            const nextProg = deriveProjectTaskProgress(rawDir);
+            sweepDigests.recordTaskProgress(roomDir, nextProg, false);
+            activeSink?.({ type: "tasks.hydrated", timestampMs: Date.now(), locationDirectory: roomDir, taskProgress: nextProg });
           } else {
             void scanGitStatusAsync(rawDir, { force: true }).then(() => {
-              if (deletedRoomDirs.has(roomDir)) return;
+              if (isStale(epoch) || deletedRoomDirs.has(roomDir)) return;
               invalidateTaskProgressCache(rawDir);
-              activeSink?.({ type: "tasks.hydrated", timestampMs: Date.now(), roomId: roomDir, locationDirectory: roomDir, taskProgress: deriveProjectTaskProgress(rawDir) });
+              const nextProg = deriveProjectTaskProgress(rawDir);
+              sweepDigests.recordTaskProgress(roomDir, nextProg, true);
+              activeSink?.({ type: "tasks.hydrated", timestampMs: Date.now(), roomId: roomDir, locationDirectory: roomDir, taskProgress: nextProg });
             }).catch(() => {});
           }
         }
@@ -323,17 +304,17 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
           } else {
             void options.client.getSessionMessages(ev.sessionId, rawDir).then((hydrated) => {
               const locDir = roomDir ?? "/";
-              if (!hydrated || !activeSink || deletedSessionIds.has(ev.sessionId) || deletedRoomDirs.has(locDir)) return;
+              if (isStale(epoch) || !hydrated || deletedSessionIds.has(ev.sessionId) || deletedRoomDirs.has(locDir)) return;
               const existingGate = activeSnapshotGetter?.().characters?.[ev.sessionId]?.questGate;
               const existingQGateId = existingGate?.kind === "question" ? existingGate.gateId : null;
-              for (const hEv of buildHydratedSessionEvents(hydrated, ev.sessionId, locDir, existingQGateId, ev.type === "session.idle")) {
-                activeSink(hEv);
-              }
+              for (const hEv of buildHydratedSessionEvents(hydrated, ev.sessionId, locDir, existingQGateId, ev.type === "session.idle")) activeSink?.(hEv);
             }).catch(() => {});
           }
         }
       }
-    }, () => { void sweepAllLocations(true).catch(() => {}); });
+    }, () => { if (!isStale(epoch)) void sweepAllLocations(true).catch(() => {}); });
+    if (isStale(epoch)) { unsub?.(); return; }
+    unsubscribeEvents = unsub;
   }
 
   return {
@@ -372,6 +353,8 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
       return result;
     },
     async start(sinkOrReducer) {
+      runEpoch += 1; isStopped = false; sweepDigests.clear();
+      const epoch = runEpoch;
       const sink: (event: TelemetryEvent) => void = typeof sinkOrReducer === "function" ? sinkOrReducer : (event) => sinkOrReducer.dispatch(event);
       const batchCandidate = (sinkOrReducer as { dispatchBatch?: (events: ReadonlyArray<TelemetryEvent>) => unknown }).dispatchBatch;
       activeSink = sink;
@@ -381,13 +364,16 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
       if (initialSnap?.deletedRoomIds?.length) evictDeletedRooms(initialSnap.deletedRoomIds);
       if (initialSnap?.deletedSessionIds?.length) evictDeletedSessions(initialSnap.deletedSessionIds);
       daemonUrl = options.discoverDaemon ? (await options.discoverDaemon()).url : "http://127.0.0.1:4096";
+      if (isStale(epoch)) return;
       sink({ type: "adapter.switched", timestampMs: Date.now(), adapter: "opencode-client", daemonUrl });
       await sweepAllLocations(false);
+      if (isStale(epoch)) return;
       await startLiveSubscription();
     },
     stop() {
+      isStopped = true; runEpoch += 1; sweepDigests.clear();
       if (unsubscribeEvents) { unsubscribeEvents(); unsubscribeEvents = null; }
-      activeSink = null; activeBatchSink = null;
+      activeSink = null; activeBatchSink = null; activeSnapshotGetter = null;
     },
   };
 }

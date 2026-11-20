@@ -5,7 +5,7 @@ import { clearCachedGitState } from "./commit-ledger-controller.ts";
 import { type ClientOperatorPreferences, type ClientOperatorProfile, type OperatorModalAction, type OperatorModalTab, renderOperatorModalWindowHtml } from "./operator-modal-views.ts";
 import { decodeQrFromImageBlob, startCameraQrScanner, stopActiveQrCameraStream } from "./qr-barcode-scanner.ts";
 import { resetSidePanelSignatures } from "./side-panel-reconciler.ts";
-import { applyAuthoritativeSnapshot, setPendingOperatorAction } from "./snapshot-gate.ts";
+import { applyAuthoritativeSnapshot, resetAuthoritativeSnapshotGate, setExpectedMachineDaemonUrl, setPendingOperatorAction } from "./snapshot-gate.ts";
 import { applyPreferencesToStateTarget, getBrowserStorage, type KeyValueStoragePort, OPERATOR_ID_STORAGE_KEY, readSavedUiWindowState, syncProjectUrlQueryParam, UI_WINDOW_STATE_STORAGE_KEY, writeSavedProjectId, writeSavedUiWindowState } from "./world-persistence.ts";
 
 export type { ClientOperatorPreferences, ClientOperatorProfile, OperatorModalAction, OperatorModalTab };
@@ -75,9 +75,12 @@ function syncAuthLockDom(): void {
 
 function resetClientWorldViewState(clearSelection = false): void {
   clientState.characterWalkers.clear(); clientState.activeSummoningRituals.clear();
+  clientState.knownSessionIds.clear();
   clientState.lanternFlares.length = 0; clientState.tickerLog.length = 0;
   clearCachedGitState(); resetSidePanelSignatures();
   if (clearSelection) {
+    resetAuthoritativeSnapshotGate({ preservePendingAction: true });
+    clientState.isAllWorldsFocused = true;
     clientState.selectedProjectId = clientState.selectedRoomId = clientState.selectedSessionId = null; clientState.cameraFocusMode = "auto";
     writeSavedProjectId(null); writeSavedUiWindowState({ selectedProjectId: null, selectedRoomId: null, selectedSessionId: null, cameraFocusMode: "auto" });
     syncProjectUrlQueryParam(null);
@@ -124,6 +127,7 @@ export async function dispatchOperatorModalAction(
   }
   profileMutationEpoch += 1;
   setPendingOperatorAction(fields.machineId ? `${action}:${fields.machineId}` : action);
+  if (action === "activate-machine" || action === "pair-machine" || action === "pair-local-machine") setExpectedMachineDaemonUrl(null);
   try {
     if (action === "login" || action === "register") {
       const endpoint = action === "login" ? "/api/guild/auth/login" : "/api/guild/auth/register";
@@ -164,14 +168,11 @@ export async function dispatchOperatorModalAction(
       profileMutationEpoch += 1;
       if (res.ok && payload?.operatorId) {
         cachedProfile = payload; isAuthLocked = false; setSavedOperatorId(payload.operatorId);
+        if (payload.daemonUrl) setExpectedMachineDaemonUrl(payload.daemonUrl);
         resetClientWorldViewState(true);
-        const pairedEndpoint = payload.daemonUrl || daemonUrl.replace(/\/auth\/connect\/.*/, "");
-        statusMessageText = `✅ Step 2 Complete! Paired '${label}' (${formatPublicSafeEndpoint(pairedEndpoint)})`;
+        statusMessageText = `✅ Step 2 Complete! Paired '${label}' (${formatPublicSafeEndpoint(payload.daemonUrl || daemonUrl.replace(/\/auth\/connect\/.*/, ""))})`;
         await refreshSnapshotAndRender(modal, onStateChanged, fn);
-      } else {
-        statusMessageText = `⚠️ ${payload?.error || "Failed to pair machine"}`;
-        if (modal) mountModalInnerDom(modal, onStateChanged);
-      }
+      } else { statusMessageText = `⚠️ ${payload?.error || "Failed to pair machine"}`; if (modal) mountModalInnerDom(modal, onStateChanged); }
       return;
     }
     if ((action === "activate-machine" || action === "delete-machine") && fields.machineId) {
@@ -184,13 +185,11 @@ export async function dispatchOperatorModalAction(
       const payload = await res.json();
       profileMutationEpoch += 1;
       if (res.ok) {
-        cachedProfile = payload; resetClientWorldViewState(true);
+        cachedProfile = payload; if (isActivate && payload?.daemonUrl) setExpectedMachineDaemonUrl(payload.daemonUrl);
+        resetClientWorldViewState(true);
         statusMessageText = isActivate ? "✅ Switched active OpenCode machine" : "🗑 Removed OpenCode machine pairing";
         await refreshSnapshotAndRender(modal, onStateChanged, fn);
-      } else {
-        statusMessageText = `⚠️ ${payload?.error || "Failed to update machine"}`;
-        if (modal) mountModalInnerDom(modal, onStateChanged);
-      }
+      } else { statusMessageText = `⚠️ ${payload?.error || "Failed to update machine"}`; if (modal) mountModalInnerDom(modal, onStateChanged); }
       return;
     }
     if (action === "save-profile") {

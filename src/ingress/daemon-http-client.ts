@@ -49,11 +49,11 @@ export function createHttpOpenCodeDaemonClient(
   function resolveDaemonDir(dir: string): string {
     const trimmed = dir.trim();
     if (!trimmed) return "";
-    const norm = normalizeLocationDirectory(trimmed).toLowerCase();
-    const known = rawDirByNormDir.get(norm);
+    const normRaw = normalizeLocationDirectory(trimmed);
+    const known = rawDirByNormDir.get(normRaw.toLowerCase());
     if (known) return toDaemonDirectoryPath(known);
     if (isWindowsDaemon) {
-      const cStyleMatch = /^\/([A-Za-z])(?:\/(.*))?$/.exec(norm);
+      const cStyleMatch = /^\/([A-Za-z])(?:\/(.*))?$/.exec(normRaw);
       if (cStyleMatch && cStyleMatch[1].toLowerCase() !== "mnt") {
         return `${cStyleMatch[1].toUpperCase()}:/${cStyleMatch[2] ?? ""}`;
       }
@@ -81,7 +81,9 @@ export function createHttpOpenCodeDaemonClient(
         headers: { Accept: "application/json", ...headers, ...extraHeaders },
       });
       if (!response.ok) {
-        lastTransportError = new Error(`OpenCode daemon returned HTTP ${response.status} on ${path}`);
+        if (!path.startsWith("/api/fs/read/")) {
+          lastTransportError = new Error(`OpenCode daemon returned HTTP ${response.status} on ${path}`);
+        }
         return null;
       }
       anySuccessResponse = true;
@@ -248,7 +250,7 @@ export function createHttpOpenCodeDaemonClient(
     },
 
     async probeDirectory(directory: string) {
-      return probeDaemonDirectory(fetchJson, directory);
+      return probeDaemonDirectory(fetchJson, resolveDaemonDir(directory));
     },
 
     async getSessionLogAfter(sessionId: string, afterCursor: number) {

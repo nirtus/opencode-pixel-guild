@@ -1,20 +1,22 @@
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createHttpOpenCodeDaemonClient, createOpenCodeClientAdapter, discoverLocalOpenCodeService, type DiscoveredOpenCodeService, type OpenCodeClientAdapter, type OpenCodeDaemonClientPort, resolveAndRedeemOpenCodePairing } from "../ingress/index.ts";
+import { discoverLocalOpenCodeService, type DiscoveredOpenCodeService, type OpenCodeClientAdapter, type OpenCodeDaemonClientPort, resolveAndRedeemOpenCodePairing } from "../ingress/index.ts";
 import { DEMO_SCENARIO_PRESETS, type DemoScenarioPresetId, type DemoScenarioRunResult, runDemoScenarioPreset } from "../simulator/demo-guild-simulator.ts";
-import { createWorldStateReducer } from "../state/index.ts";
+import { createWorldStateReducer, isLocalDaemonEndpoint } from "../state/index.ts";
 import type { GuildStateEmission, WorldStateReducer } from "../types/domain.ts";
 import type { GuildApiRouterContext } from "./api-router.ts";
 import { handleOperatorHttpRoutes, type OperatorWorkspaceRegistryPort } from "./operator-routes.ts";
 import { createGuildChronicleStore, type GuildChronicleStorePort } from "./chronicle-sqlite-store.ts";
+import { createRuntimePairingController, getMachineScopeKey } from "./machine-switch-reconciler.ts";
 import { buildFallbackOperatorResponse, createInitialOperatorProfile, type GuildOperatorPreferences, type GuildOperatorProfile, hashOperatorPassword, type PairedOpenCodeMachine, stripPrivateOperatorFields, syncProfileActiveMachineState, verifyOperatorPassword } from "./operator-store.ts";
+import { createSseBroadcaster } from "./sse-broadcaster.ts";
 
 export type { GuildOperatorPreferences, GuildOperatorProfile, PairedOpenCodeMachine };
 
 export interface OperatorWorkspaceRuntime {
   profile: GuildOperatorProfile; daemonPassword?: string; reducer: WorldStateReducer; sseClients: Set<ServerResponse>;
   clientAdapter?: OpenCodeClientAdapter; daemonClient?: Pick<OpenCodeDaemonClientPort, "deleteSession" | "deleteRoomResources" | "executeCommand"> | OpenCodeDaemonClientPort;
-  unsubscribeReducer: () => void; toRouterContext(): GuildApiRouterContext; pairDaemon(daemonUrl: string, daemonPassword?: string): Promise<boolean>; close(): void;
+  unsubscribeReducer: () => void; toRouterContext(): GuildApiRouterContext; pairDaemon(daemonUrl: string, daemonPassword?: string): Promise<boolean>; resetDisconnected(): void; close(): void;
 }
 
 export interface CreateOperatorRegistryOptions {
@@ -42,12 +44,6 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
   const lockedSseClients = new Set<ServerResponse>();
   const chronicleStore: GuildChronicleStorePort = createGuildChronicleStore({ dataDirPath: options.dataDirPath, operatorsFilePath: options.storeFilePath });
   const persistAll = (): void => chronicleStore.saveOperators([...operators.values()].map((r) => r.profile));
-  const buildAuthHeaders = (password?: string): Record<string, string> =>
-    password ? { Authorization: "Basic " + Buffer.from(`opencode:${password}`).toString("base64") } : {};
-  const getMachineScopeKey = (opId: string, url?: string | null): string => {
-    const clean = url?.trim().replace(/\/+$/, "").toLowerCase();
-    return clean ? `${opId}@@${clean}` : opId;
-  };
 
   function createRuntime(
     operatorId: string,
@@ -63,116 +59,57 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
     const persistedSnap = chronicleStore?.loadSnapshot(initKey) ?? (initKey !== operatorId && profile.pairedMachines.length <= 1 ? chronicleStore?.loadSnapshot(operatorId) : null);
     if (persistedSnap) reducer.hydrateFromSnapshot?.(persistedSnap);
     const sseClients = new Set<ServerResponse>();
+    const sseBroadcaster = createSseBroadcaster(sseClients);
     let saveTimer: ReturnType<typeof setTimeout> | null = null;
+    const flushPendingSave = (scopeUrl: string | null) => {
+      if (!saveTimer) return;
+      clearTimeout(saveTimer); saveTimer = null;
+      if (scopeUrl) chronicleStore.saveSnapshot(getStoreKey(scopeUrl), reducer.getSnapshot());
+    };
+    const pairingController = createRuntimePairingController({
+      operatorId, profile, reducer, chronicleStore,
+      discoverService: options.discoverService, createDaemonClient: options.createDaemonClient,
+      onAdapterChanged: (ca, dc) => {
+        runtime.clientAdapter = ca;
+        if (dc !== undefined) runtime.daemonClient = dc;
+      },
+      onPasswordChanged: (pw) => { runtime.daemonPassword = pw; },
+      flushPendingSave,
+      persistAll,
+    });
     const scheduleSnapshotSave = () => {
-      if (!chronicleStore || saveTimer) return;
-      saveTimer = setTimeout(() => { saveTimer = null; chronicleStore.saveSnapshot(getStoreKey(), reducer.getSnapshot()); }, 1200);
+      if (!chronicleStore || saveTimer || pairingController.isPairingInFlight()) return;
+      const scopedUrl = reducer.getSnapshot().daemonUrl ?? profile.daemonUrl;
+      if (!scopedUrl) return;
+      const snapKey = getStoreKey(scopedUrl);
+      saveTimer = setTimeout(() => {
+        saveTimer = null;
+        if (pairingController.isPairingInFlight()) return;
+        const curSnap = reducer.getSnapshot();
+        if (getStoreKey(curSnap.daemonUrl ?? profile.daemonUrl) !== snapKey) return;
+        chronicleStore.saveSnapshot(snapKey, curSnap);
+      }, 1200);
       saveTimer.unref?.();
     };
     const unsubscribeReducer = reducer.subscribe((emission: GuildStateEmission) => {
       if (emission.delta.kind === "session.deleted" || emission.delta.kind === "room.deleted") {
         if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-        const curKey = getStoreKey();
-        for (const id of emission.delta.changedCharacterIds) chronicleStore?.deleteSessionMessages(curKey, id);
-        chronicleStore?.saveSnapshot(curKey, emission.snapshot);
-      } else if (emission.delta.kind !== "timer.tick") scheduleSnapshotSave();
-      if (sseClients.size === 0) return;
-      const payload = `data: ${JSON.stringify(emission)}\n\n`;
-      for (const client of sseClients) {
-        if (!client.writableEnded) {
-          try { client.write(payload); } catch { sseClients.delete(client); }
+        if (!pairingController.isPairingInFlight()) {
+          const curKey = getStoreKey();
+          for (const id of emission.delta.changedCharacterIds) chronicleStore?.deleteSessionMessages(curKey, id);
+          chronicleStore?.saveSnapshot(curKey, emission.snapshot);
         }
-      }
+      } else if (emission.delta.kind !== "timer.tick") scheduleSnapshotSave();
+      sseBroadcaster.broadcast(emission);
     });
 
     const runtime: OperatorWorkspaceRuntime = {
       profile, daemonPassword: input.daemonPassword, reducer, sseClients, unsubscribeReducer,
-      async pairDaemon(targetUrl: string, password?: string): Promise<boolean> {
-        const cleanUrl = targetUrl.trim();
-        const prevSnap = reducer.getSnapshot();
-        const isDifferentMachine = prevSnap.daemonUrl !== null && prevSnap.daemonUrl !== cleanUrl;
-        if (saveTimer) {
-          clearTimeout(saveTimer); saveTimer = null;
-          if (prevSnap.daemonUrl) chronicleStore?.saveSnapshot(getStoreKey(prevSnap.daemonUrl), prevSnap);
-        }
-        runtime.clientAdapter?.stop();
-        runtime.daemonPassword = password;
-        runtime.profile.daemonUrl = cleanUrl;
-        runtime.profile.paired = true;
-        runtime.profile.adapterMode = "opencode-client";
-        runtime.profile.updatedAtMs = Date.now();
-        if (prevSnap.activeAdapter === "demo-simulator") {
-          reducer.reset?.({ adapter: "opencode-client", daemonUrl: cleanUrl });
-        } else {
-          reducer.dispatch({ type: "adapter.switched", timestampMs: Date.now(), adapter: "opencode-client", daemonUrl: cleanUrl });
-        }
-
-        let effectiveUrl = cleanUrl;
-        let effectiveHeaders = buildAuthHeaders(password);
-        if (options.discoverService && !options.createDaemonClient && /\.(opentunnel\.xyz|lhr\.life)\b/i.test(cleanUrl)) {
-          try {
-            const svc = await options.discoverService();
-            const infoRes = await fetch(`${svc.url.replace(/\/+$/, "")}/api/info`, { headers: { Accept: "application/json", ...svc.headers }, signal: AbortSignal.timeout(1500) });
-            if (infoRes.ok) {
-              const info = (await infoRes.json()) as { urls?: string[] };
-              if (Array.isArray(info?.urls) && info.urls.some((u) => cleanUrl.startsWith(u.replace(/\/+$/, "")))) {
-                effectiveUrl = svc.url;
-                effectiveHeaders = svc.headers;
-              }
-            }
-          } catch { /* use remote tunnel directly */ }
-        }
-        const dc = (options.createDaemonClient ?? createHttpOpenCodeDaemonClient)(effectiveUrl, effectiveHeaders);
-        const ca = createOpenCodeClientAdapter({ discoverDaemon: async () => ({ url: effectiveUrl }), client: dc });
-        const targetKey = getStoreKey(cleanUrl);
-        const baseSnap = isDifferentMachine ? chronicleStore?.loadSnapshot(targetKey) : prevSnap;
-        if (baseSnap?.deletedSessionIds?.length) ca.evictDeletedSessions?.(baseSnap.deletedSessionIds);
-        if (baseSnap?.deletedRoomIds?.length) ca.evictDeletedRooms?.(baseSnap.deletedRoomIds);
-        const stagingReducer = createWorldStateReducer({ initialAdapter: "opencode-client", daemonUrl: cleanUrl });
-        if (baseSnap && (Object.keys(baseSnap.rooms ?? {}).length > 0 || Object.keys(baseSnap.characters ?? {}).length > 0 || Object.keys(baseSnap.tributeLedger ?? {}).length > 0 || (baseSnap.deletedSessionIds?.length ?? 0) > 0 || (baseSnap.deletedRoomIds?.length ?? 0) > 0)) {
-          stagingReducer.hydrateFromSnapshot?.(baseSnap, isDifferentMachine ? undefined : reducer.getCatalog());
-        }
-        let targetReducer: WorldStateReducer = stagingReducer;
-        const proxyReducer = {
-          dispatch: (ev: Parameters<WorldStateReducer["dispatch"]>[0]) => targetReducer.dispatch(ev),
-          dispatchBatch: (evs: Parameters<WorldStateReducer["dispatchBatch"]>[0]) => targetReducer.dispatchBatch(evs),
-        } as WorldStateReducer;
-        runtime.daemonClient = dc;
-        runtime.clientAdapter = ca;
-        try {
-          await ca.start(proxyReducer);
-          const stagedSnap = stagingReducer.getSnapshot();
-          const curDel = isDifferentMachine ? (baseSnap?.deletedSessionIds ?? []) : (reducer.getSnapshot().deletedSessionIds ?? []);
-          const curDelRooms = isDifferentMachine ? (baseSnap?.deletedRoomIds ?? []) : (reducer.getSnapshot().deletedRoomIds ?? []);
-          const baseTribute = baseSnap?.tributeLedger ?? {};
-          if (isDifferentMachine || Object.keys(stagedSnap.rooms).length > 0 || (stagedSnap.deletedRoomIds?.length ?? 0) > 0 || curDelRooms.length > 0) {
-            reducer.reset?.({ adapter: "opencode-client", daemonUrl: cleanUrl });
-            const mergedSnap = { ...stagedSnap, tributeLedger: { ...baseTribute, ...(stagedSnap.tributeLedger ?? {}) }, deletedSessionIds: [...new Set([...(stagedSnap.deletedSessionIds ?? []), ...curDel])], deletedRoomIds: [...new Set([...(stagedSnap.deletedRoomIds ?? []), ...curDelRooms])] };
-            reducer.hydrateFromSnapshot?.(mergedSnap, stagingReducer.getCatalog());
-          }
-          targetReducer = reducer;
-          await ca.startLiveSubscription?.();
-          runtime.profile.reachable = true; runtime.profile.lastSyncedAtMs = Date.now(); runtime.profile.errorMessage = null;
-          for (const m of runtime.profile.pairedMachines) {
-            if (m.daemonUrl === cleanUrl) { m.reachable = true; m.lastSyncedAtMs = runtime.profile.lastSyncedAtMs; m.errorMessage = null; }
-          }
-          const finalSnap = reducer.getSnapshot();
-          chronicleStore?.saveSnapshot(targetKey, finalSnap);
-          persistAll();
-          return true;
-        } catch (err) {
-          if (isDifferentMachine) {
-            reducer.reset?.({ adapter: "opencode-client", daemonUrl: cleanUrl });
-            reducer.hydrateFromSnapshot?.(stagingReducer.getSnapshot());
-          }
-          runtime.profile.reachable = false;
-          runtime.profile.errorMessage = err instanceof Error ? err.message : "Failed to reach OpenCode daemon";
-          for (const m of runtime.profile.pairedMachines) {
-            if (m.daemonUrl === cleanUrl) { m.reachable = false; m.errorMessage = runtime.profile.errorMessage; }
-          }
-          persistAll();
-          return false;
-        }
+      pairDaemon: (targetUrl, password) => pairingController.pairDaemon(targetUrl, password),
+      resetDisconnected: () => {
+        if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+        pairingController.resetDisconnected();
+        runtime.daemonClient = undefined;
       },
       toRouterContext(): GuildApiRouterContext {
         return {
@@ -182,8 +119,8 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
           getActiveAdapter: () => runtime.reducer.getSnapshot().activeAdapter,
           activatePreset(presetId: DemoScenarioPresetId): DemoScenarioRunResult {
             if (!(presetId in DEMO_SCENARIO_PRESETS)) throw new Error(`Unknown demo scenario preset: ${String(presetId)}`);
-            runtime.clientAdapter?.stop();
-            runtime.clientAdapter = undefined;
+            if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+            pairingController.cancelForDemo();
             runtime.profile.reachable = false;
             runtime.profile.adapterMode = "demo-simulator";
             runtime.reducer.reset?.({ adapter: "demo-simulator", daemonUrl: null });
@@ -192,10 +129,18 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
           clientAdapter: runtime.clientAdapter,
           daemonClient: runtime.daemonClient,
           onRefresh: async () => {
+            const currentUrl = runtime.profile.daemonUrl ?? runtime.reducer.getSnapshot().daemonUrl;
+            const isLocalPairing = !currentUrl || isLocalDaemonEndpoint(currentUrl);
             if (runtime.clientAdapter) {
               await runtime.clientAdapter.sweepAllLocations(false);
               const snapAfter = runtime.reducer.getSnapshot();
-              if (Object.keys(snapAfter.rooms).length === 0 && !(snapAfter.deletedRoomIds?.length) && options.discoverService && !options.createDaemonClient) {
+              if (
+                isLocalPairing &&
+                Object.keys(snapAfter.rooms).length === 0 &&
+                !(snapAfter.deletedRoomIds?.length) &&
+                options.discoverService &&
+                !options.createDaemonClient
+              ) {
                 try { const svc = await options.discoverService(); await runtime.pairDaemon(svc.url, svc.password); } catch { /* ignore */ }
               }
             } else if (runtime.profile.daemonUrl) {
@@ -207,8 +152,9 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
         };
       },
       close() {
-        if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; chronicleStore?.saveSnapshot(getStoreKey(), reducer.getSnapshot()); }
-        runtime.clientAdapter?.stop();
+        pairingController.close();
+        if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+        sseBroadcaster.close();
         for (const client of runtime.sseClients) if (!client.writableEnded) client.end();
         runtime.sseClients.clear();
         runtime.unsubscribeReducer();
@@ -335,9 +281,7 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
     if (nextActive) {
       await runtime.pairDaemon(nextActive.daemonUrl, nextActive.daemonPassword);
     } else {
-      runtime.clientAdapter?.stop(); runtime.clientAdapter = undefined; runtime.daemonClient = undefined;
-      runtime.reducer.reset?.({ adapter: "opencode-client", daemonUrl: null });
-      runtime.reducer.hydrateFromSnapshot?.(runtime.reducer.getSnapshot());
+      runtime.resetDisconnected();
     }
     persistAll();
     return stripPrivateOperatorFields(runtime.profile);

@@ -1,4 +1,5 @@
 import { normalizeLocationDirectory } from "../spatial/index.ts";
+import { normalizeDaemonEndpointUrl } from "../state/index.ts";
 import type { GuildSnapshot } from "../types/domain.ts";
 import { clientState } from "./client-state.ts";
 import { syncClientViewedSessionsToSnapshot } from "./command-scroll-controller.ts";
@@ -14,14 +15,22 @@ const killingSessionIds = new Set<string>();
 const demolishingRoomIds = new Set<string>();
 const resolvingGateIds = new Set<string>();
 let pendingOperatorAction: string | null = null;
+let expectedMachineDaemonUrl: string | null = null;
 
-export function resetAuthoritativeSnapshotGate(): void {
+export function resetAuthoritativeSnapshotGate(options?: { readonly preservePendingAction?: boolean }): void {
   clientDeletedSessionIds.clear();
   clientDeletedRoomIds.clear();
   killingSessionIds.clear();
   demolishingRoomIds.clear();
   resolvingGateIds.clear();
-  pendingOperatorAction = null;
+  if (!options?.preservePendingAction) {
+    pendingOperatorAction = null;
+    expectedMachineDaemonUrl = null;
+  }
+}
+
+export function setExpectedMachineDaemonUrl(url: string | null): void {
+  expectedMachineDaemonUrl = url ? normalizeDaemonEndpointUrl(url) : null;
 }
 
 export function recordClientDeletedSession(sessionId: string | null | undefined): void {
@@ -148,6 +157,21 @@ export function applyAuthoritativeSnapshot(
   if (options.allowVersionReset) {
     clientDeletedSessionIds.clear();
     clientDeletedRoomIds.clear();
+    if (nextSnap.daemonUrl) {
+      expectedMachineDaemonUrl = normalizeDaemonEndpointUrl(nextSnap.daemonUrl);
+    }
+  } else {
+    const isMachineSwitchAction =
+      Boolean(pendingOperatorAction) &&
+      (pendingOperatorAction!.startsWith("activate-machine:") ||
+        pendingOperatorAction === "pair-machine" ||
+        pendingOperatorAction === "pair-local-machine");
+    if (isMachineSwitchAction) {
+      const incomingUrl = normalizeDaemonEndpointUrl(nextSnap.daemonUrl);
+      if (!expectedMachineDaemonUrl || incomingUrl !== expectedMachineDaemonUrl) {
+        return false;
+      }
+    }
   }
   const curSnap = clientState.currentSnapshot;
   const curVer = typeof curSnap?.version === "number" ? curSnap.version : 0;

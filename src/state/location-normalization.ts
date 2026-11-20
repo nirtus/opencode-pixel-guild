@@ -34,16 +34,31 @@ function resolveActiveWslUncPrefix(): string | null {
 
 const ACTIVE_WSL_UNC_PREFIX = resolveActiveWslUncPrefix();
 let knownVisualizerParentNorm: string | null = null;
-const remoteDaemonDirs = new Set<string>();
+const remoteDaemonDirs = new Map<string, string>();
+
+export function normalizeDaemonEndpointUrl(url?: string | null): string {
+  return url?.trim().replace(/\/+$/, "").toLowerCase() ?? "";
+}
 
 export function markDirectoryDaemonScope(rawDir: string, daemonUrl?: string | null): void {
   if (!rawDir || !rawDir.trim() || !daemonUrl || !daemonUrl.trim()) return;
   const norm = normalizeLocationDirectory(rawDir).toLowerCase();
   if (!norm || norm === "/") return;
   if (!isLocalDaemonEndpoint(daemonUrl)) {
-    remoteDaemonDirs.add(norm);
+    remoteDaemonDirs.set(norm, normalizeDaemonEndpointUrl(daemonUrl));
   } else {
     remoteDaemonDirs.delete(norm);
+  }
+}
+
+export function clearRemoteDirectoryScopes(daemonUrl?: string | null): void {
+  const target = normalizeDaemonEndpointUrl(daemonUrl);
+  if (!target) {
+    remoteDaemonDirs.clear();
+    return;
+  }
+  for (const [norm, ownerUrl] of remoteDaemonDirs.entries()) {
+    if (ownerUrl === target) remoteDaemonDirs.delete(norm);
   }
 }
 
@@ -93,12 +108,6 @@ export function normalizeLocationDirectory(rawDir: string): string {
   normalized = normalized.replace(/\/+/g, "/");
   if (normalized.length > 1 && normalized.endsWith("/")) {
     normalized = normalized.slice(0, -1);
-  }
-  if (
-    normalized.toLowerCase().endsWith("/opencode-game-visualizer") &&
-    normalized.split("/").filter(Boolean).length >= 3
-  ) {
-    knownVisualizerParentNorm = normalized.slice(0, normalized.lastIndexOf("/")).toLowerCase();
   }
   return normalized;
 }
@@ -214,6 +223,15 @@ export function resolveLocalProjectDir(
     }
   }
   const existsFn = checkExists ?? nodeExistsSync;
+  if (
+    norm.toLowerCase().endsWith("/opencode-game-visualizer") &&
+    parts.length >= 3 &&
+    (!daemonUrl || isLocalDaemonEndpoint(daemonUrl)) &&
+    !remoteDaemonDirs.has(norm.toLowerCase()) &&
+    existsFn?.("/workspaces/opencode-game-visualizer")
+  ) {
+    knownVisualizerParentNorm = norm.slice(0, norm.lastIndexOf("/")).toLowerCase();
+  }
   if (
     knownVisualizerParentNorm !== null &&
     norm.toLowerCase() === knownVisualizerParentNorm &&

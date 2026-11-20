@@ -1,9 +1,11 @@
 import { isAbsolute, relative, resolve } from "node:path";
 import {
+  clearRemoteDirectoryScopes,
   isLocalDaemonEndpoint,
   markDirectoryDaemonScope,
+  normalizeDaemonEndpointUrl,
   normalizeLocationDirectory,
-} from "../state/location-normalization.ts";
+} from "../state/index.ts";
 import {
   accumulateNumstat,
   BASE_STATUS_ARGS,
@@ -69,6 +71,25 @@ export function getRemoteDirectoryRunner(
   if (!directory || !directory.trim()) return null;
   const norm = normalizeLocationDirectory(directory).toLowerCase();
   return remoteRunnersByNormDir.get(norm) ?? null;
+}
+
+export function clearRemoteDirectoryRunners(daemonUrl?: string | null): void {
+  const target = normalizeDaemonEndpointUrl(daemonUrl);
+  if (!target) {
+    remoteRunnersByNormDir.clear();
+    clearRemoteDirectoryScopes();
+    invalidateGitStatusCache();
+    invalidateTaskProgressCache();
+    return;
+  }
+  for (const [norm, runner] of remoteRunnersByNormDir.entries()) {
+    if (normalizeDaemonEndpointUrl(runner.daemonUrl) === target) {
+      remoteRunnersByNormDir.delete(norm);
+      invalidateGitStatusCache(runner.rawDirectory);
+      invalidateTaskProgressCache(runner.rawDirectory);
+    }
+  }
+  clearRemoteDirectoryScopes(daemonUrl);
 }
 
 function quoteGitArg(arg: string): string {

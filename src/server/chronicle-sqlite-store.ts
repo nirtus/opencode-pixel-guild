@@ -7,16 +7,19 @@ import type { CharacterState, GuildSnapshot, QuestGateState, SessionChatMessage,
 import { collectSnapshotTributeRecords, loadOperatorTributeLedger, SESSION_TRIBUTE_LEDGER_SCHEMA_SQL, upsertSnapshotTributeLedgerRows } from "./chronicle-tribute-ledger.ts";
 import type { GuildOperatorProfile } from "./operator-store.ts";
 
+export type MachineScopeKey = string;
+
 export interface GuildChronicleStorePort {
   readonly sqlitePath: string;
   readonly operatorsFilePath: string;
   loadOperators(): GuildOperatorProfile[];
   saveOperators(profiles: Iterable<GuildOperatorProfile>): void;
-  saveSnapshot(operatorId: string, snapshot: GuildSnapshot): void;
-  loadSnapshot(operatorId: string): Partial<GuildSnapshot> | null;
-  upsertSessionMessages(operatorId: string, sessionId: string, messages: ReadonlyArray<SessionChatMessage>): void;
-  getSessionMessages(operatorId: string, sessionId: string): SessionChatMessage[];
-  deleteSessionMessages(operatorId: string, sessionId: string): void;
+  saveSnapshot(machineScopeKey: MachineScopeKey, snapshot: GuildSnapshot): void;
+  loadSnapshot(machineScopeKey: MachineScopeKey): Partial<GuildSnapshot> | null;
+  upsertSessionMessages(machineScopeKey: MachineScopeKey, sessionId: string, messages: ReadonlyArray<SessionChatMessage>): void;
+  getSessionMessages(machineScopeKey: MachineScopeKey, sessionId: string): SessionChatMessage[];
+  deleteSessionMessages(machineScopeKey: MachineScopeKey, sessionId: string): void;
+  pruneTributeSessions(machineScopeKey: MachineScopeKey, sessionIds: Iterable<string>): void;
   deleteOperatorData(operatorId: string): void;
   close(): void;
 }
@@ -345,6 +348,16 @@ export function createGuildChronicleStore(options: CreateGuildChronicleStoreOpti
     try { db.prepare("DELETE FROM session_messages WHERE operator_id = ? AND session_id = ?").run(operatorId, sessionId); } catch { /* ignore */ }
   }
 
+  function pruneTributeSessions(machineScopeKey: MachineScopeKey, sessionIds: Iterable<string>): void {
+    const ids = [...new Set([...sessionIds].filter(Boolean))];
+    if (closed || !machineScopeKey || ids.length === 0) return;
+    lastSnapshotSigByOp.delete(machineScopeKey);
+    try {
+      const del = db.prepare("DELETE FROM session_tribute_ledger WHERE operator_id = ? AND session_id = ?");
+      for (const sid of ids) del.run(machineScopeKey, sid);
+    } catch { /* ignore */ }
+  }
+
   function deleteOperatorData(operatorId: string): void {
     if (closed || !operatorId) return;
     for (const k of lastSnapshotSigByOp.keys()) {
@@ -370,6 +383,6 @@ export function createGuildChronicleStore(options: CreateGuildChronicleStoreOpti
 
   return {
     sqlitePath, operatorsFilePath, loadOperators, saveOperators, saveSnapshot,
-    loadSnapshot, upsertSessionMessages, getSessionMessages, deleteSessionMessages, deleteOperatorData, close,
+    loadSnapshot, upsertSessionMessages, getSessionMessages, deleteSessionMessages, pruneTributeSessions, deleteOperatorData, close,
   };
 }
