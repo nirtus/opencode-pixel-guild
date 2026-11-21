@@ -2,11 +2,13 @@
 
 This runbook contains the verified, schema-validated submission packages and one-command `gh` workflows for listing and showcasing **OpenCode Pixel Guild** (`https://github.com/nirtus/opencode-pixel-guild`) across every official and community OpenCode V2 directory:
 
-1. **[`awesome-opencode/awesome-opencode`](https://github.com/awesome-opencode/awesome-opencode)** — `data/projects/opencode-pixel-guild.yaml` ([**Live PR #1043**](https://github.com/awesome-opencode/awesome-opencode/pull/1043)) + [**Live `Projects` Discussion #1044**](https://github.com/awesome-opencode/awesome-opencode/discussions/1044)
-2. **[Official OpenCode Ecosystem Docs (`anomalyco/opencode`)](https://github.com/anomalyco/opencode/blob/dev/services/site/src/docs/v1/content/ecosystem.mdx)** — `services/site/src/docs/v1/content/ecosystem.mdx` (`## Projects` table on `dev` branch, [**Live PR #63949**](https://github.com/anomalyco/opencode/pull/63949))
+1. **[`awesome-opencode/awesome-opencode`](https://github.com/awesome-opencode/awesome-opencode)** — `data/projects/opencode-pixel-guild.yaml` ([**Live PR #1043**](https://github.com/awesome-opencode/awesome-opencode/pull/1043)) + [**Live `Projects` Discussion #1044**](https://github.com/awesome-opencode/awesome-opencode/discussions/1044) ([`v0.2.0` Showcase Update](https://github.com/awesome-opencode/awesome-opencode/discussions/1044#discussioncomment-19795399))
+2. **[Official OpenCode Ecosystem Docs (`anomalyco/opencode`)](https://github.com/anomalyco/opencode/blob/dev/services/site/src/docs/v1/content/ecosystem.mdx)** — `services/site/src/docs/v1/content/ecosystem.mdx` (`## Projects` table on `dev` branch, [**Live PR #65401**](https://github.com/anomalyco/opencode/pull/65401), superseding auto-closed `#63949`)
 3. **[`opencode.cafe` (`R44VC0RP/opencode.cafe`)](https://github.com/R44VC0RP/opencode.cafe)** — `bulk/plugins.json` ([**Live PR #18**](https://github.com/R44VC0RP/opencode.cafe/pull/18)) + [`opencode.cafe/submit`](https://www.opencode.cafe/submit) web form (auto-syndicating into [`opencode-mercato`](https://github.com/ThomasSanna/opencode-mercato))
 4. **[`Tommertom/opencode-plugin-marketplace`](https://github.com/Tommertom/opencode-plugin-marketplace)** — `plugins/opencode-pixel-guild.plugin.json` ([**Live PR #9**](https://github.com/Tommertom/opencode-plugin-marketplace/pull/9))
-5. **Community Channels** — Official OpenCode Discord (`https://opencode.ai/discord`), Reddit (`r/opencode`, `r/opencodeCLI`, `r/LocalLLaMA`), and Hacker News (`Show HN`)
+5. **[`bradAGI/awesome-cli-coding-agents`](https://github.com/bradAGI/awesome-cli-coding-agents)** — `README.md` (`### Session managers & parallel runners`, [**Live PR #689**](https://github.com/bradAGI/awesome-cli-coding-agents/pull/689))
+6. **GitHub Release & Topics** — [**Release `v0.2.0`**](https://github.com/nirtus/opencode-pixel-guild/releases/tag/v0.2.0) on `main` with full `opencode`, `opencode-v2`, `ai-agents`, `coding-agent`, `mermaid`, `visualizer`, `pixel-art`, `rpg`, `typescript`, `docker` topics
+7. **Community Channels** — Official OpenCode Discord (`https://opencode.ai/discord`), Reddit (`r/opencode`, `r/opencodeCLI`, `r/LocalLLaMA`), Hacker News (`Show HN`), X/Twitter, LinkedIn, Dev.to, and YouTube
 
 ---
 
@@ -114,8 +116,8 @@ EOF
 
 ## 2. Official OpenCode Ecosystem Page (`anomalyco/opencode`)
 
-- **Live Pull Request**: [`anomalyco/opencode#63949`](https://github.com/anomalyco/opencode/pull/63949)
-- **Fork Branch**: [`nirtus/opencode@docs/add-opencode-pixel-guild`](https://github.com/nirtus/opencode/blob/docs/add-opencode-pixel-guild/services/site/src/docs/v1/content/ecosystem.mdx)
+- **Live Pull Request**: [`anomalyco/opencode#65401`](https://github.com/anomalyco/opencode/pull/65401) *(supersedes auto-closed `#63949` with full PR template compliance)*
+- **Fork Branch**: [`nirtus/opencode@docs/add-opencode-pixel-guild-v2`](https://github.com/nirtus/opencode/blob/docs/add-opencode-pixel-guild-v2/services/site/src/docs/v1/content/ecosystem.mdx)
 - **Live Page**: [`https://opencode.ai/docs/ecosystem`](https://opencode.ai/docs/ecosystem)
 - **Repository & Target Branch**: [`anomalyco/opencode`](https://github.com/anomalyco/opencode) (`dev` branch)
 - **Exact File Path**: [`services/site/src/docs/v1/content/ecosystem.mdx`](https://github.com/anomalyco/opencode/blob/dev/services/site/src/docs/v1/content/ecosystem.mdx)
@@ -356,13 +358,17 @@ gh pr create \
 
 ---
 
-## 5. Community Launch Channels (Discord, Reddit & Hacker News)
+## 5. Community Launch Channels (Discord, Reddit, Hacker News, X/Twitter, LinkedIn & YouTube)
 
 1. **Official OpenCode Discord (`https://opencode.ai/discord`)**:
-   - Post `docs/images/opencode-pixel-guild-intro-preview.gif` or `docs/video/opencode-pixel-guild-intro.mp4` with the GitHub link (`https://github.com/nirtus/opencode-pixel-guild`) and `awesome-opencode` Discussion/PR links.
+   - Post `docs/images/opencode-pixel-guild-intro-preview.gif` (or `docs/images/mermaid-chat-diagrams.png`) + `docs/video/opencode-pixel-guild-intro.mp4` with the GitHub link (`https://github.com/nirtus/opencode-pixel-guild`) and `v0.2.0` release link (`https://github.com/nirtus/opencode-pixel-guild/releases/tag/v0.2.0`).
 2. **Reddit ([`r/opencode`](https://www.reddit.com/r/opencode/), [`r/opencodeCLI`](https://www.reddit.com/r/opencodeCLI/), [`r/LocalLLaMA`](https://www.reddit.com/r/LocalLLaMA/))**:
-   - **Title**: `I built OpenCode Pixel Guild — a real-time 2D RPG workshop & dungeon visualizer for live OpenCode V2 sessions and subagents (zero dependencies, MIT)`
-   - **Media**: Upload `docs/video/opencode-pixel-guild-intro.mp4` (or `docs/images/opencode-pixel-guild-intro-preview.gif`)
+   - **Title**: `I built OpenCode Pixel Guild (v0.2.0) — a real-time 2D RPG workshop & dungeon visualizer for live OpenCode V2 sessions, subagents, inline Mermaid SVG diagrams & Git commits (zero dependencies, MIT)`
+   - **Media**: Upload `docs/video/opencode-pixel-guild-intro.mp4` + `docs/images/mermaid-chat-diagrams.png`
 3. **Hacker News (`https://news.ycombinator.com/submit`)**:
    - **Title**: `Show HN: OpenCode Pixel Guild – 2D RPG workshop and dungeon visualizer for OpenCode V2`
    - **URL**: `https://github.com/nirtus/opencode-pixel-guild`
+4. **X / Twitter & LinkedIn**:
+   - Attach `docs/video/opencode-pixel-guild-intro.mp4` (35s 1080p sizzle) and `docs/images/mermaid-chat-diagrams.png`, linking `https://github.com/nirtus/opencode-pixel-guild` and `https://github.com/nirtus/opencode-pixel-guild/releases/tag/v0.2.0`.
+5. **YouTube**:
+   - Upload `docs/video/opencode-pixel-guild-intro.mp4` using the ready-to-paste title, chapters, and tags in [`docs/video/youtube-publish-guide.md`](./video/youtube-publish-guide.md).
