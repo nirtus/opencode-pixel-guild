@@ -22,10 +22,11 @@ Deepen the **Quest Gate** architecture across `src/state/`, `src/ingress/`, `src
 - **Ticket 01 Resolved**: Consolidated 4-signal Quest Gate settlement in `src/state/quest-gate-handlers.ts` (`./issues/01-deepen-reducer-quest-gate-lifecycle.md`).
 - **Ticket 02 Resolved**: Unified SSE resolution mapping (`requestID`/`questionID`/`callID` + `rejected`/`cancelled`) and two-way post-hydration gate reconciliation in `src/ingress/` (`./issues/02-unify-ingress-gate-hydration-and-sse-sync.md`).
 - **Ticket 03 Resolved**: Added `Collapse ▾` / `Expand ▸` and `Bypass ✕` (`decision: "dismiss"`) controls on **Quest Gate** cards and unlocked the **Command Scroll** beneath active gates (`./issues/03-quest-gate-collapse-bypass-and-command-scroll.md`).
+- **Ticket 04 Resolved**: Fixed consecutive (2nd+) and mid-turn Question Gate drops across reducer and ingress by scoping `recentTools` completion checks, filtering placeholder reasons (`"Awaiting user answer"` / `"{}"`), skipping empty-input `status: "pending"` question tool frames, protecting tool-only assistant turns from false `lastRole === "user"` suppression, avoiding mid-turn `"thinking"` reason blacklisting, and adding `/api/question` polling/reply support (`./issues/04-fix-consecutive-and-mid-turn-question-gate-drops.md`).
 
 ## Not-yet-specified
 
-- **Ticket 04 (`./issues/04-fix-consecutive-and-mid-turn-question-gate-drops.md`)**: Fix consecutive (2nd+) and mid-turn Question Gate drops caused by unscoped historical `recentTools` `toolName === "question"` completion checks, generic `"Awaiting user answer"` placeholder reason poisoning on `status: "pending"` tool frames, same-turn `session.status: "thinking"` (`busy`) gate settlement while a `question` tool is running, conversational settlement mutating newly hydrated `"running"` `question` tools, and `part.callID` / `/api/question` alignment.
+None — all tickets resolved.
 
 ## Out-of-scope
 

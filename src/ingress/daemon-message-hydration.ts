@@ -146,7 +146,7 @@ export async function hydrateSessionMessages(
         const fields = normalizeQuestGateFields(rawInput);
         const joinedQuestions = fields.map((f) => f.question.trim()).filter(Boolean).join("\n\n");
         pendingQuestion = {
-          gateId: part.id ?? part.callID ?? `question:${sessionId}`,
+          gateId: part.callID ?? part.id ?? `question:${sessionId}`,
           title: fields[0]?.header || "Waiting for User Input",
           reason: joinedQuestions || fields[0]?.question || formatInputPreview(rawInput) || "Awaiting user answer",
           source: "form", fields,
@@ -289,7 +289,7 @@ export async function hydrateSessionMessages(
           part.time?.completed ?? part.state?.time?.completed ?? part.state?.time?.end ??
           msg.time?.completed ?? msg.info?.time?.completed;
         const timestampMs = startedAtMs ?? completedAtMs ?? (Date.now() - mIdx);
-        const callId = part.id ?? part.callID ?? `${sessionId}:${partToolName}:${timestampMs}:${recentTools.length}`;
+        const callId = part.callID ?? part.id ?? `${sessionId}:${partToolName}:${timestampMs}:${recentTools.length}`;
 
         if (!runningTool && (status === "running" || status === "pending")) {
           runningTool = { callId, toolName: partToolName, toolInput: input, timestampMs, ...(outputPreview ? { outputPreview } : {}) };
@@ -348,7 +348,17 @@ export function isPendingQuestionCompletedByTools(
   recentTools: readonly ToolExecutionRecord[] | undefined,
 ): boolean {
   if (!pq || !recentTools?.length || pq.source === "conversational") return false;
-  return recentTools.some((t) => t.status === "completed" && t.callId === pq.gateId);
+  if (recentTools.some((t) => t.status === "running" && t.toolName.trim().toLowerCase() === "question")) return false;
+  if (recentTools.some((t) => t.status === "completed" && t.callId === pq.gateId)) return true;
+  const newestQ = recentTools.find((t) => t.toolName.trim().toLowerCase() === "question");
+  return Boolean(!pq.gateId.startsWith("call_") && !pq.gateId.startsWith("prt_") && newestQ?.status === "completed");
+}
+
+export function isHydratedQuestionSupersededByUser(
+  pq: SessionMessageHydration["pendingQuestion"],
+  lastRole: string | undefined,
+): boolean {
+  return lastRole === "user" && (!pq || pq.source === "conversational");
 }
 
 export function buildHydratedSessionEvents(
@@ -361,9 +371,9 @@ export function buildHydratedSessionEvents(
   const now = Date.now();
   const pq = hydrated.pendingQuestion;
   const pqDone = isPendingQuestionCompletedByTools(pq, hydrated.recentTools);
-  const lastRole = hydrated.messages?.at(-1)?.role;
+  const supersededByUser = isHydratedQuestionSupersededByUser(pq, hydrated.messages?.at(-1)?.role);
   const events: TelemetryEvent[] = [];
-  if ((!pq || pqDone || lastRole === "user") && existingQuestionGateId) {
+  if ((!pq || pqDone || supersededByUser) && existingQuestionGateId) {
     events.push({ type: "question.resolved", timestampMs: now, sessionId, gateId: existingQuestionGateId });
   }
   events.push({
@@ -371,9 +381,9 @@ export function buildHydratedSessionEvents(
     lastAssistantText: pqDone ? undefined : hydrated.lastAssistantText, lastUserPromptText: hydrated.lastUserPromptText,
     messages: hydrated.messages, recentTools: hydrated.recentTools, preserveActivityTimestamp: true,
   } as TelemetryEvent);
-  if (emitIdleOrGateRequest && pq && !pqDone && lastRole !== "user") {
+  if (emitIdleOrGateRequest && pq && !pqDone && !supersededByUser) {
     events.push({ type: "question.requested", timestampMs: now, sessionId, gateId: pq.gateId, title: pq.title || "Waiting for User Input", reason: pq.reason, source: pq.source, fields: pq.fields });
-  } else if (emitIdleOrGateRequest && existingQuestionGateId && (!pq || pqDone || lastRole === "user")) {
+  } else if (emitIdleOrGateRequest && existingQuestionGateId && (!pq || pqDone || supersededByUser)) {
     events.push({ type: "session.idle", timestampMs: now, sessionId });
   }
   return events;

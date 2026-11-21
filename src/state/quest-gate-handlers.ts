@@ -19,57 +19,42 @@ import type {
 const resolvedGateIdsByState = new WeakMap<InternalWorldStoreState, Set<string>>();
 const resolvedQuestionReasonsByState = new WeakMap<InternalWorldStoreState, Map<string, Set<string>>>();
 
-export function recordResolvedQuestGate(
-  state: InternalWorldStoreState,
-  gateId: string | null | undefined,
-): void {
+const GENERIC_QUESTION_REASON_PLACEHOLDERS = new Set([
+  "awaiting user answer", "waiting for user input", "question prompt", "permission request", "question", "tool",
+]);
+
+function isGenericQuestionReasonPlaceholder(reason: string | null | undefined): boolean {
+  const trimmed = reason?.trim().toLowerCase();
+  return !trimmed || GENERIC_QUESTION_REASON_PLACEHOLDERS.has(trimmed) || trimmed.replace(/[{}[\]"':,\s]/g, "").length === 0;
+}
+
+export function recordResolvedQuestGate(state: InternalWorldStoreState, gateId: string | null | undefined): void {
   if (!gateId) return;
   let set = resolvedGateIdsByState.get(state);
-  if (!set) {
-    set = new Set<string>();
-    resolvedGateIdsByState.set(state, set);
-  }
+  if (!set) { set = new Set<string>(); resolvedGateIdsByState.set(state, set); }
   set.add(gateId);
 }
 
-function recordResolvedQuestionReason(
-  state: InternalWorldStoreState,
-  sessionId: string,
-  reason: string | null | undefined,
-): void {
+function recordResolvedQuestionReason(state: InternalWorldStoreState, sessionId: string, reason: string | null | undefined): void {
   const trimmed = reason?.trim();
-  if (!sessionId || !trimmed) return;
+  if (!sessionId || !trimmed || isGenericQuestionReasonPlaceholder(trimmed)) return;
   let bySession = resolvedQuestionReasonsByState.get(state);
-  if (!bySession) {
-    bySession = new Map<string, Set<string>>();
-    resolvedQuestionReasonsByState.set(state, bySession);
-  }
+  if (!bySession) { bySession = new Map<string, Set<string>>(); resolvedQuestionReasonsByState.set(state, bySession); }
   let reasons = bySession.get(sessionId);
-  if (!reasons) {
-    reasons = new Set<string>();
-    bySession.set(sessionId, reasons);
-  }
+  if (!reasons) { reasons = new Set<string>(); bySession.set(sessionId, reasons); }
   reasons.add(trimmed);
 }
 
-export function isQuestGateAlreadyResolved(
-  state: InternalWorldStoreState,
-  gateId: string | null | undefined,
-): boolean {
-  if (!gateId) return false;
-  return resolvedGateIdsByState.get(state)?.has(gateId) ?? false;
+export function isQuestGateAlreadyResolved(state: InternalWorldStoreState, gateId: string | null | undefined): boolean {
+  return Boolean(gateId && resolvedGateIdsByState.get(state)?.has(gateId));
 }
 
 export function isQuestionReasonAlreadyResolved(
-  state: InternalWorldStoreState,
-  sessionId: string,
-  reason: string | null | undefined,
-  gateId: string | null | undefined,
+  state: InternalWorldStoreState, sessionId: string, reason: string | null | undefined, gateId: string | null | undefined,
 ): boolean {
   if (isQuestGateAlreadyResolved(state, gateId)) return true;
   const trimmed = reason?.trim();
-  if (!trimmed) return false;
-  return resolvedQuestionReasonsByState.get(state)?.get(sessionId)?.has(trimmed) ?? false;
+  return Boolean(trimmed && !isGenericQuestionReasonPlaceholder(trimmed) && resolvedQuestionReasonsByState.get(state)?.get(sessionId)?.has(trimmed));
 }
 
 export function clearResolvedQuestGateSession(
@@ -99,29 +84,36 @@ export function clearAllResolvedQuestGates(state: InternalWorldStoreState): void
 export function settleCharacterQuestGate(
   state: InternalWorldStoreState,
   char: CharacterState,
-  options?: { clearLastAssistantText?: boolean; explicitGateId?: string },
+  options?: { clearLastAssistantText?: boolean; explicitGateId?: string; skipRecordResolution?: boolean },
 ): void {
+  const activeSource = char.questGate?.source;
   const gateId = options?.explicitGateId ?? char.questGate?.gateId;
-  if (gateId) recordResolvedQuestGate(state, gateId);
-  if (char.questGate?.gateId) recordResolvedQuestGate(state, char.questGate.gateId);
-  if (char.questGate?.kind === "question") {
+  if (gateId && !options?.skipRecordResolution) recordResolvedQuestGate(state, gateId);
+  if (char.questGate?.gateId && !options?.skipRecordResolution) recordResolvedQuestGate(state, char.questGate.gateId);
+  if (char.questGate?.kind === "question" && !options?.skipRecordResolution) {
     recordResolvedQuestionReason(state, char.sessionId, char.questGate.reason);
-    recordResolvedQuestionReason(state, char.sessionId, char.lastAssistantText);
+    if (activeSource === "conversational") {
+      recordResolvedQuestionReason(state, char.sessionId, char.lastAssistantText);
+    }
   }
   if (gateId) delete state.questGates[gateId];
   for (const [gid, g] of Object.entries(state.questGates)) {
     if (g.sessionId === char.sessionId) {
-      recordResolvedQuestGate(state, gid);
-      if (g.kind === "question") recordResolvedQuestionReason(state, char.sessionId, g.reason);
+      if (!options?.skipRecordResolution) {
+        recordResolvedQuestGate(state, gid);
+        if (g.kind === "question") recordResolvedQuestionReason(state, char.sessionId, g.reason);
+      }
       delete state.questGates[gid];
     }
   }
   const isConversationalOnly =
-    char.questGate?.source === "conversational" &&
-    (!options?.explicitGateId || options.explicitGateId === char.questGate.gateId);
-  if (!isConversationalOnly) {
+    activeSource === "conversational" &&
+    (!options?.explicitGateId || options.explicitGateId === char.questGate?.gateId);
+  if (!isConversationalOnly && !options?.skipRecordResolution) {
     for (const rec of char.recentTools) {
-      if ((gateId && rec.callId === gateId) || rec.toolName.trim().toLowerCase() === "question") {
+      const isMatchingGateCall = Boolean(gateId && rec.callId === gateId);
+      const isRunningQuestionTool = rec.status === "running" && rec.toolName.trim().toLowerCase() === "question";
+      if (isMatchingGateCall || isRunningQuestionTool) {
         if (rec.status === "running") rec.status = "completed";
         recordResolvedQuestGate(state, rec.callId);
       }
@@ -222,6 +214,7 @@ export function buildQuestionToolQuestGate(
       ? ((parsedInput as { questions: Array<{ header?: string; question?: string }> }).questions[0] ?? null)
       : null;
   const sameExistingGate = char.questGate?.gateId === gateId ? char.questGate : null;
+  if (!sameExistingGate) resolvedQuestionReasonsByState.get(state)?.delete(char.sessionId);
   if (char.questGate && char.questGate.gateId !== gateId) {
     delete state.questGates[char.questGate.gateId];
     char.questGate = null;
@@ -229,12 +222,18 @@ export function buildQuestionToolQuestGate(
   const incomingFields = normalizeQuestGateFields(parsedInput);
   const fields = mergeQuestGateFields(sameExistingGate?.fields, incomingFields);
   const joinedQuestions = incomingFields.map((f) => f.question.trim()).filter(Boolean).join("\n\n");
+  const rawPreview = char.activeCapability?.inputPreview?.trim();
+  const cleanPreview = rawPreview && !isGenericQuestionReasonPlaceholder(rawPreview) ? rawPreview : "";
+  const existingReason =
+    sameExistingGate?.reason && !isGenericQuestionReasonPlaceholder(sameExistingGate.reason)
+      ? sameExistingGate.reason
+      : "";
   const reason =
     joinedQuestions ||
     firstQ?.question?.trim() ||
     fields[0]?.question ||
-    sameExistingGate?.reason ||
-    char.activeCapability?.inputPreview ||
+    existingReason ||
+    cleanPreview ||
     "Awaiting user answer";
   if (isQuestionReasonAlreadyResolved(state, char.sessionId, reason, gateId)) {
     recordResolvedQuestGate(state, rawGateId);
@@ -295,6 +294,9 @@ export function handleQuestGateOpened(
   }
   const isSameOpenGate =
     char.questGate?.gateId === effectiveGateId && char.lifecycleState === "BlockedAtQuestGate";
+  if (!isSameOpenGate && kind === "question" && source === "form") {
+    resolvedQuestionReasonsByState.get(state)?.delete(char.sessionId);
+  }
   if (char.questGate && char.questGate.gateId !== effectiveGateId) {
     delete state.questGates[char.questGate.gateId];
     char.questGate = null;
@@ -359,7 +361,7 @@ export function handleQuestGateResolved(
     }
     return;
   }
-  if (event.type === "question.resolved") {
+  if (event.type === "question.resolved" && char.questGate?.source === "conversational") {
     recordResolvedQuestionReason(state, event.sessionId, char.lastAssistantText);
   }
   settleCharacterQuestGate(state, char, {

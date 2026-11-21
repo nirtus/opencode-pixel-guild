@@ -1,5 +1,6 @@
 import {
   buildHydratedSessionEvents,
+  isHydratedQuestionSupersededByUser,
   isPendingQuestionCompletedByTools,
   type SessionMessageHydration,
 } from "../ingress/index.ts";
@@ -107,10 +108,11 @@ export function dispatchHydratedSessionIfChanged(
   const hydratedLastRole =
     hydrated.messages?.[hydrated.messages.length - 1]?.role ??
     charNow.messages?.[charNow.messages.length - 1]?.role;
+  const supersededByUser = isHydratedQuestionSupersededByUser(pq, hydratedLastRole);
   const needsGateResolve = Boolean(
-    existingQGateId && (!pq || pqDone || hydratedLastRole === "user"),
+    existingQGateId && (!pq || pqDone || supersededByUser),
   );
-  const wantsGateOpen = Boolean(pq && !pqDone && hydratedLastRole !== "user");
+  const wantsGateOpen = Boolean(pq && !pqDone && !supersededByUser);
   const needsGateOpen = Boolean(
     wantsGateOpen && pq && !isPendingQuestionUnchanged(charNow, pq),
   );

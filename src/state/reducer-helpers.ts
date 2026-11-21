@@ -214,6 +214,8 @@ export function allocateNextToolSequence(state: InternalWorldStoreState, char?: 
   return state.nextToolSequence;
 }
 
+const FORM_TOOL_CLOCK_SKEW_TOLERANCE_MS = 5_000;
+
 export function sortRecentToolsNewestFirst(records: ToolExecutionRecord[]): ToolExecutionRecord[] {
   return [...records].sort((a, b) => b.timestampMs - a.timestampMs || (b.sequenceOrder ?? 0) - (a.sequenceOrder ?? 0)).slice(0, 30);
 }
@@ -261,10 +263,15 @@ export function mergeHydratedRecentTools(
   char.recentTools = sortRecentToolsNewestFirst([...byCallId.values()]);
   if (char.questGate?.kind === "question" && char.questGate.source !== "conversational") {
     const qGate = char.questGate;
+    const hasRunningQTool = char.recentTools.some((r) => r.status === "running" && r.toolName.trim().toLowerCase() === "question");
     const latestQTool = char.recentTools.find((r) => r.toolName.trim().toLowerCase() === "question");
     const matchedDone = char.recentTools.some((r) => r.status === "completed" && r.callId === qGate.gateId);
     const formSuperseded = Boolean(
-      qGate.gateId.startsWith("frm_") && latestQTool?.status === "completed" && (latestQTool.completedAtMs ?? latestQTool.timestampMs) >= qGate.openedAtMs,
+      !hasRunningQTool &&
+        !qGate.gateId.startsWith("call_") &&
+        !qGate.gateId.startsWith("prt_") &&
+        latestQTool?.status === "completed" &&
+        (latestQTool.completedAtMs ?? latestQTool.timestampMs) >= qGate.openedAtMs - FORM_TOOL_CLOCK_SKEW_TOLERANCE_MS,
     );
     if (matchedDone || formSuperseded) {
       settleCharacterQuestGate(state, char);

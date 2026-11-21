@@ -341,7 +341,11 @@ export function mapOpenCodeSseFrameToTelemetryEvents(rawPayload: unknown): Telem
       if (callId && rawName) rememberToolCallName(callId, rawName);
       const toolName = rawName || (callId ? toolNameByCallId.get(callId) : undefined) || "tool";
       const status = part.state?.status;
-      if (status === "running" || status === "pending") return [{ type: "tool.started", timestampMs, sessionId, callId, toolName, toolInput: part.state?.input ?? part.input ?? null }];
+      const toolInput = part.state?.input ?? part.input ?? null;
+      if (status === "pending" && toolName.toLowerCase() === "question" && normalizeQuestGateFields(toolInput).length === 0) {
+        return [];
+      }
+      if (status === "running" || status === "pending") return [{ type: "tool.started", timestampMs, sessionId, callId, toolName, toolInput }];
       if (status === "completed" || status === "error" || status === "failed") return [{ type: "tool.completed", timestampMs, sessionId, callId, toolName, outputPreview: extractToolOutputPreview(part as any) }];
     }
     if (part.type === "text" && sessionId && typeof part.text === "string" && part.text.trim()) {

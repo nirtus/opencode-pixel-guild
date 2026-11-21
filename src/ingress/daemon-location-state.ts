@@ -91,7 +91,7 @@ export async function fetchDaemonLocationState(
     }
   }
 
-  const [fetchedSkills, fetchedPlugins, fetchedMcps, fetchedAgents, fetchedRawModels, rawSessions, activeSessions, permissions, forms, openTuiSessionIds] =
+  const [fetchedSkills, fetchedPlugins, fetchedMcps, fetchedAgents, fetchedRawModels, rawSessions, activeSessions, permissions, forms, questions, openTuiSessionIds] =
     await Promise.all([
       hasValidCache ? Promise.resolve(cachedCatalog?.skills ?? null) : fetchJson<Array<{ id: string; name?: string; description?: string }>>(`/api/skill${query}`, locHeaders),
       hasValidCache ? Promise.resolve(cachedCatalog?.plugins ?? null) : fetchJson<RawDaemonPluginItem[]>(`/api/plugin${query}`, locHeaders),
@@ -102,6 +102,7 @@ export async function fetchDaemonLocationState(
       fetchJson<Array<string | { id?: string; sessionId?: string }> | Record<string, { type?: string; status?: string }>>(`/api/session/active${query}`, locHeaders),
       isWorktreeOrRoot ? Promise.resolve(null) : fetchJson<RawDaemonGateItem[]>(`/api/permission/request${query}`, locHeaders),
       isWorktreeOrRoot ? Promise.resolve(null) : fetchJson<RawDaemonGateItem[]>(`/api/form${query}`, locHeaders),
+      isWorktreeOrRoot ? Promise.resolve(null) : fetchJson<RawDaemonGateItem[]>(`/api/question${query}`, locHeaders),
       fetchOpenTuiSessionIds(fetchJson, daemonDir, rootUrl),
     ]);
   const rawRootSessions =
@@ -228,20 +229,26 @@ export async function fetchDaemonLocationState(
     }))
     .filter((p) => Boolean(p.gateId && p.sessionId));
 
-  const rawFormList = Array.isArray(forms) ? forms : Array.isArray((forms as any)?.data) ? (forms as any).data : [];
+  const rawFormItems = Array.isArray(forms) ? forms : Array.isArray((forms as any)?.data) ? (forms as any).data : [];
+  const rawQuestionItems = Array.isArray(questions) ? questions : Array.isArray((questions as any)?.data) ? (questions as any).data : [];
+  const rawFormList = [...rawFormItems, ...rawQuestionItems];
   const pendingQuestions = (rawFormList as RawDaemonGateItem[])
-    .map((q) => ({
-      gateId: q.gateId ?? q.id ?? "",
-      sessionId: q.sessionId ?? q.sessionID ?? "",
-      title: q.title ?? "Question Prompt",
-      reason:
-        q.reason ??
-        (Array.isArray(q.fields)
-          ? q.fields.map((fld) => fld.title ?? fld.description ?? fld.label ?? fld.key ?? "").filter(Boolean).join("; ")
-          : ""),
-      source: ((q as any).source ?? "form") as QuestGateSource,
-      fields: normalizeQuestGateFields((q as any).fields ?? (q as any).questions),
-    }))
+    .map((q) => {
+      const fields = normalizeQuestGateFields((q as any).fields ?? (q as any).questions);
+      const joinedQ = fields.map((f) => f.question.trim()).filter(Boolean).join("\n\n");
+      return {
+        gateId: q.gateId ?? q.id ?? (q as any).tool?.callID ?? "",
+        sessionId: q.sessionId ?? q.sessionID ?? "",
+        title: q.title ?? fields[0]?.header ?? "Question Prompt",
+        reason:
+          q.reason ??
+          (Array.isArray(q.fields)
+            ? q.fields.map((fld) => fld.title ?? fld.description ?? fld.label ?? fld.key ?? "").filter(Boolean).join("; ")
+            : joinedQ),
+        source: ((q as any).source ?? "form") as QuestGateSource,
+        fields,
+      };
+    })
     .filter((q) => Boolean(q.gateId && q.sessionId));
 
   const pendingGateSessionIds = new Set<string>([
