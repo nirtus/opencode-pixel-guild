@@ -75,6 +75,7 @@ export async function expandDaemonTildePath(
 export async function probeDaemonDirectory(
   fetchJson: <T>(path: string, extraHeaders?: Record<string, string>) => Promise<T | null>,
   directory: string,
+  options?: { checkGit?: boolean },
 ): Promise<{ exists: boolean; isGitRepo: boolean; resolvedDirectory?: string }> {
   const expanded = await expandDaemonTildePath(fetchJson, directory);
   const trimmed = expanded.trim();
@@ -91,8 +92,8 @@ export async function probeDaemonDirectory(
     const raw = (e?.name ?? e?.path ?? "").trim().replace(/[\\/]+$/, "");
     return raw === ".git" || raw.endsWith("/.git") || raw.endsWith("\\.git");
   });
-  if (hasInlineGit) {
-    return { exists: true, isGitRepo: true, resolvedDirectory: trimmed };
+  if (hasInlineGit || options?.checkGit === false) {
+    return { exists: true, isGitRepo: hasInlineGit, resolvedDirectory: trimmed };
   }
   const gitEntries = await fetchJson<RawFsListEntry[]>(
     `/api/fs/list?path=${encodeURIComponent(joinTargetPath(trimmed, ".git"))}`,

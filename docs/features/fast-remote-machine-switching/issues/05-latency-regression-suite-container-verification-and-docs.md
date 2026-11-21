@@ -2,7 +2,7 @@
 
 Type: task
 Label: ready-for-agent
-Status: open
+Status: resolved
 Blocked by: 01, 02, 03, 04
 
 ## What to build
@@ -30,7 +30,11 @@ Lock in the performance improvements with deterministic automated regression tes
 
 ## Acceptance Criteria
 
-- [ ] `tests/55-fast-remote-machine-switching.test.ts` passes deterministically and catches regressions across all 9 diagnosed bottlenecks (R1–R9).
-- [ ] Full `npm test` passes with zero failures and zero files under `src/` exceeding 400 lines.
-- [ ] Live Docker container (`opencode-pixel-guild-visualizer` on port `4310`) is deployed and verified with `docs/images/fast-remote-machine-switching.png` visually inspected.
-- [ ] `GLOSSARY.md`, `README.md`, `docs/features/fast-remote-machine-switching/map.md`, `spec.md`, and tickets `01..05` are updated and resolved, and `docs/graphify-out/` is refreshed.
+- [x] `tests/55-fast-remote-machine-switching.test.ts` passes deterministically and catches regressions across all 9 diagnosed bottlenecks (R1–R9).
+- [x] Full `npm test` passes with zero failures and zero files under `src/` exceeding 400 lines.
+- [x] Live Docker container (`opencode-pixel-guild-visualizer` on port `4310`) is deployed and verified with `docs/images/fast-remote-machine-switching.png` visually inspected.
+- [x] `GLOSSARY.md`, `README.md`, `docs/features/fast-remote-machine-switching/map.md`, `spec.md`, and tickets `01..05` are updated and resolved, and `docs/graphify-out/` is refreshed.
+
+## Answer
+
+Added `tests/55-fast-remote-machine-switching.test.ts` covering all 9 bottlenecks (including real POSIX `sh -c` compound Git verification and end-to-end 150ms-RTT 5-project × 25-session remote switch budget), passed two-axis code review + full `npm test` (`415/415` tests), deployed on Docker container `opencode-pixel-guild-visualizer` (`Up (healthy)` on `4310:4310`, `GET /api/guild/snapshot` `200 OK` in `1.5ms`), captured & visually verified `docs/images/fast-remote-machine-switching.png`, updated `README.md`, `GLOSSARY.md`, and feature docs, and refreshed `docs/graphify-out/`.

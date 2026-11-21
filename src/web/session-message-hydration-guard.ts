@@ -145,7 +145,7 @@ export function maybeHydrateSessionMessagesOnDemand(
     : "";
   void fetch(`/api/guild/session/${encodeURIComponent(sid)}/messages${dirQ}`, {
     headers: opts.getHeaders(),
-    signal: typeof AbortSignal?.timeout === "function" ? AbortSignal.timeout(2500) : undefined,
+    signal: typeof AbortSignal?.timeout === "function" ? AbortSignal.timeout(6000) : undefined,
   })
     .then((r) => {
       if (!r.ok) {

@@ -264,7 +264,7 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
     runtime.profile.pairedMachines.push(newMachine);
     const active = syncProfileActiveMachineState(runtime.profile, shouldActivate ? newMachine.machineId : null);
     if (shouldActivate && active) await runtime.pairDaemon(active.daemonUrl, active.daemonPassword);
-    persistAll(); return stripPrivateOperatorFields(runtime.profile);
+    persistAll(); return { ...stripPrivateOperatorFields(runtime.profile), snapshot: runtime.reducer.getSnapshot() };
   }
 
   async function updateOperatorMachine(operatorId: string | null, machineId: string, patch: { label?: string; daemonUrl?: string; daemonPassword?: string; activate?: boolean }) {
@@ -285,7 +285,7 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
       if (active) await runtime.pairDaemon(active.daemonUrl, active.daemonPassword);
     }
     persistAll();
-    return stripPrivateOperatorFields(runtime.profile);
+    return { ...stripPrivateOperatorFields(runtime.profile), snapshot: runtime.reducer.getSnapshot() };
   }
 
   async function removeOperatorMachine(operatorId: string | null, machineId: string) {
@@ -299,7 +299,7 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
       runtime.resetDisconnected();
     }
     persistAll();
-    return stripPrivateOperatorFields(runtime.profile);
+    return { ...stripPrivateOperatorFields(runtime.profile), snapshot: runtime.reducer.getSnapshot() };
   }
   async function updateOperatorProfile(operatorId: string | null, patch: { username?: string; label?: string; password?: string; adapterMode?: "demo-simulator" | "opencode-client"; preferences?: Partial<GuildOperatorPreferences>; daemonUrl?: string; daemonPassword?: string }) {
     if (options.requireAuth && (!operatorId || !operators.has(operatorId))) {

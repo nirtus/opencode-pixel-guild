@@ -2,7 +2,7 @@
 
 Type: task
 Label: ready-for-agent
-Status: open
+Status: resolved
 Blocked by: None (can start immediately)
 
 ## What to build
@@ -33,9 +33,13 @@ Eliminate the serial discovery waterfalls (**R3**, **R4**, **R5**) and the priva
 
 ## Acceptance Criteria
 
-- [ ] `discoverLocalOpenCodeService()` completes in `<= 1000ms` even when an unreachable candidate URL hangs indefinitely, and returns `urls` from `/api/info`.
-- [ ] Switching between two `*.opentunnel.xyz` machines twice within 60 seconds invokes `discoverService()` at most once.
-- [ ] `runSweepAllLocations()` starts `getProjects()` and `getLocations()` concurrently (without waiting for `getProjects()` to resolve first) and skips `/api/worktree?projectID=global`.
-- [ ] `reconcilePersistedSnapshotWithDaemon()` probes multiple persisted 0-session rooms in parallel (`Promise.all`) using `{ checkGit: false }` (1 HTTP call per dir instead of 2 sequential calls).
-- [ ] `buildDockerHostFallbackUrl("http://192.168.1.50:4096/api/project")` and `buildDockerHostFallbackUrl("http://10.0.0.5:4096/api/project")` return `null`, while `buildDockerHostFallbackUrl("http://127.0.0.1:4096/api/project")` still returns `http://host.docker.internal:4096/api/project`.
-- [ ] All source files under `src/` remain `<= 400` lines (`tests/00-architecture-invariants.test.ts`).
+- [x] `discoverLocalOpenCodeService()` completes in `<= 1000ms` even when an unreachable candidate URL hangs indefinitely, and returns `urls` from `/api/info`.
+- [x] Switching between two `*.opentunnel.xyz` machines twice within 60 seconds invokes `discoverService()` at most once (both positive and negative discovery results cached 60s).
+- [x] `runSweepAllLocations()` starts `getProjects()` and `getLocations()` concurrently (without waiting for `getProjects()` to resolve first) and skips `/api/worktree?projectID=global`.
+- [x] `reconcilePersistedSnapshotWithDaemon()` probes multiple persisted 0-session rooms in parallel (`Promise.all`) using `{ checkGit: false }` (1 HTTP call per dir instead of 2 sequential calls).
+- [x] `buildDockerHostFallbackUrl("http://192.168.1.50:4096/api/project")` and `buildDockerHostFallbackUrl("http://10.0.0.5:4096/api/project")` return `null`, while `buildDockerHostFallbackUrl("http://127.0.0.1:4096/api/project")` still returns `http://host.docker.internal:4096/api/project`.
+- [x] All source files under `src/` remain `<= 400` lines (`tests/00-architecture-invariants.test.ts`).
+
+## Answer
+
+Implemented in `src/ingress/service-discovery.ts`, `src/server/machine-switch-reconciler.ts`, `src/ingress/daemon-http-client.ts`, `src/ingress/opencode-client-adapter.ts`, `src/ingress/daemon-workspace-ops.ts`, `src/ingress/daemon-types.ts`, `src/server/snapshot-reconciler.ts`, and `src/ingress/opencode-pair-redeemer.ts`. Verified via `tests/55-fast-remote-machine-switching.test.ts` (Slices 3A–3B).

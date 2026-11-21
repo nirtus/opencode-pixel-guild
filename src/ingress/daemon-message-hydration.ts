@@ -83,6 +83,7 @@ export async function hydrateSessionMessages(
   sessionId: string,
   query: string,
   locHeaders: Record<string, string>,
+  limit = 100,
 ): Promise<SessionMessageHydration | null> {
   const messages = await fetchJson<
     Array<{
@@ -96,7 +97,7 @@ export async function hydrateSessionMessages(
       skills?: Array<string | { id?: string; name?: string }>;
       parts?: RawMessagePart[]; content?: RawMessagePart[];
     }>
-  >(`/api/session/${encodeURIComponent(sessionId)}/message${query}&limit=100&order=desc`, locHeaders);
+  >(`/api/session/${encodeURIComponent(sessionId)}/message${query}&limit=${limit}&order=desc`, locHeaders);
 
   if (!Array.isArray(messages)) return null;
 

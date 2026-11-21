@@ -187,7 +187,7 @@ To install, configure, and verify **`graphify`** (knowledge graph CLI, git hooks
 
 - Run `opencode pair --remote` (or `opencode pair --url http://<LAN-IP>:4096`) on your OpenCode host.
 - In the **OpenCode Machines** tab (`+ Pair`), paste the pairing link/QR text, scan the QR code with your camera, or upload/paste a QR screenshot, then click **Redeem & Pair Machine**.
-- Click any paired machine pill in the top header bar to switch your active **Workshop Room** to that host—atomically isolating and reconciling all **Workshop Rooms**, `0`-session registered worlds, **Guild Characters**, **OpenCode Agent Modes**, **Lifetime Tribute**, and **Goal Assembly Site** / **Assembly Commit Ledger** state to the selected machine without cross-machine project or cache leakage—or click **Detect & Pair Local OpenCode** for local auto-discovery.
+- Click any paired machine pill in the top header bar to switch your active **Workshop Room** to that host—immediately displaying `⏳ Switching...`, aborting in-flight requests to the previous host, running parallel discovery + two-phase bounded session hydration + non-blocking compound single-shell remote Git enrichment over your existing live SSE stream with machine-scoped warm caches, and atomically isolating and reconciling all **Workshop Rooms**, `0`-session registered worlds, **Guild Characters**, **OpenCode Agent Modes**, **Lifetime Tribute**, and **Goal Assembly Site** / **Assembly Commit Ledger** state without cross-machine leakage—or click **Detect & Pair Local OpenCode** for local auto-discovery.
 
 ---
 

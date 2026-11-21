@@ -7,6 +7,7 @@ export * from "./daemon-location-state.ts";
 export * from "./daemon-http-client.ts";
 export * from "./opencode-client-adapter.ts";
 export * from "./git-working-tree.ts";
+export { setActiveGitCacheScope } from "./git-status-cache.ts";
 export { clearRemoteDirectoryRunners } from "./remote-git-ops.ts";
 export * from "./issue-tracker-scanner.ts";
 export * from "./qr-matrix-decoder.ts";

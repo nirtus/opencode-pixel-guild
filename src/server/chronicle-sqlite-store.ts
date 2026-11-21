@@ -182,39 +182,20 @@ export function createGuildChronicleStore(options: CreateGuildChronicleStoreOpti
     }
   }
 
+  function mapStoredMessageRow(r: { message_id: string; role: string; text: string; attached_skills_json: string; created_at_ms: number; updated_at_ms: number }): SessionChatMessage {
+    let attachedSkills: string[] = [];
+    try { attachedSkills = JSON.parse(r.attached_skills_json || "[]"); } catch { attachedSkills = []; }
+    return { messageId: r.message_id, role: r.role === "user" ? "user" : "assistant", text: r.text, attachedSkills, createdAtMs: r.created_at_ms, updatedAtMs: r.updated_at_ms };
+  }
+
   function getSessionMessages(operatorId: string, sessionId: string): SessionChatMessage[] {
     if (closed || !operatorId || !sessionId) return [];
     try {
       const rows = db
-        .prepare(
-          `SELECT message_id, role, text, attached_skills_json, created_at_ms, updated_at_ms
-           FROM session_messages
-           WHERE operator_id = ? AND session_id = ?
-           ORDER BY created_at_ms ASC`,
-        )
-        .all(operatorId, sessionId) as Array<{
-        message_id: string;
-        role: string;
-        text: string;
-        attached_skills_json: string;
-        created_at_ms: number;
-        updated_at_ms: number;
-      }>;
-      return rows.map((r) => {
-        let attachedSkills: string[] = [];
-        try { attachedSkills = JSON.parse(r.attached_skills_json || "[]"); } catch { attachedSkills = []; }
-        return {
-          messageId: r.message_id,
-          role: r.role === "user" ? "user" : "assistant",
-          text: r.text,
-          attachedSkills,
-          createdAtMs: r.created_at_ms,
-          updatedAtMs: r.updated_at_ms,
-        };
-      });
-    } catch {
-      return [];
-    }
+        .prepare("SELECT message_id, role, text, attached_skills_json, created_at_ms, updated_at_ms FROM session_messages WHERE operator_id = ? AND session_id = ? ORDER BY created_at_ms ASC")
+        .all(operatorId, sessionId) as Array<{ message_id: string; role: string; text: string; attached_skills_json: string; created_at_ms: number; updated_at_ms: number }>;
+      return rows.map(mapStoredMessageRow);
+    } catch { return []; }
   }
 
   function saveSnapshot(operatorId: string, snapshot: GuildSnapshot): void {
@@ -318,8 +299,19 @@ export function createGuildChronicleStore(options: CreateGuildChronicleStoreOpti
         if (!rooms[gate.roomId] || !characters[gate.sessionId]) delete questGates[gateId];
       }
 
+      const msgsBySession = new Map<string, SessionChatMessage[]>();
+      if (Object.keys(characters).length > 0) {
+        const allMsgRows = db
+          .prepare("SELECT session_id, message_id, role, text, attached_skills_json, created_at_ms, updated_at_ms FROM session_messages WHERE operator_id = ? ORDER BY session_id ASC, created_at_ms ASC")
+          .all(operatorId) as Array<{ session_id: string; message_id: string; role: string; text: string; attached_skills_json: string; created_at_ms: number; updated_at_ms: number }>;
+        for (const r of allMsgRows) {
+          let bucket = msgsBySession.get(r.session_id);
+          if (!bucket) { bucket = []; msgsBySession.set(r.session_id, bucket); }
+          bucket.push(mapStoredMessageRow(r));
+        }
+      }
       for (const ch of Object.values(characters)) {
-        const storedMsgs = getSessionMessages(operatorId, ch.sessionId);
+        const storedMsgs = msgsBySession.get(ch.sessionId) ?? [];
         if (storedMsgs.length > 0) {
           ch.messages = [];
           reconcileCharacterMessages(ch, storedMsgs);

@@ -314,8 +314,10 @@ async function connectCompanionBackend(): Promise<void> {
   openLiveEventStream();
 }
 
-window.addEventListener("guild-operator-changed", () => {
-  openLiveEventStream();
+const syncAfterMachineOrOperatorSwitch = (reopenStream: boolean): void => {
+  if (reopenStream || !activeEventSource || activeEventSource.readyState === EventSource.CLOSED) {
+    openLiveEventStream();
+  }
   syncViewportCameraFit(canvas, true);
   reconcileTopBar(scheduleHudSync);
   reconcileSidePanel(scheduleHudSync);
@@ -325,7 +327,9 @@ window.addEventListener("guild-operator-changed", () => {
     headlessFramesRendered = 0;
     scheduleNextCanvasFrame();
   }
-});
+};
+window.addEventListener("guild-operator-changed", () => syncAfterMachineOrOperatorSwitch(true));
+window.addEventListener("guild-machine-changed", () => syncAfterMachineOrOperatorSwitch(false));
 
 initTopBarControls(scheduleHudSync);
 initSummonAdventurerControls(scheduleHudSync);

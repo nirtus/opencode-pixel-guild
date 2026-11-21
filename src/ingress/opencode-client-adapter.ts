@@ -1,8 +1,9 @@
 import { isDeletedHostDirectory, isSystemRootOrHomeDirectory, normalizeLocationDirectory } from "../state/world-reducer.ts";
 import { createSweepDigestTracker } from "./adapter-sweep-digests.ts";
-import { appendReconnectedActiveToolEvents, type DiscoveredLocationMeta, mergeLocationReconciliationEntry } from "./adapter-sweep-helpers.ts";
+import { appendReconnectedActiveToolEvents, buildSweepTasksEvent, type DiscoveredLocationMeta, mergeLocationReconciliationEntry } from "./adapter-sweep-helpers.ts";
 import { buildHydratedSessionEvents } from "./daemon-message-hydration.ts";
-import { invalidateGitStatusCache, isLocalGitRepository, scanGitStatusAsync } from "./git-status-scanner.ts";
+import { getCachedGitStatus, invalidateGitStatusCache, isLocalGitRepository, scanGitStatusAsync } from "./git-status-scanner.ts";
+import { setActiveGitCacheScope } from "./git-status-cache.ts";
 import { deriveProjectTaskProgress, invalidateTaskProgressCache } from "./issue-tracker-scanner.ts";
 import type { LocationReconciliationSnapshot, ReconnectLogEntry, TelemetryEvent } from "../types/domain.ts";
 import type { CreateOpenCodeClientAdapterOptions, DeleteRoomResourcesResult, OpenCodeClientAdapter } from "./daemon-types.ts";
@@ -60,7 +61,7 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
   let queuedSweepPromise: Promise<void> | null = null;
   let queuedSweepReconnect = false;
 
-  async function sweepAllLocations(isReconnect = false): Promise<void> {
+  async function sweepAllLocations(isReconnect = false, sweepOpts?: { deferGitHydration?: boolean; hydrationMode?: "fast" | "full" }): Promise<void> {
     if (activeSweepPromise) {
       queuedSweepReconnect = queuedSweepReconnect || isReconnect;
       if (!queuedSweepPromise) {
@@ -74,13 +75,13 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
       }
       return queuedSweepPromise;
     }
-    activeSweepPromise = runSweepAllLocations(isReconnect).finally(() => {
+    activeSweepPromise = runSweepAllLocations(isReconnect, sweepOpts).finally(() => {
       activeSweepPromise = null;
     });
     return activeSweepPromise;
   }
 
-  async function runSweepAllLocations(isReconnect = false): Promise<void> {
+  async function runSweepAllLocations(isReconnect = false, sweepOpts?: { deferGitHydration?: boolean; hydrationMode?: "fast" | "full" }): Promise<void> {
     const epoch = runEpoch;
     if (isStale(epoch)) return;
     if (isReconnect) options.client.clearCaches?.();
@@ -91,7 +92,10 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
     const discoveredDirs = new Map<string, DiscoveredLocationMeta>();
     const projectRootById = new Map<string, string>();
 
-    const projects = await options.client.getProjects();
+    let projects: Awaited<ReturnType<typeof options.client.getProjects>>;
+    let locations: Awaited<ReturnType<typeof options.client.getLocations>>;
+    try { [projects, locations] = await Promise.all([options.client.getProjects(), options.client.getLocations()]); }
+    catch (err) { if (isStale(epoch)) return; throw err; }
     if (isStale(epoch)) return;
     for (const proj of projects) {
       if (isDeletedHostDirectory(proj.directory, undefined, daemonUrl)) continue;
@@ -107,9 +111,6 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
         discoveredDirs.set(normSandbox, { directory: normSandbox, rawDirectory: sandboxDir, projectId: proj.id, projectName: undefined, isWorktree: true, parentProjectDirectory: rootDir });
       }
     }
-
-    const locations = await options.client.getLocations();
-    if (isStale(epoch)) return;
     for (const loc of locations) {
       if (isDeletedHostDirectory(loc.directory, undefined, daemonUrl)) continue;
       const normDir = normalizeLocationDirectory(loc.directory);
@@ -138,28 +139,21 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
     const locEntries = await Promise.all(
       activeDiscovered.map(async (locMeta) => {
         knownRoomMeta.set(locMeta.directory, { rawDirectory: locMeta.rawDirectory, projectId: locMeta.projectId, projectName: locMeta.projectName, isWorktree: locMeta.isWorktree });
-        const state = await options.client.getLocationState(locMeta.rawDirectory);
+        const state = await options.client.getLocationState(locMeta.rawDirectory, { hydrationMode: sweepOpts?.hydrationMode ?? "full" });
         return { locMeta, state };
       }),
     );
     if (isStale(epoch)) return;
 
-    for (const { locMeta, state } of locEntries) {
-      if (
-        deletedRoomDirs.has(locMeta.directory) ||
-        (locMeta.parentProjectDirectory && deletedRoomDirs.has(locMeta.parentProjectDirectory))
-      ) {
-        continue;
-      }
-      const totalSessionsInLoc =
-        (state.sessions ?? []).filter((s) => !deletedSessionIds.has(s.sessionId)).length +
-        (state.activeSessionIds ?? []).filter((id) => !deletedSessionIds.has(id)).length;
+    let batchDispatched = false;
+    const pendingGitJobs: Array<{ rawDir: string; dir: string; targetCanonDir: string; ttlMs: number; hasActive: boolean }> = [];
+    const buildTasksEvent = (rawDir: string, dir: string, targetCanonDir: string, ts: number): TelemetryEvent | null =>
+      buildSweepTasksEvent({ rawDir, dir, targetCanonDir, timestampMs: ts, isReconnect, sweepDigests, snapshot: activeSnapshotGetter?.() });
 
-      if (
-        (isSystemRootOrHomeDirectory(locMeta.directory) ||
-          locMeta.directory.includes("/.local/share/opencode/worktree/")) &&
-        totalSessionsInLoc === 0
-      ) continue;
+    for (const { locMeta, state } of locEntries) {
+      if (deletedRoomDirs.has(locMeta.directory) || (locMeta.parentProjectDirectory && deletedRoomDirs.has(locMeta.parentProjectDirectory))) continue;
+      const totalSessionsInLoc = (state.sessions ?? []).filter((s) => !deletedSessionIds.has(s.sessionId)).length + (state.activeSessionIds ?? []).filter((id) => !deletedSessionIds.has(id)).length;
+      if ((isSystemRootOrHomeDirectory(locMeta.directory) || locMeta.directory.includes("/.local/share/opencode/worktree/")) && totalSessionsInLoc === 0) continue;
 
       sweepEvents.push({
         type: "location.discovered", timestampMs: now, locationDirectory: locMeta.directory,
@@ -182,23 +176,13 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
         });
       }
 
-      const activeSetForTasks = new Set(state.activeSessionIds ?? []);
-      await scanGitStatusAsync(locMeta.rawDirectory, { ttlMs: activeSetForTasks.size > 0 ? 15_000 : 60_000 });
-      if (isStale(epoch)) return;
-      const taskProgress = deriveProjectTaskProgress(locMeta.rawDirectory);
-      if (targetCanonDir === locMeta.directory || taskProgress.source === "docs/features") {
-        const isLocalGit = isLocalGitRepository(locMeta.rawDirectory);
-        const prevProg = activeSnapshotGetter?.().rooms?.[targetCanonDir]?.taskProgress;
-        const effectiveTaskProgress =
-          isReconnect && taskProgress.totalTasks === 0 && prevProg?.totalTasks === 0 && typeof prevProg.hydratedAtMs === "number"
-            ? { ...taskProgress, hydratedAtMs: prevProg.hydratedAtMs }
-            : taskProgress;
-        if (sweepDigests.shouldEmitTaskProgress(targetCanonDir, effectiveTaskProgress, prevProg, isLocalGit, isReconnect)) {
-          sweepEvents.push({
-            type: "tasks.hydrated", timestampMs: now, ...(isLocalGit ? { roomId: targetCanonDir } : {}),
-            locationDirectory: targetCanonDir, taskProgress: effectiveTaskProgress,
-          });
-        }
+      const activeCount = (state.activeSessionIds ?? []).length;
+      const ttlMs = activeCount > 0 ? 15_000 : 60_000;
+      if (getCachedGitStatus(locMeta.rawDirectory, ttlMs, daemonUrl)) {
+        const cachedTaskEv = buildTasksEvent(locMeta.rawDirectory, locMeta.directory, targetCanonDir, now);
+        if (cachedTaskEv) sweepEvents.push(cachedTaskEv);
+      } else {
+        pendingGitJobs.push({ rawDir: locMeta.rawDirectory, dir: locMeta.directory, targetCanonDir, ttlMs, hasActive: activeCount > 0 });
       }
 
       let sessionLogs: Record<string, ReconnectLogEntry[]> | undefined = state.sessionLogs ? { ...state.sessionLogs } : undefined;
@@ -225,12 +209,33 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
       });
     }
 
+    if (pendingGitJobs.length > 0) {
+      pendingGitJobs.sort((a, b) => Number(b.hasActive) - Number(a.hasActive));
+      const gitAllPromise = Promise.all(
+        pendingGitJobs.map(async (job) => {
+          await scanGitStatusAsync(job.rawDir, { ttlMs: job.ttlMs, daemonUrl });
+          if (isStale(epoch) || deletedRoomDirs.has(job.dir) || deletedRoomDirs.has(job.targetCanonDir)) return;
+          invalidateTaskProgressCache(job.rawDir);
+          const taskEv = buildTasksEvent(job.rawDir, job.dir, job.targetCanonDir, Date.now());
+          if (!taskEv) return;
+          if (!batchDispatched) sweepEvents.push(taskEv);
+          else activeSink?.(taskEv);
+        }),
+      ).catch(() => {});
+      if (sweepOpts?.deferGitHydration) {
+        await Promise.race([gitAllPromise, new Promise<void>((r) => setTimeout(r, 80))]);
+      } else {
+        await gitAllPromise;
+      }
+    }
+
     if (reconciliationLocations.length > 0 || isReconnect) {
       sweepEvents.push({ type: "stream.reconnected", timestampMs: now, locations: reconciliationLocations });
       appendReconnectedActiveToolEvents(sweepEvents, reconciliationLocations, now);
     }
 
     if (isStale(epoch)) return;
+    batchDispatched = true;
     if (sweepEvents.length > 0) {
       if (activeBatchSink) activeBatchSink(sweepEvents);
       else for (const ev of sweepEvents) activeSink?.(ev);
@@ -365,13 +370,15 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
       if (initialSnap?.deletedSessionIds?.length) evictDeletedSessions(initialSnap.deletedSessionIds);
       daemonUrl = options.discoverDaemon ? (await options.discoverDaemon()).url : "http://127.0.0.1:4096";
       if (isStale(epoch)) return;
+      setActiveGitCacheScope(daemonUrl);
       sink({ type: "adapter.switched", timestampMs: Date.now(), adapter: "opencode-client", daemonUrl });
-      await sweepAllLocations(false);
+      await sweepAllLocations(false, { deferGitHydration: true, hydrationMode: "fast" });
       if (isStale(epoch)) return;
       await startLiveSubscription();
     },
     stop() {
       isStopped = true; runEpoch += 1; sweepDigests.clear();
+      options.client.abortAll?.();
       if (unsubscribeEvents) { unsubscribeEvents(); unsubscribeEvents = null; }
       activeSink = null; activeBatchSink = null; activeSnapshotGetter = null;
     },

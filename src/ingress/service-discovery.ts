@@ -13,6 +13,7 @@ export interface DiscoveredOpenCodeService {
   url: string;
   password?: string;
   headers: Record<string, string>;
+  urls?: string[];
 }
 
 export interface DiscoverOpenCodeServiceOptions {
@@ -221,31 +222,40 @@ export async function discoverLocalOpenCodeService(
     }
   }
 
-  for (const candidate of candidates) {
-    const url = candidate.url.replace(/\/+$/, "");
-    const headers: Record<string, string> = {};
-    if (candidate.password) {
-      headers.Authorization =
-        "Basic " +
-        Buffer.from(`opencode:${candidate.password}`).toString("base64");
-    }
-    try {
-      const res = await fetchFn(`${url}/api/info`, {
-        headers: {
-          Accept: "application/json",
-          ...headers,
-        },
-      });
-      if (res.ok) {
-        return {
-          url,
-          password: candidate.password,
-          headers,
-        };
-      }
-    } catch {
-      // Try next candidate
-    }
+  const probeCtrl = new AbortController();
+  const probeTimeout = setTimeout(() => probeCtrl.abort(), 800);
+  try {
+    return await Promise.any(
+      candidates.map(async (candidate): Promise<DiscoveredOpenCodeService> => {
+        const url = candidate.url.replace(/\/+$/, "");
+        const headers: Record<string, string> = {};
+        if (candidate.password) {
+          headers.Authorization =
+            "Basic " +
+            Buffer.from(`opencode:${candidate.password}`).toString("base64");
+        }
+        const res = await fetchFn(`${url}/api/info`, {
+          headers: { Accept: "application/json", ...headers },
+          signal: probeCtrl.signal,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        let urls: string[] | undefined;
+        try {
+          const info = (await res.json()) as { urls?: unknown };
+          if (Array.isArray(info?.urls)) {
+            urls = info.urls.filter((u): u is string => typeof u === "string" && Boolean(u.trim()));
+          }
+        } catch {
+          // /api/info body may be empty or non-JSON in mocks
+        }
+        probeCtrl.abort();
+        return { url, password: candidate.password, headers, ...(urls ? { urls } : {}) };
+      }),
+    );
+  } catch {
+    // All candidates failed or timed out
+  } finally {
+    clearTimeout(probeTimeout);
   }
 
   throw new Error(

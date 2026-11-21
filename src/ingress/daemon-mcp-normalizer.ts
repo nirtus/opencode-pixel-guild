@@ -195,7 +195,11 @@ interface RawTuiSessionPayload {
   pinned?: Array<RawTuiTabEntry | string>;
 }
 
-const TUI_TABS_TTL_MS = 2_000;
+const TUI_TABS_TTL_MS = 15_000;
+const tuiOpenSessionsByRootUrl = new Map<
+  string,
+  { expiresAtMs: number; sessionIds: Set<string>; inFlight?: Promise<Set<string>> }
+>();
 const tuiOpenSessionsByFetcher = new WeakMap<
   object,
   { expiresAtMs: number; sessionIds: Set<string>; inFlight?: Promise<Set<string>> }
@@ -225,9 +229,11 @@ function hasTuiTabsShape(val: unknown): val is RawTuiTabsPayload {
 export async function fetchOpenTuiSessionIds(
   fetchJson: <T>(path: string, extraHeaders?: Record<string, string>) => Promise<T | null>,
   daemonDir: string,
+  rootUrl?: string,
 ): Promise<Set<string>> {
   const nowMs = Date.now();
-  const cached = tuiOpenSessionsByFetcher.get(fetchJson);
+  const scopeKey = rootUrl ? rootUrl.trim().replace(/\/+$/, "").toLowerCase() : "";
+  const cached = scopeKey ? tuiOpenSessionsByRootUrl.get(scopeKey) : tuiOpenSessionsByFetcher.get(fetchJson);
   if (cached) {
     if (cached.inFlight) return cached.inFlight;
     if (cached.expiresAtMs > nowMs) return cached.sessionIds;
@@ -269,17 +275,18 @@ export async function fetchOpenTuiSessionIds(
       collectTabListSessionIds((rawSessionDefault as RawTuiSessionPayload).pinned, sessionIds);
     }
 
-    tuiOpenSessionsByFetcher.set(fetchJson, {
-      expiresAtMs: Date.now() + TUI_TABS_TTL_MS,
-      sessionIds,
-    });
+    const doneEntry = { expiresAtMs: Date.now() + TUI_TABS_TTL_MS, sessionIds };
+    if (scopeKey) tuiOpenSessionsByRootUrl.set(scopeKey, doneEntry);
+    else tuiOpenSessionsByFetcher.set(fetchJson, doneEntry);
     return sessionIds;
   })();
 
-  tuiOpenSessionsByFetcher.set(fetchJson, {
+  const pendingEntry = {
     expiresAtMs: nowMs + TUI_TABS_TTL_MS,
     sessionIds: cached?.sessionIds ?? new Set<string>(),
     inFlight: loadPromise,
-  });
+  };
+  if (scopeKey) tuiOpenSessionsByRootUrl.set(scopeKey, pendingEntry);
+  else tuiOpenSessionsByFetcher.set(fetchJson, pendingEntry);
   return loadPromise;
 }

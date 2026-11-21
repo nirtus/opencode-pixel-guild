@@ -1,9 +1,13 @@
 import type {
+  GuildSnapshot,
   LocationReconciliationSnapshot,
   ReconnectLogEntry,
   TelemetryEvent,
 } from "../types/domain.ts";
+import type { SweepDigestTracker } from "./adapter-sweep-digests.ts";
 import type { OpenCodeDaemonLocationPayload } from "./daemon-types.ts";
+import { isLocalGitRepository } from "./git-status-scanner.ts";
+import { deriveProjectTaskProgress } from "./issue-tracker-scanner.ts";
 
 export interface DiscoveredLocationMeta {
   directory: string;
@@ -114,4 +118,34 @@ export function appendReconnectedActiveToolEvents(
       }
     }
   }
+}
+
+export function buildSweepTasksEvent(input: {
+  rawDir: string;
+  dir: string;
+  targetCanonDir: string;
+  timestampMs: number;
+  isReconnect: boolean;
+  sweepDigests: SweepDigestTracker;
+  snapshot?: GuildSnapshot;
+}): TelemetryEvent | null {
+  const { rawDir, dir, targetCanonDir, timestampMs, isReconnect, sweepDigests, snapshot } = input;
+  const taskProgress = deriveProjectTaskProgress(rawDir);
+  if (targetCanonDir !== dir && taskProgress.source !== "docs/features") return null;
+  const isLocalGit = isLocalGitRepository(rawDir);
+  const prevProg = snapshot?.rooms?.[targetCanonDir]?.taskProgress;
+  const effectiveTaskProgress =
+    isReconnect && taskProgress.totalTasks === 0 && prevProg?.totalTasks === 0 && typeof prevProg.hydratedAtMs === "number"
+      ? { ...taskProgress, hydratedAtMs: prevProg.hydratedAtMs }
+      : taskProgress;
+  if (!sweepDigests.shouldEmitTaskProgress(targetCanonDir, effectiveTaskProgress, prevProg, isLocalGit, isReconnect)) {
+    return null;
+  }
+  return {
+    type: "tasks.hydrated",
+    timestampMs,
+    ...(isLocalGit ? { roomId: targetCanonDir } : {}),
+    locationDirectory: targetCanonDir,
+    taskProgress: effectiveTaskProgress,
+  };
 }
