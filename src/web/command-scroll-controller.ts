@@ -30,6 +30,13 @@ export function getLastSummonedSessionId(): string | null {
   return lastSummonedSessionId;
 }
 
+export function pruneCommandScrollSessionCaches(hasSession: (sessionId: string) => boolean): void {
+  for (const sid of draftAgentModeBySession.keys()) if (!hasSession(sid)) draftAgentModeBySession.delete(sid);
+  for (const sid of clientViewedAtBySession.keys()) if (!hasSession(sid)) clientViewedAtBySession.delete(sid);
+  for (const sid of dispatchedViewIdleAtBySession.keys()) if (!hasSession(sid)) dispatchedViewIdleAtBySession.delete(sid);
+  for (const sid of acknowledgedIdleAtBySession.keys()) if (!hasSession(sid)) acknowledgedIdleAtBySession.delete(sid);
+}
+
 export function syncClientViewedSessionsToSnapshot(snapshot: GuildSnapshot | null | undefined): void {
   if (!snapshot?.characters) return;
   for (const [sid, viewedTs] of clientViewedAtBySession.entries()) {

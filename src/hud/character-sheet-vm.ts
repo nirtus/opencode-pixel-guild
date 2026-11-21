@@ -14,7 +14,7 @@ import {
   type GuildSnapshot,
   type ToolExecutionRecord,
 } from "../types/domain.ts";
-import { buildAdventurerDispatchLogViewModel } from "./chat-markdown-formatter.ts";
+import { buildAdventurerDispatchLogViewModel } from "./dispatch-log-cache.ts";
 import {
   formatAgentDisplayName,
   formatUsdCost,
@@ -58,9 +58,14 @@ export const DEFAULT_GUILD_SKILL_IDS: readonly string[] = Object.freeze([
   "pr",
 ]);
 
+export interface CharacterSheetBuildOptions {
+  readonly includeDispatchLog?: boolean;
+}
+
 export function buildCharacterSheetViewModel(
   snapshot: GuildSnapshot,
   sessionId: string,
+  options?: CharacterSheetBuildOptions,
 ): CharacterSheetViewModel {
   const character = snapshot.characters[sessionId];
   if (!character) {
@@ -317,16 +322,19 @@ export function buildCharacterSheetViewModel(
   });
 
   const messages = Object.freeze([...(character.messages ?? [])]);
-  const dispatchLog = buildAdventurerDispatchLogViewModel({
-    sessionId: character.sessionId,
-    agentDisplayName: agentBadge.displayName,
-    modelId: character.modelId,
-    overheadLabel,
-    isBusy,
-    messages,
-    lastUserPromptText: character.lastUserPromptText ?? null,
-    lastAssistantText: character.lastAssistantText ?? null,
-  });
+  const dispatchLog =
+    options?.includeDispatchLog === false
+      ? undefined
+      : buildAdventurerDispatchLogViewModel({
+          sessionId: character.sessionId,
+          agentDisplayName: agentBadge.displayName,
+          modelId: character.modelId,
+          overheadLabel,
+          isBusy,
+          messages,
+          lastUserPromptText: character.lastUserPromptText ?? null,
+          lastAssistantText: character.lastAssistantText ?? null,
+        });
 
   const projectHeraldry = resolveProjectHeraldry(character, snapshot);
 

@@ -19,6 +19,7 @@ export const SUBAGENT_RETURN_TRANSIT_MS = 1_800;
 export interface CreateWorldStateReducerOptions {
   initialAdapter?: TelemetryAdapterKind;
   daemonUrl?: string | null;
+  onBeforeArchiveCharacter?: (char: CharacterState) => void;
 }
 
 export interface HydratedToolRecordInput {
@@ -119,6 +120,7 @@ export interface InternalWorldStoreState {
   nextToolSequence?: number;
   activeAdapter: TelemetryAdapterKind;
   daemonUrl: string | null;
+  onBeforeArchiveCharacter?: (char: CharacterState) => void;
 }
 
 export interface MutationCollector {

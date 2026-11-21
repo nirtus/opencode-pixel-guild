@@ -8,12 +8,21 @@ export {
   DEFAULT_GUILD_SKILL_IDS,
 } from "./character-sheet-vm.ts";
 export {
-  buildAdventurerDispatchLogViewModel,
   buildFenceSafePreviewSlice,
   formatChatMarkdownHtml,
   formatInlineMarkdown,
   sanitizeAndExtractSkillsFromChatText,
 } from "./chat-markdown-formatter.ts";
+export {
+  renderMermaidBlockHtml,
+  renderMermaidDiagramSvg,
+} from "./mermaid-renderer.ts";
+export {
+  buildAdventurerDispatchLogViewModel,
+  pruneDispatchLogSessionCaches,
+  type DispatchLogBuildInput,
+  type DispatchLogBuildOptions,
+} from "./dispatch-log-cache.ts";
 export { buildGuildMasterLedgerViewModel } from "./guild-ledger-vm.ts";
 export * from "./hud-formatters.ts";
 export * from "./hud-character-types.ts";

@@ -53,7 +53,17 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
     } = {},
   ): OperatorWorkspaceRuntime {
     const profile = createInitialOperatorProfile(operatorId, input);
-    const reducer = createWorldStateReducer({ initialAdapter: "opencode-client", daemonUrl: profile.daemonUrl });
+    let lastKnownDaemonUrl: string | null = profile.daemonUrl;
+    let isPairingInFlight = () => false;
+    let getStableDaemonUrl = () => lastKnownDaemonUrl ?? profile.daemonUrl;
+    const reducer = createWorldStateReducer({
+      initialAdapter: "opencode-client",
+      daemonUrl: profile.daemonUrl,
+      onBeforeArchiveCharacter: (char) => {
+        if (!chronicleStore || isPairingInFlight() || !char.messages?.length) return;
+        chronicleStore.upsertSessionMessages(getStoreKey(getStableDaemonUrl()), char.sessionId, char.messages);
+      },
+    });
     const getStoreKey = (url?: string | null) => getMachineScopeKey(operatorId, url ?? reducer.getSnapshot().daemonUrl ?? profile.daemonUrl);
     const initKey = getStoreKey(profile.daemonUrl);
     const persistedSnap = chronicleStore?.loadSnapshot(initKey) ?? (initKey !== operatorId && profile.pairedMachines.length <= 1 ? chronicleStore?.loadSnapshot(operatorId) : null);
@@ -77,6 +87,8 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
       flushPendingSave,
       persistAll,
     });
+    isPairingInFlight = () => pairingController.isPairingInFlight();
+    getStableDaemonUrl = () => pairingController.getLastStableDaemonUrl() ?? lastKnownDaemonUrl ?? profile.daemonUrl;
     const scheduleSnapshotSave = () => {
       if (!chronicleStore || saveTimer || pairingController.isPairingInFlight()) return;
       const scopedUrl = reducer.getSnapshot().daemonUrl ?? profile.daemonUrl;
@@ -92,6 +104,7 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
       saveTimer.unref?.();
     };
     const unsubscribeReducer = reducer.subscribe((emission: GuildStateEmission) => {
+      lastKnownDaemonUrl = emission.snapshot.daemonUrl;
       if (emission.delta.kind === "session.deleted" || emission.delta.kind === "room.deleted") {
         if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
         if (!pairingController.isPairingInFlight()) {
@@ -108,6 +121,7 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
       pairDaemon: (targetUrl, password) => pairingController.pairDaemon(targetUrl, password),
       resetDisconnected: () => {
         if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+        lastKnownDaemonUrl = null;
         pairingController.resetDisconnected();
         runtime.daemonClient = undefined;
       },
@@ -117,6 +131,7 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
           sseClients: runtime.sseClients,
           getReducer: () => runtime.reducer,
           getActiveAdapter: () => runtime.reducer.getSnapshot().activeAdapter,
+          getStoredSessionMessages: (sessionId: string) => chronicleStore.getSessionMessages(getStoreKey(), sessionId),
           activatePreset(presetId: DemoScenarioPresetId): DemoScenarioRunResult {
             if (!(presetId in DEMO_SCENARIO_PRESETS)) throw new Error(`Unknown demo scenario preset: ${String(presetId)}`);
             if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }

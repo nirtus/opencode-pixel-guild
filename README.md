@@ -40,6 +40,8 @@
 - **Autonomous Character Choreography**: **Guild Adventurers** enter through the **South Swinging Guild Door**, walk along smooth floor paths, pace in contemplative circuits while thinking, haul **Resource Cargo** from the **Resource Stockpile**, and work at specialized **Preparation Stations**.
 - **Outdoor Debugging Hunts & Monster Combat**: Debugging sessions venture into the **Dungeon Wilds**, cast **Lantern Flares** during searches to clear **Fog of War**, and fight their bound **Bug Monster** until tests pass.
 - **Interactive Command & Git Control**: Prompt idle heroes, steer or stop active turns, switch **OpenCode Agent Modes** live, attach `@skill` grimoires, answer permission/question **Quest Gates**, and stage or commit Git changes in the **Assembly Commit Ledger**.
+- **Inline Mermaid Diagram Graphics**: Fenced ` ```mermaid ` blocks inside assistant/user responses in the **Character Sheet** (`Chat` tab) and **Quest Gate** cards render locally as crisp, XSS-safe inline SVG graphics (`flowchart`/`graph`, `sequenceDiagram`, `stateDiagram-v2`, `classDiagram`, `erDiagram`, and `pie`) with zero external dependencies, a collapsible `Source` viewer, and graceful streaming fallback.
+- **Long-Session 30 FPS Runtime Stability**: Coalesced streaming SSE broadcasts, delta-only Activity Ticker logs, lazy per-turn memoized Markdown rendering, `WeakMap`-cached heraldry & underfoot nameplate rendering, bounded `Toil Queue` tool caches, automatic client cache pruning, and pre-persistence `Archived` payload compaction (with on-demand SQLite transcript re-hydration) keep frame pacing and memory flat across multi-hour, multi-project sessions.
 
 ---
 
@@ -48,10 +50,10 @@
 | Split Chamber View (`65%` Workshop Room / `35%` Dungeon Wilds) | Dungeon Wilds & Per-Bug Monster Combat |
 | :---: | :---: |
 | ![Split Chamber Choreography](./docs/images/smooth-rounded-pathing-choreography.png) | ![Dungeon Wilds Bug Combat](./docs/images/per-bug-monster-combat-targeting-wilds.png) |
-| **Character Sheet (`Chat` Dispatch Log & Result Review)** | **Assembly Commit Ledger (Interactive Git CRUD)** |
-| ![Character Sheet Dispatch Log](./docs/images/unviewed-session-result-sheet.png) | ![Assembly Commit Ledger](./docs/images/verified-desktop-02-ledger-assembly-commit.png) |
-| **4-Scene Intro Tour (`/?demo=intro-tour` Full-Bleed Sizzle)** | **YouTube 1080p Master & Chapters** |
-| ![Intro Demo Tour Scene 4 Combat](./docs/images/intro-demo-video.png) | [🎬 `opencode-pixel-guild-intro.mp4` (1080p 30 FPS)](./docs/video/opencode-pixel-guild-intro.mp4) · [📖 YouTube Chapters](./docs/video/youtube-publish-guide.md) |
+| **Character Sheet (`Chat` Dispatch Log & Result Review)** | **Inline Mermaid Diagram Graphics (Flowchart, Sequence & Pie SVG)** |
+| ![Character Sheet Dispatch Log](./docs/images/unviewed-session-result-sheet.png) | ![Mermaid Diagram Graphics](./docs/images/mermaid-chat-diagrams.png) |
+| **Assembly Commit Ledger (Interactive Git CRUD)** | **4-Scene Intro Tour (`/?demo=intro-tour` Full-Bleed Sizzle)** |
+| ![Assembly Commit Ledger](./docs/images/verified-desktop-02-ledger-assembly-commit.png) | ![Intro Demo Tour Scene 4 Combat](./docs/images/intro-demo-video.png) · [🎬 `opencode-pixel-guild-intro.mp4` (1080p)](./docs/video/opencode-pixel-guild-intro.mp4) · [📖 Chapters](./docs/video/youtube-publish-guide.md) |
 
 ---
 
@@ -240,7 +242,9 @@ Click any hero on the canvas or in the roster to open their **Character Sheet** 
 | :---: | :---: |
 | ![Character Sheet Scrolls & Gear](./docs/images/verified-desktop-06-hero-scrolls-gear.png) | ![Character Sheet Tool Log](./docs/images/verified-desktop-07-hero-tool-log.png) |
 
-- **`Chat`**: Review the **Adventurer Dispatch Log** (collapsed into one-liners by default; click any row or `Expand All ▾` for full Markdown), resolve, collapse (`Collapse ▾`), or quietly bypass (`Bypass ✕`) `!` Permission and `?` Question **Quest Gates** with clickable option pills (or answer them directly in OpenCode TUI/CLI/web with automatic two-way sync), and use the always-accessible bottom **Command Scroll** composer (`/` shortcut) to attach `@skill` badges, switch **OpenCode Agent Modes**, and steer, bypass a gate, or stop the hero.
+- **`Chat`**: Review the **Adventurer Dispatch Log** (collapsed into one-liners by default; click any row or `Expand All ▾` for full Markdown—including zero-dependency inline SVG **Mermaid diagrams** for `flowchart`, `sequenceDiagram`, `stateDiagram-v2`, `classDiagram`, `erDiagram`, and `pie` blocks with a collapsible `Source` viewer), resolve, collapse (`Collapse ▾`), or quietly bypass (`Bypass ✕`) `!` Permission and `?` Question **Quest Gates** with clickable option pills (or answer them directly in OpenCode TUI/CLI/web with automatic two-way sync), and use the always-accessible bottom **Command Scroll** composer (`/` shortcut) to attach `@skill` badges, switch **OpenCode Agent Modes**, and steer, bypass a gate, or stop the hero.
+
+![Mermaid Diagram Graphics in Character Sheet Dispatch Log](./docs/images/mermaid-chat-diagrams.png)
 - **`Details`**: Inspect session ID, model, **Context Mana** utilization (`used / limit` tokens), **Lifetime Tribute** cost, **Workflow Intent**, target station, and subagent lineage.
 - **`Scrolls & Gear`**: View the hero's RPG **Equipment Loadout** (Headgear, Robes, Main-Hand Implement, Off-Hand Relic), equipped **Skill Grimoires**, connected MCP plugins, and tool belt counts.
 - **`Tool Log`**: Browse the chronological history of executed tool and shell calls with input/output previews and station routing tags.

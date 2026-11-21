@@ -1,9 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import {
-  buildHydratedSessionEvents,
-  type DeleteRoomResourcesResult,
-  type OpenCodeClientAdapter,
-  type OpenCodeDaemonClientPort,
+import type {
+  DeleteRoomResourcesResult,
+  OpenCodeClientAdapter,
+  OpenCodeDaemonClientPort,
 } from "../ingress/index.ts";
 import {
   DEMO_SCENARIO_PRESETS,
@@ -13,10 +12,12 @@ import {
 import { normalizeLocationDirectory } from "../state/world-reducer.ts";
 import type {
   GuildStateEmission,
+  SessionChatMessage,
   TelemetryAdapterKind,
   WorldStateReducer,
 } from "../types/domain.ts";
 import { handleGuildCommandRoute } from "./command-router.ts";
+import { dispatchHydratedSessionIfChanged } from "./session-hydration-diff.ts";
 import {
   handleAddRoomRoute,
   handleGetWorkspaceFoldersRoute,
@@ -33,6 +34,7 @@ export interface GuildApiRouterContext {
   readonly daemonClient?:
     | Pick<OpenCodeDaemonClientPort, "deleteSession" | "deleteRoomResources" | "executeCommand">
     | OpenCodeDaemonClientPort;
+  readonly getStoredSessionMessages?: (sessionId: string) => SessionChatMessage[];
   readonly onRefresh?: () => Promise<unknown> | void;
 }
 
@@ -215,33 +217,36 @@ export async function tryHandleGuildApiRoute(
 
   if (method === "GET" && sessionMessagesMatch) {
     const sessionId = decodeURIComponent(sessionMessagesMatch[1]);
-    try {
-      const char = activeReducer.getSnapshot().characters[sessionId];
-      const dir = char?.locationDirectory ?? urlObj.searchParams.get("directory") ?? undefined;
-      if (char && (ctx.daemonClient as OpenCodeDaemonClientPort | undefined)?.getSessionMessages) {
-        const hydrated = await (ctx.daemonClient as OpenCodeDaemonClientPort).getSessionMessages!(sessionId, dir);
-        const charNow = activeReducer.getSnapshot().characters[sessionId];
-        if (hydrated && charNow) {
-          const locationDirectory = dir ?? charNow.roomId ?? "/";
-          const existingQGateId = charNow.questGate?.kind === "question" ? charNow.questGate.gateId : null;
-          for (const hEv of buildHydratedSessionEvents(hydrated, sessionId, locationDirectory, existingQGateId, false)) {
-            activeReducer.dispatch(hEv);
-          }
-          const charAfter = activeReducer.getSnapshot().characters[sessionId];
-          const pq = hydrated.pendingQuestion;
-          const pqDone = Boolean(pq && hydrated.recentTools?.some((t) => t.status === "completed" && (t.callId === pq.gateId || t.toolName.trim().toLowerCase() === "question")));
-          const lastRole = charAfter?.messages?.[charAfter.messages.length - 1]?.role;
-          if (pq && !pqDone && lastRole !== "user") {
-            activeReducer.dispatch({
-              type: "question.requested", timestampMs: Date.now(), sessionId, locationDirectory,
-              gateId: pq.gateId, title: pq.title || "Waiting for User Input",
-              reason: pq.reason, prompt: pq.reason, source: pq.source, fields: pq.fields,
-            } as any);
-          }
+    const char = activeReducer.getSnapshot().characters[sessionId];
+    const dir = char?.locationDirectory ?? urlObj.searchParams.get("directory") ?? undefined;
+    if (char) {
+      let hydrated: Awaited<ReturnType<NonNullable<OpenCodeDaemonClientPort["getSessionMessages"]>>> = null;
+      if ((ctx.daemonClient as OpenCodeDaemonClientPort | undefined)?.getSessionMessages) {
+        try {
+          hydrated = await (ctx.daemonClient as OpenCodeDaemonClientPort).getSessionMessages!(sessionId, dir);
+        } catch {
+          hydrated = null;
         }
       }
-    } catch {
-      // Return current snapshot if daemon message fetch fails
+      const charNow = activeReducer.getSnapshot().characters[sessionId];
+      if (charNow) {
+        if (!hydrated?.messages?.length && ctx.getStoredSessionMessages) {
+          const stored = ctx.getStoredSessionMessages(sessionId);
+          if (stored.length > 0) {
+            const existingById = new Map((charNow.messages ?? []).map((m) => [m.messageId, m]));
+            const addsTurns = stored.slice(-60).some((m) => { const cur = existingById.get(m.messageId); return !cur || m.text.length > cur.text.length; });
+            if (addsTurns) {
+              const preservedGate = charNow.questGate?.kind === "question"
+                ? { gateId: charNow.questGate.gateId, title: charNow.questGate.title, reason: charNow.questGate.reason, source: charNow.questGate.source, fields: charNow.questGate.fields }
+                : null;
+              hydrated = hydrated ? { ...hydrated, messages: stored } : { messages: stored, pendingQuestion: preservedGate };
+            }
+          }
+        }
+        if (hydrated) {
+          dispatchHydratedSessionIfChanged(activeReducer, charNow, hydrated, sessionId, dir ?? charNow.roomId ?? "/");
+        }
+      }
     }
     const snapAfter = activeReducer.getSnapshot();
     sendJson(res, 200, { ok: true, messages: snapAfter.characters[sessionId]?.messages ?? [], snapshot: snapAfter });

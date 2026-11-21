@@ -1,0 +1,1492 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Step 2: Guild Rooms &amp; Workstations Specification &amp; Live 1:1 Animated Preview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Plus+Jakarta+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+      body {
+        background-color: #1c1613;
+        color: #f5ebe1;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+      }
+      .serif-title {
+        font-family: 'Cinzel', Georgia, serif;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen p-6 md:p-10 space-y-10">
+    <!-- Header -->
+    <header class="max-w-7xl mx-auto border-b border-amber-200/15 pb-6 flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+      <div>
+        <p class="text-xs font-bold tracking-[0.2em] uppercase text-amber-400">STEP 2 · GUILD ROOMS &amp; WORKSTATIONS SPECIFICATION</p>
+        <h1 class="serif-title text-3xl md:text-5xl font-bold text-[#f5d08a] mt-1">THE 9 GUILD WORKSHOP CHAMBERS</h1>
+        <p class="text-sm text-stone-300 mt-1 max-w-3xl">
+          1:1 architectural and prop reproduction of <code class="text-amber-300">docs/examples/rooms/01..10</code> with live 60 FPS animations (rotating gears, blazing forge embers, swimming koi, levitating grimoires, crackling Tesla coils, sleeping library cat, and Step 1 Heroes).
+        </p>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3">
+        <button id="toggle-heroes-btn" class="px-4 py-2 rounded-xl text-xs font-bold bg-stone-800 text-amber-300 border border-amber-500/40 hover:bg-stone-700 transition shadow">
+          🧙 Overlay Step 1 Heroes: OFF (1:1 Pure Room View)
+        </button>
+        <button id="toggle-assembly-btn" class="px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 text-stone-950 hover:bg-amber-400 transition">
+          ⚙️ Goal Assembly (Room 10): Vibrant (Built)
+        </button>
+      </div>
+    </header>
+
+    <!-- Room Selector Tabs -->
+    <nav id="room-tabs" class="max-w-7xl mx-auto flex flex-wrap gap-2"></nav>
+
+    <!-- Side-by-Side Comparison: Live Animated Vector Room vs. Reference PNG -->
+    <main class="max-w-7xl mx-auto space-y-8">
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
+        <!-- Live Procedural Animated Room Canvas -->
+        <div class="bg-[#261c14] rounded-2xl overflow-hidden border-2 border-amber-500/40 shadow-2xl">
+          <div class="px-5 py-3 bg-[#1a130e] border-b border-amber-200/10 flex items-center justify-between">
+            <span class="text-xs font-bold uppercase tracking-wider text-amber-400">● Live 60 FPS Animated Vector Renderer</span>
+            <span id="live-mapping-tag" class="text-xs font-mono text-stone-300">OpenCode: read / glob / grep</span>
+          </div>
+          <canvas id="room-canvas" width="800" height="555"></canvas>
+          <div class="px-5 py-3.5 bg-[#261c14] flex items-center justify-between border-t border-black/40">
+            <span id="room-footer-title" class="serif-title text-lg font-bold text-[#e8c27a]">01 · GRAND LIBRARY</span>
+            <span id="room-footer-items" class="text-xs text-stone-300">Bookcases · rolling ladder · reading desk · globe · chandelier</span>
+          </div>
+        </div>
+
+        <!-- Original Reference Image from docs/examples/rooms/ -->
+        <div class="bg-[#261c14] rounded-2xl overflow-hidden border border-stone-700 shadow-xl">
+          <div class="px-5 py-3 bg-[#1a130e] border-b border-amber-200/10 flex items-center justify-between">
+            <span class="text-xs font-bold uppercase tracking-wider text-stone-400">Reference Standard (`docs/examples/rooms/`)</span>
+            <span class="text-xs font-mono text-stone-400">1:1 Layout &amp; Prop Verification</span>
+          </div>
+          <img id="ref-room-img" src="../../../examples/rooms/01 Grand Library@1x.png" alt="Reference Room" class="w-full h-auto block" />
+        </div>
+      </div>
+
+      <!-- Complete 9-Room Thumbnail Overview Grid -->
+      <section class="pt-6 border-t border-amber-200/15 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="serif-title text-xl font-bold text-[#f5d08a]">ALL 9 SPECIALIZED GUILD ROOMS (CLICK ANY TO INSPECT)</h2>
+          <span class="text-xs text-stone-400">Each room maps to specific OpenCode tools, agents, and feature assembly stages</span>
+        </div>
+        <div id="all-rooms-grid" class="grid grid-cols-1 md:grid-cols-3 gap-6"></div>
+      </section>
+    </main>
+
+    <script>
+      const INK = "#281e18";
+      let showHeroes = false;
+      let assemblyVibrant = true;
+      let activeRoomIdx = 0;
+
+      const ROOMS = [
+        {
+          id: "01",
+          title: "01 · GRAND LIBRARY",
+          items: "Bookcases · rolling ladder · reading desk · globe · chandelier",
+          openCodeMapping: "OpenCode: read, skill study, docs & GLOSSARY inspection",
+          refImg: "../../../examples/rooms/01 Grand Library@1x.png"
+        },
+        {
+          id: "02",
+          title: "02 · SMITHY FORGE",
+          items: "Forge · bellows · anvil · weapon table · quench barrel · grindstone",
+          openCodeMapping: "OpenCode: bash commands, build scripts, compilation & test runs",
+          refImg: "../../../examples/rooms/02 Smithy Forge@1x.png"
+        },
+        {
+          id: "04",
+          title: "04 · ALCHEMY LAB",
+          items: "Cauldron · jar shelves · lab table & condenser · spellbook",
+          openCodeMapping: "OpenCode: execute (Code Mode), data transformation & context distillation",
+          refImg: "../../../examples/rooms/04 Alchemy Lab@1x.png"
+        },
+        {
+          id: "05",
+          title: "05 · NAVIGATOR'S LOOKOUT",
+          items: "Spyglass · sea chart table · hammock · sea chest · map cubby",
+          openCodeMapping: "OpenCode: websearch, webfetch, wayfinder map.md & external recon",
+          refImg: "../../../examples/rooms/05 Navigator's Lookout@1x.png"
+        },
+        {
+          id: "06",
+          title: "06 · ENCHANTER'S STUDY",
+          items: "Crystal ball · rune circle · floating books · owl familiar",
+          openCodeMapping: "OpenCode: subagent Summoning Ritual, Skill Grimoire activation & MCP",
+          refImg: "../../../examples/rooms/06 Enchanter's Study@1x.png"
+        },
+        {
+          id: "07",
+          title: "07 · ARMORY",
+          items: "Armor stands · shield wall · spear racks · brazier · training dummy",
+          openCodeMapping: "OpenCode: code-review, git-guardrails, tdd verification & permissions",
+          refImg: "../../../examples/rooms/07 Armory@1x.png"
+        },
+        {
+          id: "08",
+          title: "08 · HERBALIST GREENHOUSE",
+          items: "Potting bench · planter beds · koi pond · snapper plant",
+          openCodeMapping: "OpenCode: worktree nursery, environment seeding & outdoor gateway",
+          refImg: "../../../examples/rooms/08 Herbalist Greenhouse@1x.png"
+        },
+        {
+          id: "09",
+          title: "09 · COUNCIL HALL",
+          items: "Round table & quest map · fireplace · buffet & keg · trophy",
+          openCodeMapping: "OpenCode: plan agent, grilling, to-spec, to-tickets & Break Lounge",
+          refImg: "../../../examples/rooms/09 Council Hall@1x.png"
+        },
+        {
+          id: "10",
+          title: "10 · ARTIFICER'S WORKSHOP",
+          items: "Gear machine · steam pipes · clockwork owl · automaton · tesla coil",
+          openCodeMapping: "OpenCode: edit, write, Feature Goal Assembly (Automaton & Gears)",
+          refImg: "../../../examples/rooms/10 Artificer's Workshop@1x.png"
+        }
+      ];
+
+      function withShadow(ctx, fn, dx = 5, dy = 7, blur = 10, alpha = 0.38) {
+        ctx.save();
+        ctx.shadowColor = `rgba(0,0,0,${alpha})`;
+        ctx.shadowBlur = blur;
+        ctx.shadowOffsetX = dx;
+        ctx.shadowOffsetY = dy;
+        fn();
+        ctx.restore();
+      }
+
+      function rrect(ctx, x, y, w, h, r = 4) {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, r);
+        ctx.closePath();
+      }
+
+      function fillStroke(ctx, fillCol, strokeCol = INK, lw = 2.4) {
+        ctx.fillStyle = fillCol;
+        ctx.fill();
+        ctx.strokeStyle = strokeCol;
+        ctx.lineWidth = lw;
+        ctx.stroke();
+      }
+
+      function drawWoodPlankFloor(ctx, w, h, baseCol = "#8a5a36", altCol = "#7d502e", wallCol = "#59483e", brickStroke = "#3b2e27", hasNails = false, topOffset = 32) {
+        ctx.fillStyle = baseCol;
+        ctx.fillRect(32, topOffset, w - 64, h - topOffset - 32);
+
+        const rowH = 34;
+        const plankW = 115;
+        let idx = 0;
+        for (let y = topOffset; y < h - 32; y += rowH) {
+          const offset = (Math.floor((y - topOffset) / rowH) % 2) * (plankW * 0.5);
+          for (let x = 32 - offset; x < w - 32; x += plankW) {
+            const px = Math.max(32, x);
+            const pw = Math.min(w - 32, x + plankW) - px;
+            const ph = Math.min(h - 32 - y, rowH);
+            if (pw <= 0 || ph <= 0) continue;
+            ctx.fillStyle = idx % 3 === 0 ? altCol : baseCol;
+            ctx.fillRect(px, y, pw, ph);
+            ctx.strokeStyle = "rgba(40,24,14,0.45)";
+            ctx.lineWidth = 1.2;
+            ctx.strokeRect(px, y, pw, ph);
+            if (hasNails && pw > 35) {
+              ctx.fillStyle = "rgba(40,24,14,0.55)";
+              ctx.beginPath();
+              ctx.arc(px + 10, y + ph / 2, 1.8, 0, Math.PI * 2);
+              ctx.arc(px + pw - 10, y + ph / 2, 1.8, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            idx++;
+          }
+        }
+        drawPerimeterBrickWall(ctx, w, h, wallCol, brickStroke, baseCol, true, topOffset);
+      }
+
+      function drawStoneSlabFloor(ctx, w, h, baseCol = "#665c54", altCol = "#5c524b", wallCol = "#4a3f39", brickStroke = "#2b231f", gridMode = false) {
+        ctx.fillStyle = baseCol;
+        ctx.fillRect(32, 32, w - 64, h - 64);
+        const rowH = gridMode ? 36 : 44;
+        const slabW = gridMode ? 36 : 84;
+        let idx = 0;
+        for (let y = 32; y < h - 32; y += rowH) {
+          const offset = gridMode ? 0 : (Math.floor((y - 32) / rowH) % 2) * (slabW * 0.5);
+          for (let x = 32 - offset; x < w - 32; x += slabW) {
+            const px = Math.max(32, x);
+            const pw = Math.min(w - 32, x + slabW) - px;
+            const ph = Math.min(h - 32 - y, rowH);
+            if (pw <= 0 || ph <= 0) continue;
+            ctx.fillStyle = (idx + Math.floor(y / rowH)) % 2 === 0 ? altCol : baseCol;
+            ctx.fillRect(px, y, pw, ph);
+            ctx.strokeStyle = "rgba(20,16,14,0.42)";
+            ctx.lineWidth = 1.2;
+            ctx.strokeRect(px, y, pw, ph);
+            if (!gridMode && pw > 40) {
+              ctx.strokeStyle = "rgba(255,255,255,0.08)";
+              ctx.beginPath();
+              ctx.moveTo(px + pw * 0.4, y + ph * 0.5);
+              ctx.lineTo(px + pw * 0.4 + 5, y + ph * 0.5 + 2);
+              ctx.stroke();
+            }
+            idx++;
+          }
+        }
+        drawPerimeterBrickWall(ctx, w, h, wallCol, brickStroke, baseCol, true, 32);
+      }
+
+      function drawPerimeterBrickWall(ctx, w, h, wallCol, brickStroke, doorFloorCol, hasSouthDoor = true, topOffset = 32) {
+        const vig = ctx.createRadialGradient(w / 2, h / 2, w * 0.25, w / 2, h / 2, w * 0.62);
+        vig.addColorStop(0, "rgba(0,0,0,0)");
+        vig.addColorStop(1, "rgba(0,0,0,0.38)");
+        ctx.fillStyle = vig;
+        ctx.fillRect(32, topOffset, w - 64, h - topOffset - 32);
+
+        ctx.fillStyle = wallCol;
+        ctx.fillRect(0, topOffset - 32, w, 32);
+        ctx.fillRect(0, h - 32, w, 32);
+        ctx.fillRect(0, topOffset, 32, h - topOffset - 32);
+        ctx.fillRect(w - 32, topOffset, 32, h - topOffset - 32);
+
+        ctx.strokeStyle = brickStroke;
+        ctx.lineWidth = 1.4;
+        for (let x = 0; x < w; x += 38) {
+          ctx.strokeRect(x, topOffset - 32, 38, 16);
+          ctx.strokeRect(x + 19, topOffset - 16, 38, 16);
+          ctx.strokeRect(x, h - 32, 38, 16);
+          ctx.strokeRect(x + 19, h - 16, 38, 16);
+        }
+        for (let y = topOffset; y < h - 32; y += 28) {
+          ctx.strokeRect(0, y, 16, 28);
+          ctx.strokeRect(16, y + 14, 16, 28);
+          ctx.strokeRect(w - 32, y, 16, 28);
+          ctx.strokeRect(w - 16, y + 14, 16, 28);
+        }
+
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(32, topOffset, w - 64, h - topOffset - 32);
+
+        if (hasSouthDoor) {
+          const dx = w / 2 - 30;
+          const dy = h - 32;
+          ctx.fillStyle = doorFloorCol;
+          ctx.fillRect(dx, dy - 2, 60, 34);
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(dx, dy);
+          ctx.lineTo(dx, h);
+          ctx.moveTo(dx + 60, dy);
+          ctx.lineTo(dx + 60, h);
+          ctx.stroke();
+
+          ctx.fillStyle = "#7c4d2b";
+          rrect(ctx, dx, dy - 56, 10, 58, 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.save();
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 1.8;
+          ctx.setLineDash([5, 5]);
+          ctx.beginPath();
+          ctx.arc(dx + 5, dy, 54, -Math.PI / 2, 0);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      function drawBookcaseStrip(ctx, x, y, w, h, vertical = false) {
+        withShadow(ctx, () => {
+          rrect(ctx, x, y, w, h, 3);
+          fillStroke(ctx, "#4d311e", INK, 2.5);
+        });
+        const cols = ["#b83b2b", "#2e6f95", "#3b7a57", "#d49b35", "#6d4c7d", "#c86432"];
+        if (!vertical) {
+          for (let bx = x + 6; bx < x + w - 10; bx += 9) {
+            ctx.fillStyle = cols[Math.floor(bx / 9) % cols.length];
+            ctx.fillRect(bx, y + 5, 7, h - 10);
+            ctx.strokeStyle = INK;
+            ctx.lineWidth = 1.2;
+            ctx.strokeRect(bx, y + 5, 7, h - 10);
+          }
+        } else {
+          for (let by = y + 6; by < y + h - 10; by += 9) {
+            ctx.fillStyle = cols[Math.floor(by / 9) % cols.length];
+            ctx.fillRect(x + 5, by, w - 10, 7);
+            ctx.strokeStyle = INK;
+            ctx.lineWidth = 1.2;
+            ctx.strokeRect(x + 5, by, w - 10, 7);
+          }
+        }
+      }
+
+      function drawMiniHero(ctx, x, y, role, name, partyCol, accentCol, t) {
+        if (!showHeroes) return;
+        ctx.save();
+        ctx.translate(x, y + Math.sin(t * 3 + x) * 2.5);
+        ctx.fillStyle = "rgba(0,0,0,0.28)";
+        ctx.beginPath();
+        ctx.ellipse(0, 28, 20, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        rrect(ctx, -14, 2, 28, 24, 6);
+        fillStroke(ctx, partyCol, INK, 2.2);
+
+        ctx.beginPath();
+        ctx.arc(0, -10, 14, 0, Math.PI * 2);
+        fillStroke(ctx, "#f4d2bc", INK, 2.2);
+
+        [-5, 5].forEach((ex) => {
+          ctx.beginPath();
+          ctx.arc(ex, -10, 3.5, 0, Math.PI * 2);
+          fillStroke(ctx, "#fff", INK, 1.5);
+          ctx.fillStyle = INK;
+          ctx.beginPath();
+          ctx.arc(ex, -10, 1.8, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        if (role === "MAGE") {
+          ctx.beginPath();
+          ctx.moveTo(-18, -18);
+          ctx.lineTo(0, -38);
+          ctx.lineTo(18, -18);
+          ctx.closePath();
+          fillStroke(ctx, partyCol, INK, 2.2);
+        } else if (role === "WARRIOR") {
+          ctx.beginPath();
+          ctx.arc(0, -14, 14, Math.PI, 0);
+          fillStroke(ctx, "#c2cbd4", INK, 2.2);
+        } else {
+          rrect(ctx, -14, -22, 28, 6, 3);
+          fillStroke(ctx, accentCol, INK, 2);
+        }
+
+        ctx.font = "bold 10px sans-serif";
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.fillText(name, 0, 42);
+        ctx.restore();
+      }
+
+      // ============================================================================
+      // 1:1 ROOM PAINTERS WITH ALL REFERENCE PROPS + 60FPS ANIMATIONS
+      // ============================================================================
+      function renderRoom(ctx, w, h, roomId, t) {
+        ctx.save();
+        ctx.clearRect(0, 0, w, h);
+
+        // ========================================================================
+        // 01 · GRAND LIBRARY
+        // ========================================================================
+        if (roomId === "01") {
+          drawWoodPlankFloor(ctx, w, h, "#8b5c37", "#7d512f", "#59483e", "#3b2e27");
+
+          // North Double Sky Window + Sunbeam
+          ctx.fillStyle = "#8ecae6";
+          ctx.fillRect(360, 4, 80, 26);
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 2.5;
+          ctx.strokeRect(360, 4, 80, 26);
+          ctx.beginPath();
+          ctx.moveTo(400, 4);
+          ctx.lineTo(400, 30);
+          ctx.moveTo(360, 17);
+          ctx.lineTo(440, 17);
+          ctx.stroke();
+
+          const sun = ctx.createLinearGradient(400, 32, 400, 240);
+          sun.addColorStop(0, "rgba(255,220,145,0.42)");
+          sun.addColorStop(1, "rgba(255,220,145,0)");
+          ctx.fillStyle = sun;
+          ctx.beginPath();
+          ctx.moveTo(360, 32);
+          ctx.lineTo(440, 32);
+          ctx.lineTo(485, 230);
+          ctx.lineTo(315, 230);
+          ctx.closePath();
+          ctx.fill();
+
+          // 4 Perimeter Bookcases + Rolling Ladder
+          drawBookcaseStrip(ctx, 56, 36, 290, 28, false);
+          drawBookcaseStrip(ctx, 454, 36, 290, 28, false);
+          drawBookcaseStrip(ctx, 36, 86, 28, 370, true);
+          drawBookcaseStrip(ctx, w - 64, 86, 28, 370, true);
+
+          ctx.strokeStyle = "#a67041";
+          ctx.lineWidth = 6;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(110, 62);
+          ctx.lineTo(110, 130);
+          ctx.moveTo(144, 62);
+          ctx.lineTo(144, 130);
+          for (let ry = 76; ry <= 118; ry += 14) {
+            ctx.moveTo(110, ry);
+            ctx.lineTo(144, ry);
+          }
+          ctx.stroke();
+
+          // NE Floor Book Stack (3 overlapping books at x:640, y:112)
+          withShadow(ctx, () => {
+            [
+              [-0.18, "#2e6f95", 620, 98],
+              [0.12, "#b83b2b", 626, 96],
+              [0.02, "#d49b35", 630, 102]
+            ].forEach(([ang, col, bx, by]) => {
+              ctx.save();
+              ctx.translate(bx + 18, by + 13);
+              ctx.rotate(ang);
+              rrect(ctx, -18, -13, 36, 26, 3);
+              fillStroke(ctx, col, INK, 2);
+              ctx.restore();
+            });
+          });
+
+          // Reading Desk & Green Chair
+          withShadow(ctx, () => {
+            rrect(ctx, 375, 168, 50, 42, 6);
+            fillStroke(ctx, "#3b6659", INK, 2.5);
+            rrect(ctx, 314, 90, 172, 70, 6);
+            fillStroke(ctx, "#6e4427", INK, 2.6);
+          });
+          // 3 Stacked Books on Desk Left
+          [
+            [325, 100, "#b83b2b"],
+            [327, 114, "#2e6f95"],
+            [324, 128, "#d49b35"]
+          ].forEach(([bx, by, col]) => {
+            rrect(ctx, bx, by, 30, 12, 2);
+            fillStroke(ctx, col, INK, 1.8);
+          });
+          // Open Manuscript with ruled lines
+          rrect(ctx, 366, 106, 68, 40, 2);
+          fillStroke(ctx, "#f7f1e1", INK, 2);
+          ctx.beginPath();
+          ctx.moveTo(400, 106);
+          ctx.lineTo(400, 146);
+          for (let ly = 116; ly <= 134; ly += 6) {
+            ctx.moveTo(373, ly);
+            ctx.lineTo(393, ly);
+            ctx.moveTo(407, ly);
+            ctx.lineTo(427, ly);
+          }
+          ctx.strokeStyle = "#8c7a6b";
+          ctx.lineWidth = 1.4;
+          ctx.stroke();
+          // Desk Candle + Inkwell & White Feather Quill
+          ctx.beginPath();
+          ctx.arc(452, 110, 9, 0, Math.PI * 2);
+          fillStroke(ctx, "#e6a82e", INK, 2);
+          ctx.beginPath();
+          ctx.arc(462, 138, 7, 0, Math.PI * 2);
+          fillStroke(ctx, "#2b2d42", INK, 2);
+          ctx.beginPath();
+          ctx.moveTo(462, 138);
+          ctx.quadraticCurveTo(476, 118, 470, 102);
+          ctx.quadraticCurveTo(464, 118, 462, 138);
+          fillStroke(ctx, "#ffffff", INK, 1.6);
+
+          // Center Fringed Crimson Carpet + Inner Gold Oval + 6-Candle Chandelier
+          withShadow(ctx, () => {
+            const rugG = ctx.createRadialGradient(400, 326, 20, 400, 326, 210);
+            rugG.addColorStop(0, "#b85d4c");
+            rugG.addColorStop(1, "#7d2422");
+            rrect(ctx, 210, 216, 380, 222, 10);
+            fillStroke(ctx, rugG, INK, 2.8);
+          });
+          // Side Gold Fringe Tassels
+          ctx.strokeStyle = "#d9a74a";
+          ctx.lineWidth = 2;
+          for (let fy = 232; fy <= 422; fy += 24) {
+            ctx.beginPath();
+            ctx.moveTo(200, fy);
+            ctx.lineTo(210, fy);
+            ctx.moveTo(590, fy);
+            ctx.lineTo(600, fy);
+            ctx.stroke();
+          }
+          ctx.save();
+          ctx.setLineDash([8, 6]);
+          rrect(ctx, 226, 232, 348, 190, 6);
+          ctx.stroke();
+          ctx.restore();
+          ctx.beginPath();
+          ctx.ellipse(400, 327, 96, 58, 0, 0, Math.PI * 2);
+          ctx.stroke();
+
+          // Overhead Brass Wheel Chandelier
+          ctx.save();
+          ctx.translate(400, 327);
+          ctx.rotate(Math.sin(t * 1.2) * 0.04);
+          ctx.beginPath();
+          ctx.moveTo(0, -48);
+          ctx.lineTo(26, 0);
+          ctx.lineTo(0, 48);
+          ctx.lineTo(-26, 0);
+          ctx.closePath();
+          fillStroke(ctx, "#d9a74a", INK, 2);
+          ctx.strokeStyle = "#d9a74a";
+          ctx.lineWidth = 8;
+          ctx.beginPath();
+          ctx.arc(0, 0, 52, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          for (let c = 0; c < 6; c++) {
+            const a = (c / 6) * Math.PI * 2;
+            ctx.beginPath();
+            ctx.arc(Math.cos(a) * 52, Math.sin(a) * 52, 7, 0, Math.PI * 2);
+            fillStroke(ctx, "#fff6d6", INK, 1.8);
+          }
+          ctx.restore();
+
+          // SW Green Armchair + Curled-up Sleeping Orange Cat + Round Side Table
+          withShadow(ctx, () => {
+            rrect(ctx, 96, 376, 96, 96, 12);
+            fillStroke(ctx, "#3b6659", INK, 2.5);
+            rrect(ctx, 114, 394, 60, 60, 6);
+            fillStroke(ctx, "#487a6b", INK, 2);
+          });
+          const catBreath = Math.sin(t * 2.8) * 1.2;
+          ctx.beginPath();
+          ctx.arc(146, 426, 20 + catBreath, 0, Math.PI * 2);
+          fillStroke(ctx, "#d97f2b", INK, 2);
+          ctx.beginPath();
+          ctx.arc(134, 416, 11, 0, Math.PI * 2);
+          fillStroke(ctx, "#d97f2b", INK, 2);
+          // Cat ears & tail
+          ctx.beginPath();
+          ctx.moveTo(125, 409);
+          ctx.lineTo(127, 400);
+          ctx.lineTo(133, 406);
+          ctx.moveTo(136, 406);
+          ctx.lineTo(142, 400);
+          ctx.lineTo(143, 409);
+          fillStroke(ctx, "#d97f2b", INK, 1.8);
+
+          // Small Round Stool/Side Table next to Armchair
+          withShadow(ctx, () => {
+            ctx.beginPath();
+            ctx.arc(235, 482, 20, 0, Math.PI * 2);
+            fillStroke(ctx, "#5e3d24", INK, 2.4);
+            ctx.beginPath();
+            ctx.arc(235, 482, 8, 0, Math.PI * 2);
+            fillStroke(ctx, "#f7f1e1", INK, 1.8);
+          });
+
+          // SE Cartographer's Globe + Cream-Handled Magnifier
+          withShadow(ctx, () => {
+            ctx.save();
+            ctx.translate(566, 468);
+            ctx.rotate(-0.35);
+            rrect(ctx, -28, -7, 56, 14, 7);
+            fillStroke(ctx, "#f2e6c2", INK, 2.2);
+            ctx.restore();
+
+            ctx.beginPath();
+            ctx.arc(650, 448, 44, 0, Math.PI * 2);
+            fillStroke(ctx, "#d9a74a", INK, 2.5);
+            ctx.beginPath();
+            ctx.arc(650, 448, 35, 0, Math.PI * 2);
+            fillStroke(ctx, "#3a7ca5", INK, 2.2);
+            ctx.beginPath();
+            ctx.ellipse(642, 442, 16, 10, -0.4, 0, Math.PI * 2);
+            fillStroke(ctx, "#6a994e", INK, 1.8);
+          });
+
+          drawMiniHero(ctx, 400, 210, "MAGE", "Ilsa (read)", "#c83d28", "#e6a82e", t);
+        }
+
+        // ========================================================================
+        // 02 · SMITHY FORGE
+        // ========================================================================
+        else if (roomId === "02") {
+          drawStoneSlabFloor(ctx, w, h, "#695e56", "#5d534b", "#4a3e37", "#2b221e");
+
+          const heat = ctx.createRadialGradient(400, 140, 20, 400, 240, 260);
+          heat.addColorStop(0, "rgba(255,120,30,0.42)");
+          heat.addColorStop(1, "rgba(255,120,30,0)");
+          ctx.fillStyle = heat;
+          ctx.fillRect(32, 32, w - 64, h - 64);
+
+          // NW Coal Bunker + Shovel + Accordion Bellows
+          withShadow(ctx, () => {
+            ctx.beginPath();
+            ctx.moveTo(48, 44);
+            ctx.lineTo(142, 44);
+            ctx.quadraticCurveTo(154, 106, 95, 106);
+            ctx.quadraticCurveTo(42, 106, 48, 44);
+            fillStroke(ctx, "#2b2522", INK, 2.5);
+          });
+          [
+            [68, 62],
+            [92, 70],
+            [114, 58],
+            [82, 88],
+            [110, 86],
+            [128, 74]
+          ].forEach(([cx, cy]) => {
+            ctx.beginPath();
+            ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+            fillStroke(ctx, "#494340", INK, 1.5);
+          });
+          // Coal Shovel
+          ctx.save();
+          ctx.translate(168, 128);
+          ctx.rotate(0.68);
+          rrect(ctx, -20, -10, 32, 20, 3);
+          fillStroke(ctx, "#7a828a", INK, 2.2);
+          rrect(ctx, 12, -3, 46, 6, 2);
+          fillStroke(ctx, "#b07d48", INK, 2);
+          ctx.restore();
+
+          // Accordion Bellows
+          withShadow(ctx, () => {
+            rrect(ctx, 196, 60, 16, 76, 5);
+            fillStroke(ctx, "#6e4427", INK, 2.4);
+            ctx.beginPath();
+            ctx.moveTo(212, 64);
+            ctx.lineTo(284, 98);
+            ctx.lineTo(212, 132);
+            ctx.closePath();
+            fillStroke(ctx, "#8a5a36", INK, 2.4);
+          });
+
+          // North Brick Hearth Furnace + Glowing Ember Circles + Tongs
+          withShadow(ctx, () => {
+            rrect(ctx, 290, 32, 220, 136, 6);
+            fillStroke(ctx, "#7d4536", INK, 3);
+          });
+          ctx.fillStyle = "#261a16";
+          rrect(ctx, 320, 52, 160, 92, 16);
+          ctx.fill();
+          const coalG = ctx.createRadialGradient(400, 98, 8, 400, 98, 68);
+          coalG.addColorStop(0, "#fff3b0");
+          coalG.addColorStop(0.5, "#ff6b00");
+          coalG.addColorStop(1, "#9e2a2b");
+          ctx.fillStyle = coalG;
+          ctx.beginPath();
+          ctx.ellipse(400, 98, 66 + Math.sin(t * 6) * 2.5, 36, 0, 0, Math.PI * 2);
+          ctx.fill();
+          [
+            [360, 90, 9],
+            [380, 108, 10],
+            [404, 86, 11],
+            [426, 108, 9],
+            [445, 92, 8]
+          ].forEach(([ex, ey, er]) => {
+            ctx.beginPath();
+            ctx.arc(ex, ey, er, 0, Math.PI * 2);
+            fillStroke(ctx, "#ffaa00", INK, 1.6);
+          });
+          // Forge Tongs on lip
+          ctx.strokeStyle = "#8d99ae";
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(470, 152);
+          ctx.lineTo(525, 196);
+          ctx.moveTo(476, 148);
+          ctx.lineTo(530, 190);
+          ctx.stroke();
+
+          // West Wall Hammer & Tool Rack + Quench Barrel + Small Bucket
+          withShadow(ctx, () => {
+            rrect(ctx, 32, 188, 22, 195, 3);
+            fillStroke(ctx, "#6e4427", INK, 2.4);
+          });
+          [204, 246, 332].forEach((hy) => {
+            rrect(ctx, 50, hy, 40, 6, 2);
+            fillStroke(ctx, "#b07d48", INK, 1.8);
+            rrect(ctx, 86, hy - 7, 14, 20, 2);
+            fillStroke(ctx, "#6c757d", INK, 2);
+          });
+          withShadow(ctx, () => {
+            ctx.beginPath();
+            ctx.arc(182, 286, 48, 0, Math.PI * 2);
+            fillStroke(ctx, "#7c5234", INK, 2.5);
+            ctx.beginPath();
+            ctx.arc(182, 286, 39, 0, Math.PI * 2);
+            fillStroke(ctx, "#356888", INK, 2);
+            // Small bucket below
+            ctx.beginPath();
+            ctx.arc(110, 355, 20, 0, Math.PI * 2);
+            fillStroke(ctx, "#7c5234", INK, 2.2);
+            ctx.beginPath();
+            ctx.arc(110, 355, 14, 0, Math.PI * 2);
+            fillStroke(ctx, "#356888", INK, 1.8);
+          });
+
+          // Center Stump & Horned Anvil + Glowing Red-Hot Sword Billet + Floor Hammer
+          withShadow(ctx, () => {
+            ctx.beginPath();
+            ctx.arc(400, 286, 52, 0, Math.PI * 2);
+            fillStroke(ctx, "#8a5632", INK, 2.5);
+            ctx.beginPath();
+            ctx.moveTo(318, 286);
+            ctx.lineTo(360, 270);
+            ctx.lineTo(456, 266);
+            ctx.lineTo(456, 306);
+            ctx.lineTo(360, 302);
+            ctx.closePath();
+            fillStroke(ctx, "#5c646d", INK, 2.6);
+          });
+          rrect(ctx, 350, 282, 102, 8, 3);
+          fillStroke(ctx, "#ff9f1c", "#d62828", 2);
+          // Angled Hammer near Anvil
+          ctx.save();
+          ctx.translate(462, 335);
+          ctx.rotate(0.48);
+          rrect(ctx, -10, -16, 20, 32, 3);
+          fillStroke(ctx, "#5c646d", INK, 2.2);
+          rrect(ctx, 10, -4, 52, 8, 2);
+          fillStroke(ctx, "#b07d48", INK, 2);
+          ctx.restore();
+
+          // East Weapon Display Table + SE Grindstone
+          withShadow(ctx, () => {
+            rrect(ctx, 635, 86, 110, 282, 6);
+            fillStroke(ctx, "#6e472b", INK, 2.5);
+          });
+          [116, 166].forEach((sy) => {
+            ctx.beginPath();
+            ctx.moveTo(652, sy);
+            ctx.lineTo(722, sy - 5);
+            ctx.lineTo(735, sy);
+            ctx.lineTo(722, sy + 5);
+            ctx.closePath();
+            fillStroke(ctx, "#dce3eb", INK, 2);
+          });
+          ctx.beginPath();
+          ctx.arc(690, 324, 26, 0, Math.PI * 2);
+          fillStroke(ctx, "#8c2d2b", "#e0b354", 3);
+
+          // SE Grindstone Trough & Crank
+          withShadow(ctx, () => {
+            rrect(ctx, 604, 405, 120, 56, 5);
+            fillStroke(ctx, "#6e4427", INK, 2.5);
+            rrect(ctx, 648, 409, 32, 48, 3);
+            fillStroke(ctx, "#9a9895", INK, 2.2);
+          });
+
+          drawMiniHero(ctx, 400, 215, "WARRIOR", "Brann (bash)", "#c83d28", "#e6a82e", t);
+        }
+
+        // ========================================================================
+        // 04 · ALCHEMY LAB
+        // ========================================================================
+        else if (roomId === "04") {
+          drawStoneSlabFloor(ctx, w, h, "#454b4b", "#3c4242", "#353640", "#1f2026", true);
+
+          const glowG = ctx.createRadialGradient(384, 288, 20, 384, 288, 220);
+          glowG.addColorStop(0, "rgba(75,227,138,0.35)");
+          glowG.addColorStop(1, "rgba(75,227,138,0)");
+          ctx.fillStyle = glowG;
+          ctx.fillRect(32, 32, w - 64, h - 64);
+
+          // North Specimen Shelves with 9 Jars on Left & 5 on Right
+          withShadow(ctx, () => {
+            rrect(ctx, 56, 34, 276, 40, 3);
+            fillStroke(ctx, "#5e3d24", INK, 2.5);
+            rrect(ctx, 468, 34, 200, 40, 3);
+            fillStroke(ctx, "#5e3d24", INK, 2.5);
+          });
+          ["#52e388", "#c76be8", "#d49b35", "#adb5bd", "#4ea8de", "#e05a47", "#f7f1e1", "#52e388", "#ced4da"].forEach((col, i) => {
+            ctx.beginPath();
+            ctx.arc(76 + i * 28, 54, 10, 0, Math.PI * 2);
+            fillStroke(ctx, col, INK, 1.8);
+          });
+
+          // Hanging Sea-Dragon Skeleton
+          ctx.save();
+          ctx.translate(256, 134 + Math.sin(t * 2) * 2);
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 96, 10, 0, 0, Math.PI * 2);
+          fillStroke(ctx, "#5c7338", INK, 2.2);
+          ctx.beginPath();
+          ctx.arc(-112, 0, 14, 0, Math.PI * 2);
+          fillStroke(ctx, "#5c7338", INK, 2.2);
+          ctx.restore();
+
+          // West Open Alchemy Tome Pedestal + Floating Candle
+          withShadow(ctx, () => {
+            rrect(ctx, 90, 216, 98, 72, 5);
+            fillStroke(ctx, "#6e4427", INK, 2.5);
+            rrect(ctx, 98, 224, 82, 54, 2);
+            fillStroke(ctx, "#fbf6e8", INK, 2);
+          });
+          ctx.beginPath();
+          ctx.arc(200, 222, 9, 0, Math.PI * 2);
+          fillStroke(ctx, "#fff3b0", INK, 2);
+
+          // SW 2 Wooden Packing Crates
+          withShadow(ctx, () => {
+            rrect(ctx, 52, 384, 70, 70, 4);
+            fillStroke(ctx, "#9c6d44", INK, 2.4);
+            rrect(ctx, 126, 406, 56, 56, 4);
+            fillStroke(ctx, "#8a5a36", INK, 2.4);
+          });
+
+          // Center Bubbling Cauldron + Ladle
+          withShadow(ctx, () => {
+            ctx.beginPath();
+            ctx.arc(380, 286, 66, 0, Math.PI * 2);
+            fillStroke(ctx, "#2b2628", INK, 3);
+            ctx.beginPath();
+            ctx.arc(380, 286, 50, 0, Math.PI * 2);
+            fillStroke(ctx, "#52e388", INK, 2.4);
+          });
+          for (let b = 0; b < 4; b++) {
+            const br = 4 + ((t * 8 + b * 3) % 7);
+            ctx.beginPath();
+            ctx.arc(365 + b * 14, 280 + Math.sin(t * 3 + b) * 12, br, 0, Math.PI * 2);
+            fillStroke(ctx, "#a8f7c6", INK, 1.5);
+          }
+
+          // East Distillation Lab Table + Coiled Condenser + Spilled Purple Puddle
+          withShadow(ctx, () => {
+            rrect(ctx, 612, 114, 132, 288, 6);
+            fillStroke(ctx, "#78492a", INK, 2.5);
+          });
+          ctx.beginPath();
+          ctx.arc(650, 156, 22, 0, Math.PI * 2);
+          fillStroke(ctx, "#c76be8", INK, 2.2);
+          ctx.beginPath();
+          ctx.arc(688, 240, 26, 0, Math.PI * 2);
+          fillStroke(ctx, "#6c757d", INK, 2.2);
+          ctx.beginPath();
+          ctx.arc(690, 306, 18, 0, Math.PI * 2);
+          fillStroke(ctx, "#52e388", INK, 2.2);
+          // Glass condenser tubes
+          ctx.strokeStyle = "#d8f3dc";
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.moveTo(666, 170);
+          ctx.quadraticCurveTo(695, 195, 690, 218);
+          ctx.moveTo(710, 255);
+          ctx.quadraticCurveTo(720, 280, 702, 296);
+          ctx.stroke();
+
+          // Spilled purple puddle
+          ctx.beginPath();
+          ctx.ellipse(602, 442, 42, 20, 0.1, 0, Math.PI * 2);
+          fillStroke(ctx, "#9d4edd", INK, 2);
+
+          drawMiniHero(ctx, 535, 250, "ALCHEMIST", "Pip (execute)", "#d4a634", "#9b5de5", t);
+        }
+
+        // ========================================================================
+        // 05 · NAVIGATOR'S LOOKOUT
+        // ========================================================================
+        else if (roomId === "05") {
+          drawWoodPlankFloor(ctx, w, h, "#9c6d44", "#8f623b", "#634329", "#3d2817", true, 122);
+
+          // Top Ocean Water Strip, Sandy Beach, Waves, Seagulls & Rowboat
+          ctx.fillStyle = "#2b6e99";
+          ctx.fillRect(0, 0, w, 86);
+          ctx.fillStyle = "#e8d5a7";
+          ctx.fillRect(0, 78, w, 14);
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(0, 78);
+          ctx.lineTo(w, 78);
+          ctx.stroke();
+
+          ctx.strokeStyle = "#a8dadc";
+          ctx.lineWidth = 2;
+          for (let wy = 14; wy < 72; wy += 20) {
+            for (let wx = 24; wx < w - 40; wx += 64) {
+              const shift = Math.sin(t * 2 + wy) * 6;
+              ctx.beginPath();
+              ctx.arc(wx + shift, wy, 9, Math.PI * 1.15, Math.PI * 1.85);
+              ctx.stroke();
+            }
+          }
+
+          // Rowboat with Oars
+          const bx = 700 + Math.sin(t * 1.5) * 6;
+          ctx.beginPath();
+          ctx.moveTo(bx - 30, 26);
+          ctx.lineTo(bx + 25, 26);
+          ctx.quadraticCurveTo(bx + 48, 40, bx + 25, 54);
+          ctx.lineTo(bx - 30, 54);
+          ctx.closePath();
+          fillStroke(ctx, "#6e472b", INK, 2.2);
+          rrect(ctx, bx - 16, 16, 7, 48, 3);
+          fillStroke(ctx, "#e8d5a7", INK, 1.8);
+          rrect(ctx, bx + 8, 16, 7, 48, 3);
+          fillStroke(ctx, "#e8d5a7", INK, 1.8);
+
+          // 3 Oceanfront Windows + Sunbeams
+          [120, 325, 530].forEach((winX) => {
+            ctx.fillStyle = "#90e0ef";
+            ctx.fillRect(winX, 92, 150, 24);
+            ctx.strokeStyle = INK;
+            ctx.strokeRect(winX, 92, 150, 24);
+          });
+
+          // West Slung Canvas Hammock + SW Sea Chest
+          withShadow(ctx, () => {
+            ctx.beginPath();
+            ctx.ellipse(76, 250, 14, 72, 0, 0, Math.PI * 2);
+            fillStroke(ctx, "#e8d5a7", INK, 2.2);
+            rrect(ctx, 64, 186, 24, 18, 6);
+            fillStroke(ctx, "#9e2a2b", INK, 2);
+
+            rrect(ctx, 52, 392, 105, 66, 6);
+            fillStroke(ctx, "#78492a", INK, 2.5);
+          });
+
+          // Center Grand Sea-Chart Map Table
+          withShadow(ctx, () => {
+            rrect(ctx, 250, 214, 270, 162, 8);
+            fillStroke(ctx, "#694429", INK, 3);
+          });
+          ctx.fillStyle = "#efe2ba";
+          ctx.fillRect(270, 230, 230, 130);
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(270, 230, 230, 130);
+          ctx.save();
+          ctx.strokeStyle = "#bc4749";
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([5, 5]);
+          ctx.beginPath();
+          ctx.moveTo(330, 272);
+          ctx.lineTo(448, 312);
+          ctx.stroke();
+          ctx.restore();
+
+          // NE Brass Spyglass + East Scroll Cubby + SE Globe, Rope & Barrels
+          withShadow(ctx, () => {
+            ctx.strokeStyle = "#b5853b";
+            ctx.lineWidth = 14;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(592, 214);
+            ctx.lineTo(608, 136);
+            ctx.stroke();
+
+            rrect(ctx, 726, 170, 38, 184, 3);
+            fillStroke(ctx, "#4d311e", INK, 2.4);
+
+            ctx.beginPath();
+            ctx.arc(608, 310, 36, 0, Math.PI * 2);
+            fillStroke(ctx, "#d9a74a", INK, 2.4);
+            ctx.beginPath();
+            ctx.arc(608, 310, 28, 0, Math.PI * 2);
+            fillStroke(ctx, "#3a7ca5", INK, 2);
+          });
+
+          drawMiniHero(ctx, 595, 245, "SCOUT", "Kael (websearch)", "#1c7274", "#f08265", t);
+        }
+
+        // ========================================================================
+        // 06 · ENCHANTER'S STUDY
+        // ========================================================================
+        else if (roomId === "06") {
+          drawStoneSlabFloor(ctx, w, h, "#32294d", "#292140", "#221b36", "#140f21");
+
+          drawBookcaseStrip(ctx, 56, 36, 280, 28, false);
+          drawBookcaseStrip(ctx, 464, 36, 280, 28, false);
+
+          // Center Rotating Cyan Pentagram & Rune Circle
+          ctx.save();
+          ctx.translate(400, 290);
+          ctx.rotate(t * 0.25);
+          ctx.strokeStyle = "#7ce8ff";
+          ctx.lineWidth = 3;
+          ctx.shadowColor = "#00bbf9";
+          ctx.shadowBlur = 14;
+          ctx.beginPath();
+          ctx.arc(0, 0, 142, 0, Math.PI * 2);
+          ctx.arc(0, 0, 120, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.beginPath();
+          for (let i = 0; i <= 5; i++) {
+            const a = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+            const px = Math.cos(a) * 118;
+            const py = Math.sin(a) * 118;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+          ctx.restore();
+
+          // Center Crystal Ball Pedestal
+          withShadow(ctx, () => {
+            ctx.beginPath();
+            ctx.arc(400, 290, 38, 0, Math.PI * 2);
+            fillStroke(ctx, "#483d66", INK, 2.5);
+            const orbG = ctx.createRadialGradient(392, 282, 4, 400, 290, 26);
+            orbG.addColorStop(0, "#ffffff");
+            orbG.addColorStop(0.4, "#4ea8de");
+            orbG.addColorStop(1, "#3a0ca3");
+            ctx.beginPath();
+            ctx.arc(400, 290, 24, 0, Math.PI * 2);
+            fillStroke(ctx, orbG, INK, 2.2);
+          });
+
+          // 3 Levitating Open Spellbooks
+          [
+            [236, 176, -0.2],
+            [572, 182, 0.2],
+            [562, 385, -0.1]
+          ].forEach(([bx, by, rot], idx) => {
+            ctx.save();
+            ctx.translate(bx, by + Math.sin(t * 3 + idx) * 6);
+            ctx.rotate(rot);
+            withShadow(ctx, () => {
+              rrect(ctx, -36, -26, 72, 52, 4);
+              fillStroke(ctx, "#6b2d5c", INK, 2.2);
+              ctx.fillStyle = "#fbf6e8";
+              ctx.fillRect(-30, -20, 60, 40);
+              ctx.strokeRect(-30, -20, 60, 40);
+            }, 6, 14, 12, 0.45);
+            ctx.restore();
+          });
+
+          // West Enchanter's Desk + East Orb Shelf + SE Perched Owl Familiar & Staff
+          withShadow(ctx, () => {
+            rrect(ctx, 36, 286, 80, 165, 5);
+            fillStroke(ctx, "#4d385e", INK, 2.5);
+            rrect(ctx, 732, 106, 32, 180, 3);
+            fillStroke(ctx, "#3d294d", INK, 2.4);
+          });
+          // Perched Owl Familiar
+          ctx.beginPath();
+          ctx.arc(688, 392, 22, 0, Math.PI * 2);
+          fillStroke(ctx, "#6e4e32", INK, 2.2);
+          [-6, 6].forEach((ox) => {
+            ctx.beginPath();
+            ctx.arc(688 + ox, 384, 6, 0, Math.PI * 2);
+            fillStroke(ctx, "#ffd166", INK, 1.8);
+          });
+
+          drawMiniHero(ctx, 320, 290, "MAGE", "Morwen (summon)", "#4d387a", "#a97ee8", t);
+        }
+
+        // ========================================================================
+        // 07 · ARMORY
+        // ========================================================================
+        else if (roomId === "07") {
+          drawStoneSlabFloor(ctx, w, h, "#63676b", "#585c60", "#404448", "#232629");
+
+          const fireG = ctx.createRadialGradient(400, 218, 10, 400, 218, 165);
+          fireG.addColorStop(0, "rgba(255,135,35,0.45)");
+          fireG.addColorStop(1, "rgba(255,135,35,0)");
+          ctx.fillStyle = fireG;
+          ctx.fillRect(32, 32, w - 64, h - 64);
+
+          withShadow(ctx, () => {
+            ctx.beginPath();
+            ctx.arc(400, 218, 48, 0, Math.PI * 2);
+            fillStroke(ctx, "#343a40", INK, 3);
+            ctx.beginPath();
+            ctx.arc(400, 218, 34 + Math.sin(t * 7) * 2, 0, Math.PI * 2);
+            fillStroke(ctx, "#ff7b00", INK, 2);
+          });
+
+          // North Shield & Crossed-Swords Wall + Spear Racks
+          [220, 290, 510, 580].forEach((sx, idx) => {
+            ctx.beginPath();
+            ctx.arc(sx, 60, 24, 0, Math.PI * 2);
+            fillStroke(ctx, idx % 2 === 0 ? "#9e2a2b" : "#2b547e", "#e0b354", 3);
+          });
+          ctx.beginPath();
+          ctx.arc(400, 62, 34, 0, Math.PI * 2);
+          fillStroke(ctx, "#7c5234", "#adb5bd", 4);
+
+          // 4 Full Plate Armor Stands with Mounted Halberds
+          [
+            [110, 180],
+            [110, 300],
+            [690, 180],
+            [690, 300]
+          ].forEach(([ax, ay]) => {
+            withShadow(ctx, () => {
+              rrect(ctx, ax - 30, ay - 28, 60, 56, 5);
+              fillStroke(ctx, "#495057", INK, 2.4);
+              ctx.beginPath();
+              ctx.ellipse(ax, ay, 14, 24, 0, 0, Math.PI * 2);
+              fillStroke(ctx, "#ced4da", INK, 2.2);
+            });
+          });
+
+          // South Runner Rug + SW Straw Training Dummy + SE Munitions Crate
+          rrect(ctx, 352, 290, 96, 212, 4);
+          fillStroke(ctx, "#8c2f27", "#d9a74a", 2.5);
+
+          withShadow(ctx, () => {
+            ctx.beginPath();
+            ctx.ellipse(176, 430, 28, 22, 0, 0, Math.PI * 2);
+            fillStroke(ctx, "#d9b26f", INK, 2.5);
+            rrect(ctx, 580, 412, 120, 52, 4);
+            fillStroke(ctx, "#d9b26f", INK, 2.5);
+          });
+
+          drawMiniHero(ctx, 250, 360, "WARRIOR", "Sigrun (guard)", "#2b547e", "#8eb8d9", t);
+        }
+
+        // ========================================================================
+        // 08 · HERBALIST GREENHOUSE
+        // ========================================================================
+        else if (roomId === "08") {
+          drawStoneSlabFloor(ctx, w, h, "#b87352", "#a86647", "#bce3dc", "#456963", true);
+
+          // North Potting Bench
+          withShadow(ctx, () => {
+            rrect(ctx, 56, 34, 688, 42, 4);
+            fillStroke(ctx, "#78492a", INK, 2.5);
+          });
+
+          // Center Oval Stone Koi Pond + Swimming Koi + Lily Pads
+          withShadow(ctx, () => {
+            ctx.beginPath();
+            ctx.ellipse(420, 304, 118, 74, 0, 0, Math.PI * 2);
+            fillStroke(ctx, "#7a7267", INK, 3);
+            ctx.beginPath();
+            ctx.ellipse(420, 304, 104, 62, 0, 0, Math.PI * 2);
+            fillStroke(ctx, "#2e7082", INK, 2.2);
+          });
+          const kx = 420 + Math.cos(t * 1.2) * 45;
+          const ky = 304 + Math.sin(t * 1.2) * 24;
+          ctx.fillStyle = "#f77f00";
+          ctx.beginPath();
+          ctx.ellipse(kx, ky, 12, 5, t * 1.2 + Math.PI / 2, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 3 Raised Soil Planter Beds
+          [
+            [60, 104, 230, 142, "cabbage"],
+            [60, 304, 200, 142, "fern"],
+            [510, 104, 230, 142, "flower"]
+          ].forEach(([px, py, pw, ph, kind]) => {
+            withShadow(ctx, () => {
+              rrect(ctx, px, py, pw, ph, 6);
+              fillStroke(ctx, "#5c3d28", INK, 2.5);
+            });
+            for (let r = 0; r < 2; r++) {
+              for (let c = 0; c < 3; c++) {
+                const cx = px + 44 + c * 62;
+                const cy = py + 42 + r * 58;
+                ctx.beginPath();
+                ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+                fillStroke(ctx, kind === "flower" ? "#e63946" : "#6ab04c", INK, 2);
+              }
+            }
+          });
+
+          // SE Carnivorous Snapper Plant + South Berry Bush
+          withShadow(ctx, () => {
+            ctx.beginPath();
+            ctx.ellipse(380, 442, 70, 32, 0, 0, Math.PI * 2);
+            fillStroke(ctx, "#527936", INK, 2.4);
+            ctx.beginPath();
+            ctx.arc(640, 398, 58, 0, Math.PI * 2);
+            fillStroke(ctx, "#b5653b", INK, 2.5);
+            ctx.beginPath();
+            ctx.ellipse(618, 384, 22, 12, -0.3, 0, Math.PI * 2);
+            ctx.ellipse(662, 384, 22, 12, 0.3, 0, Math.PI * 2);
+            fillStroke(ctx, "#d94f70", INK, 2);
+          });
+
+          drawMiniHero(ctx, 310, 200, "SCOUT", "Fen (worktree)", "#34673d", "#7ce04b", t);
+        }
+
+        // ========================================================================
+        // 09 · COUNCIL HALL
+        // ========================================================================
+        else if (roomId === "09") {
+          drawWoodPlankFloor(ctx, w, h, "#855836", "#784e2f", "#57453a", "#382b24");
+
+          // North Stone Hearth Fireplace with Blazing Crossed Logs
+          withShadow(ctx, () => {
+            rrect(ctx, 300, 32, 200, 80, 12);
+            fillStroke(ctx, "#6c6560", INK, 2.8);
+            rrect(ctx, 336, 40, 128, 50, 8);
+            fillStroke(ctx, "#241914", INK, 2);
+            ctx.beginPath();
+            ctx.ellipse(400, 64, 48, 18, 0, 0, Math.PI * 2);
+            fillStroke(ctx, "#ff7b00", INK, 1.8);
+          });
+
+          // Center Round Carpet + 8 Radial Chairs + Round Council Table + Quest Map
+          withShadow(ctx, () => {
+            const rg = ctx.createRadialGradient(400, 295, 20, 400, 295, 175);
+            rg.addColorStop(0, "#9e3333");
+            rg.addColorStop(1, "#6b1d1d");
+            ctx.beginPath();
+            ctx.arc(400, 295, 174, 0, Math.PI * 2);
+            fillStroke(ctx, rg, INK, 3);
+          });
+          // 8 Radial Council Armchairs
+          for (let i = 0; i < 8; i++) {
+            const a = (i / 8) * Math.PI * 2;
+            ctx.save();
+            ctx.translate(400 + Math.cos(a) * 142, 295 + Math.sin(a) * 142);
+            ctx.rotate(a + Math.PI / 2);
+            rrect(ctx, -20, -18, 40, 36, 5);
+            fillStroke(ctx, "#7c2d38", INK, 2.2);
+            ctx.restore();
+          }
+          withShadow(ctx, () => {
+            ctx.beginPath();
+            ctx.arc(400, 295, 112, 0, Math.PI * 2);
+            fillStroke(ctx, "#754c29", INK, 2.8);
+          });
+          // Quest Map & Dice on Round Table
+          ctx.save();
+          ctx.translate(400, 295);
+          ctx.rotate(0.12);
+          ctx.fillStyle = "#f2e6c2";
+          ctx.fillRect(-66, -44, 132, 88);
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(-66, -44, 132, 88);
+          ctx.restore();
+
+          // West Benches + East Buffet Sideboard
+          withShadow(ctx, () => {
+            rrect(ctx, 44, 122, 36, 134, 4);
+            fillStroke(ctx, "#6e4427", INK, 2.4);
+            rrect(ctx, 44, 286, 36, 116, 4);
+            fillStroke(ctx, "#6e4427", INK, 2.4);
+            rrect(ctx, 712, 114, 52, 228, 4);
+            fillStroke(ctx, "#6e4427", INK, 2.4);
+          });
+
+          drawMiniHero(ctx, 260, 200, "CLERIC", "Marra (plan)", "#c83d28", "#e6a82e", t);
+        }
+
+        // ========================================================================
+        // 10 · ARTIFICER'S WORKSHOP (GOAL ASSEMBLY AUTOMATON & GEARS)
+        // ========================================================================
+        else if (roomId === "10") {
+          drawWoodPlankFloor(ctx, w, h, "#7d5233", "#70482b", "#6e4230", "#42251a");
+
+          // NW Tinkerer's Workbench with Clockwork Owl, Vise, Lamp & Tools
+          withShadow(ctx, () => {
+            rrect(ctx, 56, 34, 330, 72, 5);
+            fillStroke(ctx, "#78492a", INK, 2.6);
+            rrect(ctx, 204, 104, 48, 40, 5);
+            fillStroke(ctx, "#5e3d24", INK, 2.4);
+          });
+          // Clockwork Owl on Workbench
+          ctx.beginPath();
+          ctx.arc(160, 68, 22, 0, Math.PI * 2);
+          fillStroke(ctx, "#d49b35", INK, 2.2);
+          [-7, 7].forEach((ox) => {
+            ctx.beginPath();
+            ctx.arc(160 + ox, 62, 6, 0, Math.PI * 2);
+            fillStroke(ctx, "#7ce8ff", INK, 1.8);
+          });
+
+          // Copper Steam Pipes + Red Valves + Pressure Gauge
+          ctx.fillStyle = "#d4874b";
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 2.4;
+          ctx.fillRect(400, 38, 352, 15);
+          ctx.strokeRect(400, 38, 352, 15);
+          ctx.fillRect(738, 38, 15, 400);
+          ctx.strokeRect(738, 38, 15, 400);
+          [
+            [558, 45],
+            [746, 276]
+          ].forEach(([vx, vy]) => {
+            ctx.beginPath();
+            ctx.arc(vx, vy, 16, 0, Math.PI * 2);
+            fillStroke(ctx, "#c83d28", INK, 2.2);
+          });
+          ctx.beginPath();
+          ctx.arc(698, 45, 18, 0, Math.PI * 2);
+          fillStroke(ctx, "#fbf3d5", INK, 2.2);
+
+          // East Riveted Steel Platform + 3 Interlocking Gears + Control Console
+          withShadow(ctx, () => {
+            rrect(ctx, 436, 142, 270, 224, 8);
+            fillStroke(ctx, "#4d5359", INK, 2.8);
+          });
+          const drawWorkshopGear = (gx, gy, r, teeth, ang, col) => {
+            ctx.save();
+            ctx.translate(gx, gy);
+            ctx.rotate(ang);
+            ctx.globalAlpha = assemblyVibrant ? 1 : 0.35;
+            ctx.beginPath();
+            for (let i = 0; i < teeth; i++) {
+              const a1 = (i / teeth) * Math.PI * 2;
+              const a2 = ((i + 0.4) / teeth) * Math.PI * 2;
+              const a3 = ((i + 0.6) / teeth) * Math.PI * 2;
+              const a4 = ((i + 0.9) / teeth) * Math.PI * 2;
+              ctx.lineTo(Math.cos(a1) * (r - 8), Math.sin(a1) * (r - 8));
+              ctx.lineTo(Math.cos(a2) * (r + 5), Math.sin(a2) * (r + 5));
+              ctx.lineTo(Math.cos(a3) * (r + 5), Math.sin(a3) * (r + 5));
+              ctx.lineTo(Math.cos(a4) * (r - 8), Math.sin(a4) * (r - 8));
+            }
+            ctx.closePath();
+            fillStroke(ctx, assemblyVibrant ? col : "#6c757d", INK, 2.4);
+            ctx.beginPath();
+            ctx.arc(0, 0, r * 0.25, 0, Math.PI * 2);
+            fillStroke(ctx, "#4d5359", INK, 2);
+            ctx.restore();
+          };
+          const speed = assemblyVibrant ? 1 : 0;
+          drawWorkshopGear(520, 236, 56, 16, t * 0.8 * speed, "#d49b35");
+          drawWorkshopGear(618, 240, 40, 12, -t * 1.1 * speed, "#c28d2b");
+          drawWorkshopGear(522, 326, 30, 10, -t * 1.4 * speed, "#d47a35");
+
+          // Control Console Box on Steel Deck
+          rrect(ctx, 648, 286, 46, 62, 5);
+          fillStroke(ctx, "#343a40", INK, 2.2);
+          ctx.fillStyle = assemblyVibrant ? "#52e388" : "#495057";
+          ctx.fillRect(658, 296, 26, 14);
+
+          // West Automaton Assembly Table (GOAL ASSEMBLY SITE)
+          withShadow(ctx, () => {
+            rrect(ctx, 44, 160, 120, 240, 6);
+            fillStroke(ctx, "#6e472b", INK, 2.8);
+          });
+          ctx.save();
+          ctx.globalAlpha = assemblyVibrant ? 1 : 0.38;
+          rrect(ctx, 76, 194, 56, 60, 6);
+          fillStroke(ctx, assemblyVibrant ? "#d49b35" : "#6c757d", INK, 2.4);
+          ctx.beginPath();
+          ctx.arc(104, 176, 18, 0, Math.PI * 2);
+          fillStroke(ctx, assemblyVibrant ? "#d49b35" : "#6c757d", INK, 2.4);
+          ctx.beginPath();
+          ctx.arc(104, 176, 8, 0, Math.PI * 2);
+          fillStroke(ctx, assemblyVibrant ? "#7ce8ff" : "#495057", INK, 2);
+          ctx.fillStyle = "#adb5bd";
+          ctx.fillRect(86, 254, 10, 60);
+          ctx.strokeRect(86, 254, 10, 60);
+          ctx.fillRect(112, 254, 10, 60);
+          ctx.strokeRect(112, 254, 10, 60);
+          ctx.restore();
+
+          // SW Blue Blueprint Table + SE Toolbox & Crackling Tesla Coil
+          withShadow(ctx, () => {
+            rrect(ctx, 195, 372, 142, 88, 6);
+            fillStroke(ctx, "#6e472b", INK, 2.5);
+            ctx.fillStyle = "#1d4e89";
+            ctx.fillRect(206, 382, 120, 68);
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(214, 390, 104, 52);
+
+            rrect(ctx, 470, 408, 90, 44, 4);
+            fillStroke(ctx, "#c84b3b", INK, 2.4);
+
+            ctx.beginPath();
+            ctx.arc(688, 424, 34, 0, Math.PI * 2);
+            fillStroke(ctx, "#b5653b", INK, 2.5);
+            ctx.beginPath();
+            ctx.arc(688, 424, 14, 0, Math.PI * 2);
+            fillStroke(ctx, "#ced4da", INK, 2.2);
+          });
+          if (assemblyVibrant) {
+            ctx.strokeStyle = "#e0fbfc";
+            ctx.lineWidth = 2.2;
+            ctx.beginPath();
+            ctx.moveTo(698, 416);
+            ctx.lineTo(712, 402 + Math.sin(t * 20) * 5);
+            ctx.lineTo(726, 390);
+            ctx.moveTo(698, 432);
+            ctx.lineTo(714, 446 + Math.cos(t * 20) * 5);
+            ctx.lineTo(722, 462);
+            ctx.stroke();
+          }
+
+          drawMiniHero(ctx, 290, 250, "ALCHEMIST", "Greta (assemble)", "#434a54", "#d96b27", t);
+        }
+
+        ctx.restore();
+      }
+
+      const mainCanvas = document.getElementById("room-canvas");
+      const mainCtx = mainCanvas.getContext("2d");
+      const thumbCanvases = [];
+
+      function buildUI() {
+        const tabs = document.getElementById("room-tabs");
+        const grid = document.getElementById("all-rooms-grid");
+        tabs.innerHTML = "";
+        grid.innerHTML = "";
+        thumbCanvases.length = 0;
+
+        ROOMS.forEach((rm, idx) => {
+          const btn = document.createElement("button");
+          const active = idx === activeRoomIdx;
+          btn.className = `px-3.5 py-2 rounded-xl text-xs font-bold transition border ${
+            active
+              ? "bg-[#f5d08a] text-[#1c1613] border-[#f5d08a] shadow"
+              : "bg-[#261c14] text-stone-300 border-amber-200/15 hover:border-amber-400/50"
+          }`;
+          btn.textContent = rm.title;
+          btn.onclick = () => selectRoom(idx);
+          tabs.appendChild(btn);
+
+          const card = document.createElement("div");
+          card.className = `cursor-pointer bg-[#261c14] rounded-xl overflow-hidden border transition hover:-translate-y-1 ${
+            active ? "border-amber-400 ring-2 ring-amber-400/30" : "border-stone-800"
+          }`;
+          card.innerHTML = `
+            <canvas width="800" height="555" class="w-full h-auto"></canvas>
+            <div class="p-3 border-t border-black/40">
+              <div class="serif-title text-sm font-bold text-[#e8c27a]">${rm.title}</div>
+              <div class="text-[11px] text-amber-300/80 font-mono mt-0.5">${rm.openCodeMapping}</div>
+            </div>
+          `;
+          card.onclick = () => {
+            selectRoom(idx);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          };
+          grid.appendChild(card);
+          const c = card.querySelector("canvas");
+          thumbCanvases.push({ ctx: c.getContext("2d"), roomId: rm.id });
+        });
+
+        const cur = ROOMS[activeRoomIdx];
+        document.getElementById("room-footer-title").textContent = cur.title;
+        document.getElementById("room-footer-items").textContent = cur.items;
+        document.getElementById("live-mapping-tag").textContent = cur.openCodeMapping;
+        document.getElementById("ref-room-img").src = cur.refImg;
+      }
+
+      function selectRoom(idx) {
+        activeRoomIdx = idx;
+        buildUI();
+      }
+
+      document.getElementById("toggle-heroes-btn").onclick = (e) => {
+        showHeroes = !showHeroes;
+        e.target.textContent = `🧙 Overlay Step 1 Heroes: ${showHeroes ? "ON" : "OFF (1:1 Pure Room View)"}`;
+      };
+      document.getElementById("toggle-assembly-btn").onclick = (e) => {
+        assemblyVibrant = !assemblyVibrant;
+        e.target.textContent = `⚙️ Goal Assembly (Room 10): ${assemblyVibrant ? "Vibrant (Built)" : "Bleak (Unbuilt Wireframe)"}`;
+      };
+
+      function animate(now) {
+        const t = now * 0.001;
+        renderRoom(mainCtx, 800, 555, ROOMS[activeRoomIdx].id, t);
+        for (const tc of thumbCanvases) {
+          renderRoom(tc.ctx, 800, 555, tc.roomId, t);
+        }
+        requestAnimationFrame(animate);
+      }
+
+      buildUI();
+      requestAnimationFrame(animate);
+    </script>
+  </body>
+</html>

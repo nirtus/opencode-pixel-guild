@@ -14,6 +14,7 @@ import {
   handleTasksHydrated,
   handleTimerTick,
 } from "./batch-reconciler.ts";
+import { compactArchivedCharacterPayload } from "./archived-payload-compactor.ts";
 import { pruneDeletedHostRooms } from "./reducer-helpers.ts";
 import { mergeSessionTributeRecord, syncCharacterTributeRecord } from "./context-mana.ts";
 import { normalizeLocationDirectory } from "./location-normalization.ts";
@@ -80,6 +81,7 @@ export function createWorldStateReducer(
     lastTimestampMs: 0,
     activeAdapter: options.initialAdapter ?? "opencode-client",
     daemonUrl: options.daemonUrl ?? null,
+    onBeforeArchiveCharacter: options.onBeforeArchiveCharacter,
   };
 
   let cachedTickSnapshot: ReturnType<typeof buildSnapshot> | null = null;
@@ -340,7 +342,9 @@ export function createWorldStateReducer(
       if (persisted.characters && typeof persisted.characters === "object") {
         for (const [charId, char] of Object.entries(persisted.characters)) {
           if (!state.deletedSessionIds.has(charId) && !state.characters[charId] && char) {
-            state.characters[charId] = structuredClone(char);
+            const cloned = structuredClone(char);
+            if (cloned.lifecycleState === "Archived") compactArchivedCharacterPayload(cloned);
+            state.characters[charId] = cloned;
             state.characterRevisions.set(charId, 1);
           }
         }

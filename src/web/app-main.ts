@@ -11,9 +11,11 @@ import { reconcileSidePanel, reconcileTicker } from "./side-panel-reconciler.ts"
 import { initTopBarControls, reconcileTopBar } from "./top-bar-reconciler.ts";
 import { initSummonAdventurerControls, syncSummonModalDom } from "./summon-adventurer-controller.ts";
 import { getOperatorHeaders, syncOperatorAuthGate, withOperatorQuery } from "./operator-pairing-controller.ts";
-import { clearCachedGitState, invalidateRoomGitCache, refreshRoomGitState, wasRoomGitMutatedRecently } from "./commit-ledger-controller.ts";
+import { clearCachedGitState, getCachedRoomGitState, invalidateRoomGitCache, refreshRoomGitState, wasRoomGitMutatedRecently } from "./commit-ledger-controller.ts";
 import { initIntroDemoDirector, isIntroDemoModeActive, paintIntroDemoOverlay, renderFallbackDemoSimulatorHeroes, stepIntroDemoDirector } from "./intro-demo-director.ts";
 import { applyAuthoritativeSnapshot } from "./snapshot-gate.ts";
+import { recordSseTickerEmission } from "./activity-ticker-cache.ts";
+import { resolveSseGitRefreshAction } from "./sse-git-refresh-guard.ts";
 
 export { clearCachedGitState, hitTestSceneFrame, stepClientChoreography };
 
@@ -241,48 +243,22 @@ function openLiveEventStream(): void {
     try {
       const emission = JSON.parse(ev.data);
       if (emission && emission.snapshot) {
+        const prevSnapshot = clientState.currentSnapshot;
         applyAuthoritativeSnapshot(emission.snapshot);
-        const kind = emission.delta?.kind;
-        if (
-          emission.delta?.description &&
-          kind !== "timer.tick" &&
-          kind !== "location.discovered" &&
-          kind !== "catalog.hydrated" &&
-          kind !== "tasks.hydrated"
-        ) {
-          clientState.tickerLog.push(emission);
-          if (clientState.tickerLog.length > 40) {
-            clientState.tickerLog.splice(0, clientState.tickerLog.length - 40);
-          }
-        }
-        if (
-          kind === "tasks.hydrated" ||
-          kind === "stream.reconnected" ||
-          kind === "session.idle"
-        ) {
-          const room = getSelectedProjectRoom();
-          const changedRooms = Array.isArray((emission.delta as { changedRoomIds?: string[] } | undefined)?.changedRoomIds)
-            ? ((emission.delta as { changedRoomIds?: string[] }).changedRoomIds ?? [])
-            : [];
-          const deltaRoomId =
-            (emission.delta as { roomId?: string; locationDirectory?: string } | undefined)?.roomId ||
-            (emission.delta as { locationDirectory?: string } | undefined)?.locationDirectory ||
-            (changedRooms.length === 1 ? changedRooms[0] : null) ||
-            (kind === "stream.reconnected" ? (room?.roomId ?? null) : null);
-          const affectsSelectedRoom = Boolean(
-            room?.roomId && (deltaRoomId === room.roomId || changedRooms.includes(room.roomId)),
-          );
-          const isEchoFromMutation =
-            kind === "tasks.hydrated" &&
-            deltaRoomId !== null &&
-            wasRoomGitMutatedRecently(deltaRoomId, 1500);
-          if (!isEchoFromMutation) {
-            if (room?.roomId && affectsSelectedRoom && !wasRoomGitMutatedRecently(room.roomId, 1500)) {
-              void refreshRoomGitState(room.roomId, scheduleHudSync);
-            } else if ((kind === "tasks.hydrated" || kind === "session.idle") && deltaRoomId) {
-              invalidateRoomGitCache(deltaRoomId);
-            }
-          }
+        recordSseTickerEmission(clientState.tickerLog, emission);
+        const room = getSelectedProjectRoom();
+        const gitAction = resolveSseGitRefreshAction({
+          delta: emission.delta,
+          prevSnapshot,
+          nextSnapshot: clientState.currentSnapshot,
+          selectedRoomId: room?.roomId ?? null,
+          hasCachedGitState: Boolean(room?.roomId && getCachedRoomGitState(room.roomId)),
+          wasRoomMutatedRecently: (rid) => wasRoomGitMutatedRecently(rid, 1500),
+        });
+        if (gitAction.action === "refresh") {
+          void refreshRoomGitState(gitAction.roomId, scheduleHudSync);
+        } else if (gitAction.action === "invalidate") {
+          invalidateRoomGitCache(gitAction.roomId);
         }
         scheduleHudSync();
       }

@@ -1,6 +1,7 @@
 import { isBuiltinOpenCodePlugin } from "../capability/classifier.ts";
 import { detectConversationalQuestionPrompt, LIFECYCLE_TIMERS_MS, mergeQuestGateFields, type QuestGateState, type ReconnectLogEntry, type TelemetryEvent } from "../types/domain.ts";
 import { syncCharacterWorkflow } from "./armory-and-workflow.ts";
+import { ARCHIVED_MAX_IN_MEMORY_MESSAGES, compactArchivedCharacterPayload } from "./archived-payload-compactor.ts";
 import { syncCharacterTributeRecord, updateContextMana } from "./context-mana.ts";
 import { deriveEquipmentLoadout } from "./equipment-loadout.ts";
 import { isDeletedHostDirectory, normalizeLocationDirectory } from "./location-normalization.ts";
@@ -380,6 +381,10 @@ export function handleStreamReconnected(
           transitionCharacterState(state, char, nextIdleState, event.timestampMs, { preserveLastActivity: true });
           collector.changedCharacterIds.add(char.characterId);
         }
+      }
+      if (char.lifecycleState === "Archived") {
+        if ((char.messages?.length ?? 0) > ARCHIVED_MAX_IN_MEMORY_MESSAGES) state.onBeforeArchiveCharacter?.(char);
+        if (compactArchivedCharacterPayload(char)) { bumpCharacterRevision(state, char.characterId); collector.changedCharacterIds.add(char.characterId); }
       }
     }
     room.activeSessionIds = [...activeSet];

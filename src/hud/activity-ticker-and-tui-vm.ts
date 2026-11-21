@@ -57,7 +57,7 @@ function classifyTickerCategory(deltaKind: string): ActivityTickerCategory {
 }
 
 export function formatActivityTickerEntry(
-  emissionOrDelta: GuildStateEmission | GuildDelta,
+  emissionOrDelta: GuildStateEmission | { readonly delta: GuildDelta } | GuildDelta,
 ): ActivityTickerEntryViewModel {
   const delta =
     "delta" in emissionOrDelta ? emissionOrDelta.delta : emissionOrDelta;
@@ -167,6 +167,28 @@ function collectCharacterHistoryEntries(
   return synthesized;
 }
 
+function computeTickerItemDedupeKey(
+  item: ActivityTickerInputItem,
+): string | null {
+  if ("delta" in item || "kind" in item) {
+    const delta = "delta" in item ? item.delta : item;
+    if (!delta) return null;
+    return `delta:${delta.version ?? 0}:${delta.kind ?? ""}:${delta.timestampMs ?? 0}:${delta.sessionId ?? ""}:${delta.roomId ?? ""}:${delta.description ?? ""}`;
+  }
+  if ("category" in item && "summary" in item) {
+    const rawEntry = item as {
+      readonly timestamp?: number;
+      readonly timestampMs?: number;
+      readonly category?: string;
+      readonly roomId?: string | null;
+      readonly sessionId?: string | null;
+      readonly summary?: string;
+    };
+    return `entry:${rawEntry.category ?? ""}:${rawEntry.sessionId ?? ""}:${rawEntry.roomId ?? ""}:${rawEntry.timestamp ?? rawEntry.timestampMs ?? 0}:${rawEntry.summary ?? ""}`;
+  }
+  return null;
+}
+
 export function buildActivityTickerViewModel(
   inputs: ReadonlyArray<ActivityTickerInputItem>,
   maxEntries = 18,
@@ -189,11 +211,15 @@ export function buildActivityTickerViewModel(
   const seenKeys = new Set<string>();
 
   for (const item of inputs) {
-    const dedupeKey = JSON.stringify(item);
+    if (!item || typeof item !== "object") continue;
+    const dedupeKey = computeTickerItemDedupeKey(item);
+    if (!dedupeKey || seenKeys.has(dedupeKey)) continue;
     seenKeys.add(dedupeKey);
     let baseEntry: ActivityTickerEntryViewModel | null = null;
     if ("delta" in item || "kind" in item) {
-      baseEntry = formatActivityTickerEntry(item as GuildStateEmission | GuildDelta);
+      baseEntry = formatActivityTickerEntry(
+        item as GuildStateEmission | { readonly delta: GuildDelta } | GuildDelta,
+      );
     } else if ("category" in item && "summary" in item) {
       const rawEntry = item as {
         readonly timestamp?: number;

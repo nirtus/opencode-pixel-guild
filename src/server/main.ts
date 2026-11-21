@@ -19,7 +19,6 @@ import {
 import { createWorldStateReducer } from "../state/index.ts";
 import type {
   GuildSnapshot,
-  GuildStateEmission,
   WorldStateReducer,
 } from "../types/domain.ts";
 import {
@@ -29,6 +28,7 @@ import {
 import { tryHandleGuildApiRoute } from "./api-router.ts";
 import { tryHandleGuildGitRoute } from "./git-router.ts";
 import { createOperatorWorkspaceRegistry } from "./operator-registry.ts";
+import { createSseBroadcaster } from "./sse-broadcaster.ts";
 import { tryServeStaticAsset } from "./static-router.ts";
 
 export interface CreateGuildCompanionServerOptions {
@@ -99,18 +99,9 @@ export function createGuildCompanionServer(
     });
 
   const sseClients = new Set<ServerResponse>();
+  const sseBroadcaster = createSseBroadcaster(sseClients);
 
-  function broadcastEmission(emission: GuildStateEmission): void {
-    if (sseClients.size === 0) return;
-    const payload = `data: ${JSON.stringify(emission)}\n\n`;
-    for (const client of sseClients) {
-      if (!client.writableEnded) {
-        client.write(payload);
-      }
-    }
-  }
-
-  const unsubscribeReducer = activeReducer.subscribe(broadcastEmission);
+  const unsubscribeReducer = activeReducer.subscribe(sseBroadcaster.broadcast);
 
   function activatePreset(
     presetId: DemoScenarioPresetId,
@@ -229,6 +220,7 @@ export function createGuildCompanionServer(
   function close(): Promise<void> {
     operatorRegistry.closeAll();
     conn.clientAdapter?.stop();
+    sseBroadcaster.close();
     for (const client of sseClients) {
       if (!client.writableEnded) {
         client.end();

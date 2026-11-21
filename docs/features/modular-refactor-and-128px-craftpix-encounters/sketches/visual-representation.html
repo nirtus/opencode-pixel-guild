@@ -1,0 +1,1596 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ultra-Detailed Animated Visual Showcase · 6 Options Per Object Category</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body {
+        background-color: #06050a;
+        color: #f8fafc;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      .option-card {
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .option-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 22px 44px -12px rgba(245, 158, 11, 0.28);
+      }
+      .option-card.selected {
+        border-color: #f59e0b !important;
+        box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.4), 0 22px 48px -10px rgba(245, 158, 11, 0.35);
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen pb-28">
+    <!-- Sticky Header -->
+    <header class="sticky top-0 z-50 backdrop-blur-xl bg-[#06050a]/90 border-b border-amber-500/25 px-6 py-4 shadow-2xl">
+      <div class="max-w-[1680px] mx-auto flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div>
+          <div class="flex flex-wrap items-center gap-2.5">
+            <span class="px-3 py-0.5 rounded-full text-[11px] font-mono font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">
+              High-Resolution Painted &amp; Animated Vector-Shader Engine (Zero Pixel Blockiness)
+            </span>
+            <span class="text-xs font-mono text-slate-400">
+              42 Bespoke Live 60FPS Canvases · Click Any Option (A–F) to Select · Click "4K Inspect" to Enlarge
+            </span>
+          </div>
+          <h1 class="text-2xl md:text-3xl font-serif font-bold text-white tracking-tight mt-1">
+            OpenCode Guild Visualizer — 6 Distinct Visual Options Per Object Category
+          </h1>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3 bg-[#120e1c] border border-amber-500/30 rounded-xl px-4 py-2.5 shadow-lg">
+          <div class="text-xs font-mono">
+            <span class="text-slate-400">Active Choices:</span>
+            <span id="selection-summary" class="text-amber-300 font-bold ml-1.5 text-sm">1A, 2A, 3A, 4A, 5A, 6A, 7A</span>
+          </div>
+          <button id="copy-selections-btn" class="px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition shadow">
+            Copy Choices
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Fullscreen 4K Inspection Modal -->
+    <div id="zoom-modal" class="fixed inset-0 z-50 hidden bg-black/92 backdrop-blur-lg flex items-center justify-center p-4 md:p-8">
+      <div class="relative max-w-6xl w-full bg-[#110e1b] border-2 border-amber-500/60 rounded-2xl overflow-hidden shadow-2xl">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-[#161224]">
+          <div>
+            <h3 id="modal-title" class="text-xl font-serif font-bold text-white"></h3>
+            <p id="modal-desc" class="text-xs font-mono text-slate-300 mt-0.5"></p>
+          </div>
+          <button id="close-modal-btn" class="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-mono font-bold text-white border border-slate-600">
+            Close [Esc]
+          </button>
+        </div>
+        <div class="p-4 bg-[#050409] flex items-center justify-center">
+          <canvas id="modal-canvas" width="1440" height="900" class="rounded-xl border border-slate-800 max-h-[78vh] w-auto"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <main id="gallery-root" class="max-w-[1680px] mx-auto px-6 pt-8 space-y-16"></main>
+
+    <script>
+      // ============================================================================
+      // CATALOG OF 7 CATEGORIES × 6 DISTINCT OPTIONS = 42 BESPOKE VISUAL SCENES
+      // ============================================================================
+      const CATEGORIES = [
+        {
+          id: 1,
+          title: "1. Workshop Room Interior Architecture, Flooring & Lighting (6 Options)",
+          subtitle: "Full cutaway interior showing wall masonry, floor materials, lighting shafts, perimeter preparation stations, and central Goal Assembly.",
+          defaultChoice: "1A",
+          options: [
+            { code: "1A", name: "Grand Royal Alchemist & Clockwork Guildhall", tag: "Mahogany Parquet, Limestone & Sunbeams", desc: "Polished herringbone oak floorboards with wood knots, carved limestone masonry walls, crimson Persian rugs with gold fringe, brass chandeliers, and warm sunbeams." },
+            { code: "1B", name: "Dwarven Master Foundry & Obsidian Vault", tag: "Basalt Columns & Molten Magma Channels", desc: "Heavy hexagonal basalt flagstones over glowing molten magma conduits, iron floor grates, roaring bronze braziers, and riveted dwarven pillar architecture." },
+            { code: "1C", name: "Arcane Astral Sanctum & High Library", tag: "Celestial Marble & Gothic Stained Glass", desc: "Midnight-blue and white Carrara marble floor inlaid with golden astrolabe rings, rose stained-glass light shafts, and levitating crystal sconces." },
+            { code: "1D", name: "Da Vinci Renaissance Inventor's Atelier", tag: "Tuscan Terracotta Vaults & Glass Skylight", desc: "Herringbone terracotta brick floor, warm timber ceiling trusses, glass atrium skylight, hanging ornithopter blueprints, and warm tallow candelight." },
+            { code: "1E", name: "Sylvan Elven Heartwood Conservatory", tag: "Living Root Colonnades & Waterfall Pond", desc: "Interwoven living ancient heartwood trees forming the walls, amber-resin burl flooring, indoor cascading waterfall pond, and bioluminescent emerald lanterns." },
+            { code: "1F", name: "Steampunk Ironclad Citadel Workshop", tag: "Riveted Brass Bulkheads & Tesla Arc Lamps", desc: "Machined steel deck plates with brass hazard trim, overhead rotating line-shaft pulleys and gears, pressurized copper boilers, and warm filament arc lamps." }
+          ]
+        },
+        {
+          id: 2,
+          title: "2. Bug-Hunting Wilderness & Dungeon Biome with Fog of War (6 Options)",
+          subtitle: "Outdoor wilderness beyond the workshop gate where diagnostic tools (grep/read/diagnose) cast Lantern Flares to burn away Fog of War and reveal monster tracks.",
+          defaultChoice: "2A",
+          options: [
+            { code: "2A", name: "Blackwood Gnarled Forest & Ancient Mossy Ruins", tag: "Twisted Oaks, Fallen Pillars & Swamp Wisps", desc: "Dense ancient forest with gnarled roots, mossy ruined Greek columns, glowing willow-wisps, muddy slime footprint trails, and rolling midnight mist." },
+            { code: "2B", name: "Subterranean Bioluminescent Crystal Caverns", tag: "Faceted Amethyst Geodes & Dark River", desc: "Abyssal cavern with giant refractive violet amethyst and cyan quartz crystal spires, underground river reflections, and drifting glowing spore motes." },
+            { code: "2C", name: "Cursed Gothic Catacombs & Sunken Crypt", tag: "Cracked Flagstones, Iron Gates & Soul-Fire", desc: "Weathered crypt flagstones with skull carvings, wrought-iron portcullis gates, emerald soul-fire braziers, stone sarcophagi, and creeping floor fog." },
+            { code: "2D", name: "Volcanic Ashlands & Magma Fissure Canyon", tag: "Obsidian Crags, Lava Rivers & Ember Storm", desc: "Jagged black basalt cliffs split by rivers of incandescent molten lava, floating cooling rock islands, rising ember sparks, and thick sulfur ash fog." },
+            { code: "2E", name: "Mire of the Blighted Bog & Weeping Cypress Marsh", tag: "Submerged Cypress Roots & Giant Glowing Fungi", desc: "Still black marsh water reflecting buttressed cypress trunks, hanging Spanish moss, giant bioluminescent mushrooms, wooden boardwalks, and toxic green mist." },
+            { code: "2F", name: "Frozen Alpine Crags & Glacial Ice Caverns", tag: "Refractive Blue Ice Cliffs & Aurora Sky", desc: "Translucent glacial ice walls, snow-laden pine trees, ancient carved Viking runestones, swirling blizzard snow, and shimmering aurora light shafts." }
+          ]
+        },
+        {
+          id: 3,
+          title: "3. Guild Hero Character Art Style — All 6 Roles (6 Options)",
+          subtitle: "High-resolution animated rendering of Mage, Warrior, Scout, Artificer, Cleric, and Demolitionist.",
+          defaultChoice: "3A",
+          options: [
+            { code: "3A", name: "High-Fantasy Hand-Painted Champions", tag: "Burnished Steel, Velvet Cloaks & Runic Glow", desc: "Richly shaded metallic plate armor with specular highlights, flowing layered silk & velvet cloaks, glowing runic steel weapons, and orbiting spell glyphs." },
+            { code: "3B", name: "Arcane-Steampunk Guild Artificers (Piltover Style)", tag: "Brass Pauldrons, Aether-Goggles & Hex-Blades", desc: "Tailored leather trench-coats with riveted brass armor, glowing cyan aether-lenses, pressurized steam gauntlets, and crackling hex-crystal implements." },
+            { code: "3C", name: "Dark Fantasy Grimdark Slayers (Diablo / Hades Style)", tag: "Blackened Fluted Plate & Crimson Rim-Light", desc: "Weathered obsidian steel armor, dramatic high-contrast chiaroscuro shadows, razor-sharp crimson & gold rim lighting, and searing hellfire weapon trails." },
+            { code: "3D", name: "Celestial & Astral Guardians (Ori Painted Style)", tag: "Luminous Starlight Forms & Energy Ribbons", desc: "Graceful bioluminescent hero silhouettes filled with deep cosmic nebula light, trailing starlight scarves, floating halos, and crystalline weapons." },
+            { code: "3E", name: "Classic Painted CRPG Masters (Baldur's Gate Style)", tag: "Grounded Heraldry, Chainmail & Oil Shading", desc: "Authentic medieval proportions with quartered heraldic shields, fine metallic chainmail links, leather utility belts, and warm oil-painted shading." },
+            { code: "3F", name: "Stylized Heroic Legends (Supergiant / Blizzard Style)", tag: "Bold Sculpted Armor & High-Impact VFX", desc: "Heroic proportions with bold hand-painted bevels, iconic oversized pauldrons and weapons, and vibrant multi-layered slash and spell effects." }
+          ]
+        },
+        {
+          id: 4,
+          title: "4. Wall Preparation Stations — Bookshelf, Forge, Spyglass, Workbench, Lectern (6 Options)",
+          subtitle: "Perimeter task fixtures where characters prepare components: Read (Bookshelf), Bash (Forge), Web/Search (Window Spyglass), Edit (Workbench), Skill (Lectern).",
+          defaultChoice: "4A",
+          options: [
+            { code: "4A", name: "Classical Guild Master Suite", tag: "Walnut Library, Brick Hearth Forge & Brass Scope", desc: "Arched walnut bookcases with rolling brass ladder, roaring red-brick blacksmith forge with horned anvil, tripod brass telescope by bay window, and oak drafting table." },
+            { code: "4B", name: "Clockwork Mechanist & Brass Observatory Suite", tag: "Rotary Book-Wheel, Steam Hammer & Periscope", desc: "Rotating brass Ferris book-carousel, hydraulic steam-piston forge with pressure dials, geared dome observatory telescope, and precision machinist lathe bench." },
+            { code: "4C", name: "High-Arcane Enchanted Sanctum Suite", tag: "Floating Scroll Spires, Soul-Anvil & Scrying Mirror", desc: "Anti-gravity crystal book towers, violet soul-flame runic anvil, levitating silver scrying mirror window, and self-writing enchanted quill desk." },
+            { code: "4D", name: "Dwarven Runesmith & Magma Foundry Suite", tag: "Gold-Inlaid Stone Tablets & Magma Crucible", desc: "Carved granite rune-tablet archives, molten lava waterfall crucible with twin bellows, armored brass theodolite sight, and stone-carving mason bench." },
+            { code: "4E", name: "Alchemical Glassblower & Botanical Suite", tag: "Potion Apothecary, Glass Kiln & Sun Lens", desc: "Curved apothecary shelves of glowing potion flasks, domed brick glassblower kiln with molten gather, botanical conservatory spyglass, and alembic retort table." },
+            { code: "4F", name: "Imperial Citadel War-Room & Armory Suite", tag: "Chained War-Vault, Twin Weapon Smithy & Signal Scope", desc: "Wrought-iron war chronicle vault, twin-tuyere military blade foundry, watchtower signal-lens telescope, and illuminated 3D terrain tactician table." }
+          ]
+        },
+        {
+          id: 5,
+          title: "5. Central Goal Assembly Site — Bleak Unbuilt vs. Vibrant Assembled (6 Options)",
+          subtitle: "Each card shows the Bleak/Dim Unbuilt state on the left and the Vibrant/Radiant Assembled state on the right as feature tasks are fitted.",
+          defaultChoice: "5A",
+          options: [
+            { code: "5A", name: "Grand Sky-Galleon Airship in Drydock", tag: "Bleak Timber Ribs → Gleaming Copper Hull & Aether Sails", desc: "Unbuilt tasks appear as ghostly grey wooden hull ribs; fitted parts snap in as burnished copper plating, spinning brass twin-propellers, and glowing cyan solar sails." },
+            { code: "5B", name: "Celestial Astral Orrery & Clockwork Planetarium", tag: "Dim Iron Wireframe → Spinning Gold Rings & Gem Planets", desc: "Unbuilt tasks appear as dark motionless iron rings; fitted parts become engraved spinning gold gyroscopes, orbiting ruby/sapphire planets, and a blazing sun core." },
+            { code: "5C", name: "Arcane Mythril Guardian Colossus", tag: "Dormant Stone Armature → Awakened Rune Titan", desc: "Unbuilt tasks appear as a lifeless grey stone skeleton in gantry scaffolding; fitted parts lock in as polished mythril armor plates and pulsing cyan mana conduits." },
+            { code: "5D", name: "Alchemical Philosopher's Grand Reactor", tag: "Dull Empty Glass & Lead → Boiling Elixir & Tesla Coils", desc: "Unbuilt tasks appear as dusty empty glass bulbs; fitted parts ignite as pressurized copper coils, bubbling emerald & gold transmutation chambers, and plasma arcs." },
+            { code: "5E", name: "Royal Guild Cathedral & Stained-Glass Spire", tag: "Chalk Foundation & Scaffolding → Marble & Rose Window", desc: "Unbuilt tasks appear as dim wooden scaffolding; fitted parts rise as carved white marble buttresses, an illuminated stained-glass rose window, and golden spire." },
+            { code: "5F", name: "Dimensional Stargate & Arcane Nexus Portal", tag: "Cracked Dark Monolith → Ignited Chevrons & Vortex", desc: "Unbuilt tasks appear as dormant unlit stone segments; each fitted task ignites a glowing rune chevron in gold & violet until the central star-vortex opens." }
+          ]
+        },
+        {
+          id: 6,
+          title: "6. Mutating Bug Monsters & Combat Encounters — Tier 1 → Tier 2 → Tier 3 Boss (6 Options)",
+          subtitle: "Monsters mutate visually as bug seriousness increases (Tier 1 Minor Warning → Tier 2 Test Suite Failure → Tier 3 Critical Architecture Boss).",
+          defaultChoice: "6A",
+          options: [
+            { code: "6A", name: "Classic Dungeon Lineage: Acid Slime → Spiked Beetle → Magma Golem", tag: "Translucent Jelly → Chitin Carapace → Lava Titan", desc: "Tier 1 translucent green slime with floating skull; mutates into Tier 2 armored horned beetle; mutates into Tier 3 colossal obsidian golem with glowing lava veins." },
+            { code: "6B", name: "Void Shadow Lineage: Shadow Mite → Stalker Hound → Abyssal Hydra", tag: "Smoke Critter → Six-Legged Predator → 3-Headed Hydra", desc: "Tier 1 skittering shadow wisp; mutates into Tier 2 void-hound with glowing violet ribs; mutates into Tier 3 three-headed serpentine hydra breathing dark lightning." },
+            { code: "6C", name: "Corrupted Clockwork Lineage: Rust Gremlin → Saw Drone → Steam Juggernaut", tag: "Sparking Gear-Bug → Buzzsaw Mech → Furnace Colossus", desc: "Tier 1 glitching brass mite; mutates into Tier 2 quad-mech with spinning steel sawblades; mutates into Tier 3 hulking iron juggernaut with roaring furnace belly." },
+            { code: "6D", name: "Sylvan Blight Lineage: Sporeling → Venom Mantis → Corrupted Treant", tag: "Toxic Mushroom → Scythe Mantis → Twisted Deadwood Boss", desc: "Tier 1 glowing toxic spore crawler; mutates into Tier 2 emerald praying mantis with scythe arms; mutates into Tier 3 towering deadwood treant with glowing sap." },
+            { code: "6E", name: "Necromantic Lineage: Crypt Wisp → Death Knight → Arch-Lich Warlord", tag: "Flaming Skull → Cursed Plate Knight → Bone Sorcerer Boss", desc: "Tier 1 floating skull in green fire; mutates into Tier 2 horned skeletal knight with greatsword; mutates into Tier 3 levitating Arch-Lich with bone vortex." },
+            { code: "6F", name: "Orc & Chaos Lineage: Goblin Bomber → Orc Warlord → Siege Behemoth", tag: "Powder Gremlin → Iron-Jaw Orc → Chained Minotaur Titan", desc: "Tier 1 goblin saboteur with fuse bomb; mutates into Tier 2 hulking armored Orc chieftain; mutates into Tier 3 colossal horned siege behemoth with molten hammers." }
+          ]
+        },
+        {
+          id: 7,
+          title: "7. In-Place Compaction Exhalation Animation — Breath & Vapor Cloud (6 Options)",
+          subtitle: "Character pauses at their current spot, inhales deeply, and exhales a misty vapor cloud that distills Context Mana from 96% down to 20%.",
+          defaultChoice: "7A",
+          options: [
+            { code: "7A", name: "Silver-Cyan Misty Breath Exhalation Cloud", tag: "Volumetric Breath Plume & Condensing Mana Dew", desc: "Character's chest expands and exhales a curling silver-cyan foggy mist plume that drifts upward and condenses into shimmering sapphire mana droplets." },
+            { code: "7B", name: "Golden Alchemical Steam Sigh", tag: "Warm Amber Vapor & Dissolving Script Glyphs", desc: "Exhales a warm golden vapor cloud carrying tiny overcrowded archaic text runes that dissolve into gold dust, leaving a radiant clarity halo." },
+            { code: "7C", name: "Astral Starlight & Nebula Exhalation", tag: "Cosmic Indigo Mist & Twinkling Constellations", desc: "Exhales a translucent violet-indigo nebula cloud studded with twinkling 4-point stars and delicate constellation lines that float skyward." },
+            { code: "7D", name: "Emerald Meditative Prana Breath", tag: "Luminous Jade Vapor & Concentric Harmony Ripple", desc: "A serene meditative exhalation of glowing jade-green mist accompanied by a soft ground ripple and rising botanical light motes." },
+            { code: "7E", name: "Phoenix Smoke-to-Ember Purge Breath", tag: "Heavy Grey Smoke Igniting into Pure Gold Sparks", desc: "Exhales dark charcoal smoke (stale context tokens) that flashes mid-air into clean, weightless white-gold phoenix embers." },
+            { code: "7F", name: "Crystalline Winter Frost Exhalation", tag: "Crisp Cold Breath Plume & Geometric Ice Fractals", desc: "Like exhaling on a crisp winter morning—a dense white-blue vapor plume that crystallizes into delicate six-pointed ice fractals before sublimating." }
+          ]
+        }
+      ];
+
+      const userSelections = { 1: "1A", 2: "2A", 3: "3A", 4: "4A", 5: "5A", 6: "6A", 7: "7A" };
+      const activeCanvases = [];
+      let modalCode = null;
+
+      function updateSelectionSummary() {
+        document.getElementById("selection-summary").textContent = Object.values(userSelections).join(", ");
+      }
+
+      // Build DOM Cards
+      const root = document.getElementById("gallery-root");
+      CATEGORIES.forEach((cat) => {
+        const section = document.createElement("section");
+        section.className = "space-y-6";
+        section.innerHTML = `
+          <div class="border-b border-slate-800 pb-4 flex flex-col md:flex-row md:items-end justify-between gap-2">
+            <div>
+              <span class="text-xs font-mono uppercase tracking-widest text-amber-400 font-bold">Category ${cat.id} of 7 · Choose 1 of 6</span>
+              <h2 class="text-2xl md:text-3xl font-serif font-bold text-white mt-0.5">${cat.title}</h2>
+              <p class="text-sm text-slate-400 mt-1">${cat.subtitle}</p>
+            </div>
+            <div class="text-xs font-mono text-slate-400 shrink-0">
+              Current Pick: <span id="cat-choice-${cat.id}" class="text-amber-300 font-bold px-2.5 py-1 rounded bg-amber-500/15 border border-amber-500/40">${cat.defaultChoice}</span>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-7" id="grid-cat-${cat.id}"></div>
+        `;
+        root.appendChild(section);
+
+        const grid = section.querySelector(`#grid-cat-${cat.id}`);
+        cat.options.forEach((opt) => {
+          const isSelected = userSelections[cat.id] === opt.code;
+          const card = document.createElement("article");
+          card.className = `option-card cursor-pointer rounded-2xl bg-[#100d1a] border-2 ${
+            isSelected ? "selected border-amber-500" : "border-slate-800"
+          } overflow-hidden flex flex-col justify-between`;
+
+          card.innerHTML = `
+            <div>
+              <div class="px-4 py-3 bg-[#161224] border-b border-slate-800 flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <span class="px-2.5 py-0.5 rounded-md text-xs font-mono font-extrabold bg-amber-500 text-slate-950 shrink-0">${opt.code}</span>
+                  <h3 class="text-sm font-bold text-white truncate">${opt.name}</h3>
+                </div>
+                <button class="zoom-btn px-2.5 py-1 rounded text-[11px] font-mono bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 shrink-0" data-code="${opt.code}">
+                  🔍 4K Inspect
+                </button>
+              </div>
+              <div class="relative bg-[#050409] p-2">
+                <canvas width="720" height="450" class="rounded-lg border border-slate-800/90" data-code="${opt.code}"></canvas>
+                <span class="absolute bottom-4 right-4 px-2.5 py-0.5 rounded text-[10px] font-mono bg-black/80 text-amber-200 border border-amber-500/30 backdrop-blur-sm">
+                  ${opt.tag}
+                </span>
+              </div>
+            </div>
+            <div class="p-4 flex flex-col justify-between gap-3 bg-[#100d1a]">
+              <p class="text-xs text-slate-300 leading-relaxed">${opt.desc}</p>
+              <div class="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs font-mono">
+                <span class="select-indicator ${isSelected ? "text-amber-400 font-bold" : "text-slate-500"}">
+                  ${isSelected ? "✓ Selected Option" : "Click to choose " + opt.code}
+                </span>
+                <span class="text-[10px] text-slate-400">Live 60fps Illustrated Canvas</span>
+              </div>
+            </div>
+          `;
+
+          card.addEventListener("click", (e) => {
+            if (e.target.closest(".zoom-btn")) {
+              openModal(opt);
+              return;
+            }
+            userSelections[cat.id] = opt.code;
+            document.getElementById(`cat-choice-${cat.id}`).textContent = opt.code;
+            grid.querySelectorAll(".option-card").forEach((c) => {
+              c.classList.remove("selected", "border-amber-500");
+              c.classList.add("border-slate-800");
+              const ind = c.querySelector(".select-indicator");
+              ind.textContent = "Click to choose";
+              ind.className = "select-indicator text-slate-500";
+            });
+            card.classList.add("selected", "border-amber-500");
+            card.classList.remove("border-slate-800");
+            const ind = card.querySelector(".select-indicator");
+            ind.textContent = "✓ Selected Option";
+            ind.className = "select-indicator text-amber-400 font-bold";
+            updateSelectionSummary();
+          });
+
+          grid.appendChild(card);
+          const canvas = card.querySelector("canvas");
+          activeCanvases.push({ canvas, ctx: canvas.getContext("2d"), code: opt.code });
+        });
+      });
+
+      // Modal Handlers
+      const modal = document.getElementById("zoom-modal");
+      const modalCanvas = document.getElementById("modal-canvas");
+      const modalCtx = modalCanvas.getContext("2d");
+
+      function openModal(opt) {
+        modalCode = opt.code;
+        document.getElementById("modal-title").textContent = `${opt.code} — ${opt.name}`;
+        document.getElementById("modal-desc").textContent = opt.desc;
+        modal.classList.remove("hidden");
+      }
+      function closeModal() {
+        modalCode = null;
+        modal.classList.add("hidden");
+      }
+      document.getElementById("close-modal-btn").addEventListener("click", closeModal);
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) closeModal();
+      });
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeModal();
+      });
+      document.getElementById("copy-selections-btn").addEventListener("click", () => {
+        const text = Object.values(userSelections).join(", ");
+        navigator.clipboard?.writeText(text);
+        const btn = document.getElementById("copy-selections-btn");
+        btn.textContent = "Copied: " + text;
+        setTimeout(() => (btn.textContent = "Copy Choices"), 2000);
+      });
+
+      // ============================================================================
+      // PRIMITIVE SHADER HELPERS (VOLUMETRIC LIGHT, METALLIC GEARS, FLAMES, HEROES)
+      // ============================================================================
+
+      function glow(ctx, x, y, r, c0, c1, c2 = "rgba(0,0,0,0)") {
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, c0);
+        g.addColorStop(0.4, c1);
+        g.addColorStop(1, c2);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      function rrect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, r);
+        ctx.closePath();
+      }
+
+      function drawFlame(ctx, x, y, scale, t, cOuter = "#ea580c", cMid = "#facc15", cCore = "#ffffff") {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(scale, scale);
+        for (let i = 0; i < 5; i++) {
+          const phase = t * 7 + i * 1.3;
+          const sway = Math.sin(phase) * (4 + i * 1.5);
+          const h = 26 - i * 3 + Math.cos(phase * 1.3) * 4;
+          const w = 14 - i * 1.8;
+          ctx.fillStyle = i < 2 ? cOuter : i < 4 ? cMid : cCore;
+          ctx.beginPath();
+          ctx.moveTo(-w, 0);
+          ctx.quadraticCurveTo(-w * 0.5 + sway * 0.4, -h * 0.6, sway, -h);
+          ctx.quadraticCurveTo(w * 0.5 + sway * 0.4, -h * 0.6, w, 0);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      function drawGear(ctx, cx, cy, outerR, innerR, teeth, angle, cBase, cRim, cHi) {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.beginPath();
+        ctx.arc(3, 5, outerR + 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = cBase;
+        ctx.strokeStyle = cRim;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i < teeth; i++) {
+          const a1 = (i / teeth) * Math.PI * 2;
+          const a2 = ((i + 0.3) / teeth) * Math.PI * 2;
+          const a3 = ((i + 0.55) / teeth) * Math.PI * 2;
+          const a4 = ((i + 0.85) / teeth) * Math.PI * 2;
+          ctx.lineTo(Math.cos(a1) * (outerR - 6), Math.sin(a1) * (outerR - 6));
+          ctx.lineTo(Math.cos(a2) * (outerR + 4), Math.sin(a2) * (outerR + 4));
+          ctx.lineTo(Math.cos(a3) * (outerR + 4), Math.sin(a3) * (outerR + 4));
+          ctx.lineTo(Math.cos(a4) * (outerR - 6), Math.sin(a4) * (outerR - 6));
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        const grad = ctx.createLinearGradient(-outerR, -outerR, outerR, outerR);
+        grad.addColorStop(0, cHi);
+        grad.addColorStop(0.5, cBase);
+        grad.addColorStop(1, cRim);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(0, 0, outerR - 7, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#08060e";
+        for (let s = 0; s < 6; s++) {
+          const sa = (s / 6) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.arc(Math.cos(sa) * (outerR * 0.52), Math.sin(sa) * (outerR * 0.52), outerR * 0.16, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = cHi;
+        ctx.beginPath();
+        ctx.arc(0, 0, innerR + 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#08060e";
+        ctx.beginPath();
+        ctx.arc(0, 0, innerR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Detailed 6-Role Character Painter with Style Variations (3A..3F)
+      function drawCharacter(ctx, x, y, scale, t, role, styleCode = "3A") {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(scale, scale);
+
+        const breath = Math.sin(t * 3.2 + x * 0.01) * 1.8;
+        const wave = Math.sin(t * 4.5 + y * 0.01) * 4;
+
+        // Ground shadow
+        const sh = ctx.createRadialGradient(0, 36, 2, 0, 36, 30);
+        sh.addColorStop(0, "rgba(0,0,0,0.75)");
+        sh.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = sh;
+        ctx.beginPath();
+        ctx.ellipse(0, 36, 28, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        const roleConfigs = {
+          mage: { cape: ["#1e1b4b", "#4f46e5"], body: ["#312e81", "#6366f1", "#c7d2fe"], trim: "#fbbf24", glow: "#c084fc" },
+          warrior: { cape: ["#7f1d1d", "#dc2626"], body: ["#1e293b", "#64748b", "#f8fafc"], trim: "#f59e0b", glow: "#38bdf8" },
+          scout: { cape: ["#064e3b", "#059669"], body: ["#451a03", "#78350f", "#fde68a"], trim: "#10b981", glow: "#fef08a" },
+          artificer: { cape: ["#451a03", "#b45309"], body: ["#27272a", "#d97706", "#fef08a"], trim: "#38bdf8", glow: "#38bdf8" },
+          cleric: { cape: ["#0f172a", "#e2e8f0"], body: ["#cbd5e1", "#f8fafc", "#ffffff"], trim: "#f59e0b", glow: "#67e8f9" },
+          demolitionist: { cape: ["#1c1917", "#ea580c"], body: ["#292524", "#78350f", "#fdba74"], trim: "#f97316", glow: "#fb923c" }
+        };
+        const rc = roleConfigs[role] || roleConfigs.warrior;
+
+        // Style overrides (3B Steampunk, 3C Grimdark, 3D Astral, 3E CRPG, 3F Heroic)
+        let rimColor = rc.trim;
+        if (styleCode === "3B") rimColor = "#eab308";
+        if (styleCode === "3C") rimColor = "#ef4444";
+        if (styleCode === "3D") {
+          glow(ctx, 0, 6, 48, "rgba(192,132,252,0.35)", "rgba(56,189,248,0.15)");
+          rimColor = "#e0f2fe";
+        }
+
+        // Cloak
+        const cg = ctx.createLinearGradient(-22, -10, 22, 34);
+        cg.addColorStop(0, rc.cape[1]);
+        cg.addColorStop(1, rc.cape[0]);
+        ctx.fillStyle = cg;
+        ctx.beginPath();
+        ctx.moveTo(-16, -8);
+        ctx.quadraticCurveTo(-26 + wave * 0.5, 15, -22 + wave, 33);
+        ctx.quadraticCurveTo(0, 38, 22 + wave * 0.7, 33);
+        ctx.quadraticCurveTo(26, 15, 16, -8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = rimColor;
+        ctx.lineWidth = styleCode === "3F" ? 2.5 : 1.4;
+        ctx.stroke();
+
+        // Boots
+        ctx.fillStyle = "#0f172a";
+        rrect(ctx, -12, 19, 9, 15, 3);
+        ctx.fill();
+        rrect(ctx, 3, 19, 9, 15, 3);
+        ctx.fill();
+
+        // Torso
+        const tg = ctx.createLinearGradient(-15, -10 + breath, 15, 22 + breath);
+        tg.addColorStop(0, styleCode === "3C" ? "#18181b" : rc.body[2]);
+        tg.addColorStop(0.45, styleCode === "3C" ? "#27272a" : rc.body[1]);
+        tg.addColorStop(1, rc.body[0]);
+        ctx.fillStyle = tg;
+        rrect(ctx, -15, -10 + breath, 30, 30, 8);
+        ctx.fill();
+        ctx.strokeStyle = rimColor;
+        ctx.lineWidth = styleCode === "3F" ? 3 : 1.8;
+        ctx.stroke();
+
+        // Belt & Buckle
+        ctx.fillStyle = "#29180c";
+        ctx.fillRect(-15, 10 + breath, 30, 5);
+        ctx.fillStyle = rimColor;
+        ctx.fillRect(-4, 9 + breath, 8, 7);
+
+        // Pauldrons
+        const pSize = styleCode === "3F" ? 13 : 10;
+        [-19, 19].forEach((px) => {
+          const pg = ctx.createRadialGradient(px - 2, -7 + breath, 1, px, -5 + breath, pSize);
+          pg.addColorStop(0, rc.body[2]);
+          pg.addColorStop(0.6, rc.body[1]);
+          pg.addColorStop(1, rc.body[0]);
+          ctx.fillStyle = pg;
+          ctx.beginPath();
+          ctx.ellipse(px, -5 + breath, pSize, pSize * 0.75, px < 0 ? -0.3 : 0.3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = rimColor;
+          ctx.lineWidth = 1.6;
+          ctx.stroke();
+        });
+
+        // Head & Role Headgear
+        const hg = ctx.createRadialGradient(-3, -20 + breath, 2, 0, -18 + breath, 13);
+        hg.addColorStop(0, rc.body[2]);
+        hg.addColorStop(0.6, rc.body[1]);
+        hg.addColorStop(1, rc.body[0]);
+        ctx.fillStyle = hg;
+        ctx.beginPath();
+        ctx.arc(0, -19 + breath, 11.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = rimColor;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Visor / Eyes / Goggles
+        if (styleCode === "3B" || role === "artificer") {
+          // Brass Aether Goggles
+          ctx.fillStyle = "#b45309";
+          rrect(ctx, -9, -22 + breath, 18, 6, 2);
+          ctx.fill();
+          glow(ctx, -4, -19 + breath, 4.5, "#fff", "#38bdf8");
+          glow(ctx, 4, -19 + breath, 4.5, "#fff", "#38bdf8");
+        } else {
+          ctx.fillStyle = "#09070f";
+          rrect(ctx, -7, -21 + breath, 14, 4.5, 2);
+          ctx.fill();
+          glow(ctx, -3.5, -19 + breath, 3.2, "#fff", rc.glow);
+          glow(ctx, 3.5, -19 + breath, 3.2, "#fff", rc.glow);
+        }
+
+        // Role Signature Weapons & Implements
+        if (role === "warrior") {
+          ctx.save();
+          ctx.translate(24, 2 + breath);
+          ctx.rotate(Math.sin(t * 3.5) * 0.22 - 0.2);
+          const bg = ctx.createLinearGradient(-4, -40, 4, 0);
+          bg.addColorStop(0, "#ffffff");
+          bg.addColorStop(0.5, styleCode === "3C" ? "#f87171" : "#bae6fd");
+          bg.addColorStop(1, "#475569");
+          ctx.fillStyle = bg;
+          ctx.beginPath();
+          ctx.moveTo(0, -44);
+          ctx.lineTo(5, -32);
+          ctx.lineTo(4, 0);
+          ctx.lineTo(-4, 0);
+          ctx.lineTo(-5, -32);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = rimColor;
+          rrect(ctx, -9, -2, 18, 4.5, 2);
+          ctx.fill();
+          ctx.restore();
+
+          // Shield
+          ctx.save();
+          ctx.translate(-22, 4 + breath);
+          ctx.fillStyle = rc.cape[1];
+          ctx.beginPath();
+          ctx.moveTo(0, -14);
+          ctx.lineTo(10, -10);
+          ctx.quadraticCurveTo(10, 8, 0, 16);
+          ctx.quadraticCurveTo(-10, 8, -10, -10);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = rimColor;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.restore();
+        } else if (role === "mage") {
+          ctx.save();
+          ctx.translate(24, 3 + breath);
+          ctx.strokeStyle = "#78350f";
+          ctx.lineWidth = 3.5;
+          ctx.beginPath();
+          ctx.moveTo(0, -32);
+          ctx.lineTo(0, 20);
+          ctx.stroke();
+          glow(ctx, 0, -36, 15, "#fff", "#c084fc");
+          ctx.restore();
+        } else if (role === "scout") {
+          ctx.save();
+          ctx.translate(24, 3 + breath);
+          glow(ctx, 0, 5, 24, "rgba(254,240,138,0.9)", "rgba(245,158,11,0.4)");
+          ctx.fillStyle = "#b45309";
+          rrect(ctx, -4.5, 0, 9, 12, 2);
+          ctx.fill();
+          ctx.restore();
+        } else if (role === "artificer") {
+          ctx.save();
+          ctx.translate(24, 2 + breath);
+          ctx.strokeStyle = "#78350f";
+          ctx.lineWidth = 3.5;
+          ctx.beginPath();
+          ctx.moveTo(0, -24);
+          ctx.lineTo(0, 18);
+          ctx.stroke();
+          ctx.fillStyle = "#64748b";
+          rrect(ctx, -10, -30, 20, 11, 3);
+          ctx.fill();
+          ctx.strokeStyle = "#f59e0b";
+          ctx.stroke();
+          ctx.restore();
+        } else if (role === "cleric") {
+          ctx.save();
+          ctx.translate(24, 2 + breath);
+          ctx.strokeStyle = "#eab308";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(0, -30);
+          ctx.lineTo(0, 18);
+          ctx.stroke();
+          glow(ctx, 0, -34, 15, "#fff", "#67e8f9");
+          ctx.restore();
+        } else if (role === "demolitionist") {
+          ctx.save();
+          ctx.translate(23, 4 + breath);
+          ctx.fillStyle = "#9a3412";
+          rrect(ctx, -9, -8, 18, 20, 4);
+          ctx.fill();
+          glow(ctx, 0, -13, 10, "#fff", "#f97316");
+          ctx.restore();
+        }
+
+        ctx.restore();
+      }
+
+      // ============================================================================
+      // CATEGORY 1: 6 DISTINCT WORKSHOP ROOM ARCHITECTURES (1A - 1F)
+      // ============================================================================
+      function renderCategory1(ctx, w, h, variant, t) {
+        if (variant === "A") {
+          // 1A: Grand Royal Alchemist & Clockwork Guildhall (Herringbone Oak, Limestone, Velvet Rug, Sunbeams)
+          ctx.fillStyle = "#3b2416";
+          ctx.fillRect(0, 0, w, h);
+          for (let r = 0; r < 12; r++) {
+            for (let c = 0; c < 16; c++) {
+              ctx.fillStyle = (r + c) % 2 === 0 ? "#4a2e1b" : "#3d2516";
+              ctx.fillRect(c * 45, r * 38, 44, 37);
+              ctx.fillStyle = "rgba(255,215,150,0.05)";
+              ctx.fillRect(c * 45 + 2, r * 38 + 2, 40, 4);
+            }
+          }
+          // Limestone Cutaway Walls
+          ctx.fillStyle = "#2b2522";
+          ctx.fillRect(0, 0, w, 68);
+          ctx.fillStyle = "#1c1715";
+          ctx.fillRect(0, 0, 26, h);
+          ctx.fillRect(w - 26, 0, 26, h);
+          for (let b = 0; b < 12; b++) {
+            ctx.strokeStyle = "#3f3732";
+            ctx.strokeRect(b * 60 + 2, 6, 56, 28);
+            ctx.strokeRect(b * 60 + 22, 36, 56, 28);
+          }
+          // Royal Crimson Persian Carpet
+          rrect(ctx, 150, 125, w - 300, h - 200, 10);
+          ctx.fillStyle = "#7f1d1d";
+          ctx.fill();
+          ctx.strokeStyle = "#f59e0b";
+          ctx.lineWidth = 4;
+          ctx.stroke();
+          ctx.strokeStyle = "#fef08a";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(162, 137, w - 324, h - 224);
+
+          // Wall Fixtures: Bookshelf (North), Iron Gate (North Center), Spyglass Window (NE), Forge (East), Bench (West)
+          ctx.fillStyle = "#451a03";
+          rrect(ctx, 50, 20, 150, 46, 4);
+          ctx.fill();
+          for (let i = 0; i < 10; i++) {
+            ctx.fillStyle = ["#ef4444", "#3b82f6", "#10b981", "#eab308"][i % 4];
+            ctx.fillRect(58 + i * 13, 28, 10, 30);
+          }
+          // North Dungeon Archway
+          ctx.fillStyle = "#09070e";
+          rrect(ctx, w / 2 - 42, 8, 84, 60, 28);
+          ctx.fill();
+          ctx.strokeStyle = "#94a3b8";
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          // East Roaring Forge
+          drawFlame(ctx, w - 52, 180, 1.2, t);
+          glow(ctx, w - 55, 175, 65, "rgba(251,146,60,0.5)", "rgba(234,88,12,0.15)");
+          // Golden Clerestory Sunbeams
+          [190, w - 190].forEach((sx) => {
+            const g = ctx.createLinearGradient(sx, 50, sx + 50, h - 40);
+            g.addColorStop(0, "rgba(253,224,71,0.32)");
+            g.addColorStop(1, "rgba(253,224,71,0)");
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.moveTo(sx - 30, 68);
+            ctx.lineTo(sx + 30, 68);
+            ctx.lineTo(sx + 100, h - 30);
+            ctx.lineTo(sx - 30, h - 30);
+            ctx.closePath();
+            ctx.fill();
+          });
+          drawGear(ctx, w / 2, h * 0.54, 48, 14, 12, t * 0.6, "#f59e0b", "#78350f", "#fef08a");
+          drawCharacter(ctx, w * 0.34, h * 0.56, 0.9, t, "mage", "3A");
+          drawCharacter(ctx, w * 0.66, h * 0.56, 0.9, t + 1, "warrior", "3A");
+        } else if (variant === "B") {
+          // 1B: Dwarven Master Foundry & Obsidian Vault (Molten Magma Channels, Hex Basalt Columns, Iron Grating)
+          ctx.fillStyle = "#121116";
+          ctx.fillRect(0, 0, w, h);
+          // Glowing Molten Magma Channels Under Floor
+          ctx.strokeStyle = "#ea580c";
+          ctx.lineWidth = 18;
+          ctx.strokeRect(110, 100, w - 220, h - 160);
+          ctx.strokeStyle = "#fde047";
+          ctx.lineWidth = 6;
+          ctx.strokeRect(110, 100, w - 220, h - 160);
+          glow(ctx, w / 2, h / 2, 260, "rgba(234,88,12,0.22)", "rgba(153,27,27,0.08)");
+
+          // Hexagonal Basalt Columns Around Perimeter
+          [[60, 60], [w - 60, 60], [60, h - 60], [w - 60, h - 60], [w / 2 - 140, 55], [w / 2 + 140, 55]].forEach(([px, py]) => {
+            ctx.fillStyle = "#27272a";
+            ctx.strokeStyle = "#f97316";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for (let s = 0; s < 6; s++) {
+              const a = (s / 6) * Math.PI * 2;
+              ctx.lineTo(px + Math.cos(a) * 28, py + Math.sin(a) * 28);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            drawFlame(ctx, px, py + 5, 0.85, t + px);
+          });
+          // Central Dwarven Crucible & Anvil Platform
+          drawGear(ctx, w / 2, h * 0.52, 62, 20, 10, -t * 0.4, "#ea580c", "#431407", "#fed7aa");
+          drawCharacter(ctx, w * 0.36, h * 0.55, 0.9, t, "artificer", "3C");
+          drawCharacter(ctx, w * 0.64, h * 0.55, 0.9, t + 0.8, "warrior", "3C");
+        } else if (variant === "C") {
+          // 1C: Arcane Astral Sanctum (Midnight Marble, Gold Zodiac Inlays, Stained-Glass Rose Shafts)
+          const bg = ctx.createRadialGradient(w / 2, h / 2, 20, w / 2, h / 2, w * 0.65);
+          bg.addColorStop(0, "#1e1b4b");
+          bg.addColorStop(1, "#090814");
+          ctx.fillStyle = bg;
+          ctx.fillRect(0, 0, w, h);
+
+          // Inlaid Gold Zodiac Astrolabe Floor Circles
+          ctx.save();
+          ctx.translate(w / 2, h * 0.54);
+          ctx.strokeStyle = "rgba(251,191,36,0.45)";
+          ctx.lineWidth = 2;
+          [65, 115, 165].forEach((rad, idx) => {
+            ctx.beginPath();
+            ctx.arc(0, 0, rad, 0, Math.PI * 2);
+            ctx.stroke();
+            for (let k = 0; k < 12; k++) {
+              const a = (k / 12) * Math.PI * 2 + t * 0.15 * (idx % 2 === 0 ? 1 : -1);
+              ctx.fillStyle = "#fde047";
+              ctx.beginPath();
+              ctx.arc(Math.cos(a) * rad, Math.sin(a) * rad, 3, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          });
+          ctx.restore();
+
+          // Gothic Stained-Glass Windows along North Wall
+          [140, w / 2, w - 140].forEach((wx, idx) => {
+            const colors = ["#38bdf8", "#c084fc", "#f472b6"];
+            glow(ctx, wx, 42, 65, colors[idx], "rgba(56,189,248,0.12)");
+            ctx.strokeStyle = "#fde047";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(wx, 42, 28, 0, Math.PI * 2);
+            ctx.stroke();
+          });
+          drawCharacter(ctx, w * 0.35, h * 0.56, 0.9, t, "mage", "3D");
+          drawCharacter(ctx, w * 0.65, h * 0.56, 0.9, t + 1.1, "cleric", "3D");
+        } else if (variant === "D") {
+          // 1D: Da Vinci Renaissance Inventor's Atelier (Terracotta Brick, Timber Trusses, Skylight Atrium, Ornithopter Blueprints)
+          ctx.fillStyle = "#432214";
+          ctx.fillRect(0, 0, w, h);
+          for (let y = 60; y < h; y += 24) {
+            for (let x = 0; x < w; x += 48) {
+              ctx.strokeStyle = "rgba(254,215,170,0.14)";
+              ctx.strokeRect(x + ((y / 24) % 2) * 24, y, 46, 22);
+            }
+          }
+          // Parchment Blueprints & Da Vinci Sketches on Floor/Tables
+          [[130, 140], [w - 220, 140], [130, h - 140]].forEach(([bx, by]) => {
+            ctx.fillStyle = "#fef3c7";
+            rrect(ctx, bx, by, 92, 64, 4);
+            ctx.fill();
+            ctx.strokeStyle = "#92400e";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(bx + 46, by + 32, 22, 0, Math.PI * 2);
+            ctx.moveTo(bx + 15, by + 32);
+            ctx.lineTo(bx + 77, by + 32);
+            ctx.stroke();
+          });
+          // Central Glass Skylight Sunshine Pool
+          glow(ctx, w / 2, h * 0.52, 175, "rgba(254,249,195,0.35)", "rgba(251,191,36,0.1)");
+          drawGear(ctx, w / 2, h * 0.52, 56, 18, 16, t * 0.5, "#d97706", "#78350f", "#fef3c7");
+          drawCharacter(ctx, w * 0.4, h * 0.56, 0.9, t, "artificer", "3E");
+          drawCharacter(ctx, w * 0.6, h * 0.56, 0.9, t + 0.9, "scout", "3E");
+        } else if (variant === "E") {
+          // 1E: Sylvan Elven Heartwood Conservatory (Living Roots, Amber Resin Floor, Waterfall Pond, Bioluminescent Lanterns)
+          ctx.fillStyle = "#1c1914";
+          ctx.fillRect(0, 0, w, h);
+          // Cascading Indoor Waterfall & Azure Pond
+          const pondG = ctx.createRadialGradient(w * 0.25, h * 0.45, 10, w * 0.25, h * 0.45, 110);
+          pondG.addColorStop(0, "#38bdf8");
+          pondG.addColorStop(0.6, "#0369a1");
+          pondG.addColorStop(1, "rgba(12,74,110,0)");
+          ctx.fillStyle = pondG;
+          ctx.beginPath();
+          ctx.arc(w * 0.25, h * 0.45, 105, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Living Interwoven Tree Root Walls & Emerald Bioluminescent Pods
+          ctx.strokeStyle = "#4d2c19";
+          ctx.lineWidth = 18;
+          ctx.strokeRect(18, 18, w - 36, h - 36);
+          for (let i = 0; i < 8; i++) {
+            const lx = 80 + i * 80;
+            const ly = i % 2 === 0 ? 38 : h - 38;
+            glow(ctx, lx, ly, 42, "#a7f3d0", "rgba(16,185,129,0.35)");
+          }
+          drawCharacter(ctx, w * 0.48, h * 0.54, 0.9, t, "scout", "3D");
+          drawCharacter(ctx, w * 0.68, h * 0.54, 0.9, t + 1.4, "mage", "3D");
+        } else {
+          // 1F: Steampunk Ironclad Citadel Workshop (Steel Deck Plates, Overhead Line-Shaft Gears, Copper Boilers)
+          ctx.fillStyle = "#1e293b";
+          ctx.fillRect(0, 0, w, h);
+          for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 12; c++) {
+              ctx.strokeStyle = "#334155";
+              ctx.strokeRect(c * 60 + 2, r * 56 + 2, 56, 52);
+              ctx.fillStyle = "#475569";
+              ctx.fillRect(c * 60 + 6, r * 56 + 6, 3, 3);
+              ctx.fillRect(c * 60 + 51, r * 56 + 6, 3, 3);
+            }
+          }
+          // Overhead Brass Line-Shaft & Interlocking Gears
+          ctx.fillStyle = "#b45309";
+          ctx.fillRect(0, 52, w, 10);
+          drawGear(ctx, 140, 57, 36, 10, 10, t * 1.8, "#f59e0b", "#78350f", "#fef08a");
+          drawGear(ctx, w - 140, 57, 36, 10, 10, -t * 1.8, "#f59e0b", "#78350f", "#fef08a");
+          drawGear(ctx, w / 2, h * 0.54, 64, 18, 14, t, "#d97706", "#451a03", "#fde68a");
+          drawCharacter(ctx, w * 0.34, h * 0.56, 0.9, t, "artificer", "3B");
+          drawCharacter(ctx, w * 0.66, h * 0.56, 0.9, t + 0.6, "demolitionist", "3B");
+        }
+      }
+
+      // ============================================================================
+      // CATEGORY 2: 6 DISTINCT WILDERNESS & DUNGEON BIOMES WITH FOG OF WAR (2A - 2F)
+      // ============================================================================
+      function renderCategory2(ctx, w, h, variant, t) {
+        const flareX = w * 0.43 + Math.cos(t * 1.1) * 32;
+        const flareY = h * 0.54 + Math.sin(t * 1.1) * 18;
+
+        if (variant === "A") {
+          // 2A: Blackwood Gnarled Forest & Mossy Ruins
+          ctx.fillStyle = "#09140e";
+          ctx.fillRect(0, 0, w, h);
+          // Muddy Winding Trail & Glowing Green Slime Footprints
+          ctx.strokeStyle = "#291d12";
+          ctx.lineWidth = 48;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(80, h - 40);
+          ctx.quadraticCurveTo(w * 0.4, h * 0.5, w - 90, 90);
+          ctx.stroke();
+
+          // Gnarled Oak Trees & Ruined Stone Pillars
+          [[110, 105], [220, 75], [130, 290], [560, 280], [610, 120], [490, 80]].forEach(([tx, ty], idx) => {
+            if (idx % 2 === 0) {
+              // Gnarled Tree Canopy
+              const tg = ctx.createRadialGradient(tx - 8, ty - 8, 4, tx, ty, 44);
+              tg.addColorStop(0, "#15803d");
+              tg.addColorStop(0.6, "#14532d");
+              tg.addColorStop(1, "#052e16");
+              ctx.fillStyle = tg;
+              ctx.beginPath();
+              ctx.arc(tx, ty, 42, 0, Math.PI * 2);
+              ctx.fill();
+            } else {
+              // Mossy Fallen Pillar
+              ctx.fillStyle = "#475569";
+              rrect(ctx, tx - 22, ty - 16, 44, 32, 6);
+              ctx.fill();
+              ctx.fillStyle = "#166534";
+              ctx.fillRect(tx - 18, ty - 12, 20, 14);
+            }
+          });
+        } else if (variant === "B") {
+          // 2B: Subterranean Bioluminescent Crystal Caverns
+          ctx.fillStyle = "#0d071c";
+          ctx.fillRect(0, 0, w, h);
+          // Underground Dark River
+          ctx.strokeStyle = "#1e1b4b";
+          ctx.lineWidth = 70;
+          ctx.beginPath();
+          ctx.moveTo(0, h * 0.7);
+          ctx.bezierCurveTo(w * 0.3, h * 0.3, w * 0.6, h * 0.8, w, h * 0.35);
+          ctx.stroke();
+          // Giant Faceted Amethyst & Cyan Quartz Crystal Clusters
+          [[130, 110, "#c084fc"], [560, 110, "#38bdf8"], [160, 320, "#e879f9"], [580, 310, "#2dd4bf"], [360, 95, "#a855f7"]].forEach(([cx, cy, col]) => {
+            glow(ctx, cx, cy, 58, col, "rgba(168,85,247,0.15)");
+            ctx.fillStyle = col;
+            for (let k = -1; k <= 1; k++) {
+              ctx.beginPath();
+              ctx.moveTo(cx + k * 14, cy - 32 + Math.abs(k) * 8);
+              ctx.lineTo(cx + k * 14 + 10, cy + 14);
+              ctx.lineTo(cx + k * 14 - 10, cy + 14);
+              ctx.closePath();
+              ctx.fill();
+            }
+          });
+        } else if (variant === "C") {
+          // 2C: Cursed Gothic Catacombs & Sunken Crypt
+          ctx.fillStyle = "#0e0f17";
+          ctx.fillRect(0, 0, w, h);
+          for (let r = 0; r < 9; r++) {
+            for (let c = 0; c < 12; c++) {
+              ctx.strokeStyle = "#1e293b";
+              ctx.strokeRect(c * 60 + 2, r * 50 + 2, 56, 46);
+            }
+          }
+          // Stone Sarcophagi & Emerald Soul-Fire Braziers
+          [[150, 110], [570, 110], [150, 330], [570, 330]].forEach(([bx, by]) => {
+            glow(ctx, bx, by, 54, "#6ee7b7", "rgba(16,185,129,0.2)");
+            drawFlame(ctx, bx, by + 6, 0.9, t + bx, "#059669", "#34d399", "#ecfdf5");
+          });
+        } else if (variant === "D") {
+          // 2D: Volcanic Ashlands & Magma Fissure Canyon
+          ctx.fillStyle = "#170907";
+          ctx.fillRect(0, 0, w, h);
+          // Glowing Magma Fissure Rivers
+          ctx.strokeStyle = "#ea580c";
+          ctx.lineWidth = 22;
+          ctx.beginPath();
+          ctx.moveTo(60, 60);
+          ctx.lineTo(260, 210);
+          ctx.lineTo(140, 390);
+          ctx.moveTo(640, 70);
+          ctx.lineTo(480, 260);
+          ctx.lineTo(620, 400);
+          ctx.stroke();
+          ctx.strokeStyle = "#fef08a";
+          ctx.lineWidth = 7;
+          ctx.stroke();
+        } else if (variant === "E") {
+          // 2E: Mire of the Blighted Bog & Weeping Cypress Marsh
+          ctx.fillStyle = "#081410";
+          ctx.fillRect(0, 0, w, h);
+          // Wooden Rope Boardwalk Across Bog
+          for (let s = 0; s < 12; s++) {
+            ctx.fillStyle = "#451a03";
+            rrect(ctx, 110 + s * 42, h * 0.52 - 18 + Math.sin(s * 0.5) * 14, 34, 44, 4);
+            ctx.fill();
+          }
+          // Glowing Toxic Mushrooms
+          [[160, 120], [540, 110], [200, 340], [560, 330]].forEach(([mx, my]) => {
+            glow(ctx, mx, my, 46, "#a3e635", "rgba(132,204,22,0.2)");
+            ctx.fillStyle = "#65a30d";
+            ctx.beginPath();
+            ctx.arc(mx, my, 18, Math.PI, 0);
+            ctx.fill();
+          });
+        } else {
+          // 2F: Frozen Alpine Crags & Glacial Ice Caverns
+          ctx.fillStyle = "#081829";
+          ctx.fillRect(0, 0, w, h);
+          // Refractive Blue Ice Cliffs & Runestones
+          [[130, 100], [580, 100], [140, 330], [570, 330]].forEach(([ix, iy]) => {
+            glow(ctx, ix, iy, 58, "#bae6fd", "rgba(56,189,248,0.22)");
+            ctx.fillStyle = "#38bdf8";
+            ctx.beginPath();
+            ctx.moveTo(ix, iy - 34);
+            ctx.lineTo(ix + 22, iy + 18);
+            ctx.lineTo(ix - 22, iy + 18);
+            ctx.closePath();
+            ctx.fill();
+          });
+        }
+
+        // Illuminated Monster Tracks Revealed Inside the Lantern Clearing
+        for (let tr = 0; tr < 6; tr++) {
+          const tx = flareX - 80 + tr * 34;
+          const ty = flareY + 24 - tr * 10;
+          glow(ctx, tx, ty, 12, "#4ade80", "rgba(74,222,128,0.25)");
+        }
+
+        // Scout Casting Expanding Lantern Flare
+        glow(ctx, flareX, flareY, 175, "rgba(254,240,138,0.32)", "rgba(245,158,11,0.12)");
+        const pulseR = ((t * 60) % 150) + 20;
+        ctx.strokeStyle = `rgba(253,224,71,${1 - pulseR / 170})`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(flareX, flareY, pulseR, 0, Math.PI * 2);
+        ctx.stroke();
+
+        drawCharacter(ctx, flareX - 35, flareY + 6, 0.9, t, "scout", "3A");
+        drawCharacter(ctx, flareX + 20, flareY - 8, 0.95, t + 0.5, "warrior", "3A");
+
+        // Revealed Bug Monster at Edge of Lantern Cone
+        const monX = flareX + 125;
+        const monY = flareY - 18 + Math.sin(t * 4) * 6;
+        glow(ctx, monX, monY, 55, "rgba(239,68,68,0.5)", "rgba(153,27,27,0.15)");
+        ctx.fillStyle = "#3b0764";
+        ctx.beginPath();
+        ctx.arc(monX, monY, 26, 0, Math.PI * 2);
+        ctx.fill();
+        glow(ctx, monX - 9, monY - 5, 6, "#fff", "#ef4444");
+        glow(ctx, monX + 9, monY - 5, 6, "#fff", "#ef4444");
+
+        // Dense Volumetric Fog of War Shrouding Unexplored Outer Wilderness
+        const fog = ctx.createRadialGradient(flareX, flareY, 115, w / 2, h / 2, w * 0.58);
+        fog.addColorStop(0, "rgba(5,4,10,0)");
+        fog.addColorStop(0.65, "rgba(6,5,12,0.82)");
+        fog.addColorStop(1, "rgba(4,3,8,0.98)");
+        ctx.fillStyle = fog;
+        ctx.fillRect(0, 0, w, h);
+      }
+
+      // ============================================================================
+      // CATEGORY 3: ALL 6 GUILD ROLES IN 6 DISTINCT ART STYLES (3A - 3F)
+      // ============================================================================
+      function renderCategory3(ctx, w, h, variant, t) {
+        const styleCode = "3" + variant;
+        const bgCols = {
+          A: ["#1e1b38", "#090712"],
+          B: ["#291d12", "#0c0906"],
+          C: ["#240b0f", "#080304"],
+          D: ["#0f1738", "#040711"],
+          E: ["#1c241e", "#080c09"],
+          F: ["#27173a", "#0b0612"]
+        }[variant];
+
+        const bg = ctx.createRadialGradient(w / 2, h / 2, 20, w / 2, h / 2, w * 0.65);
+        bg.addColorStop(0, bgCols[0]);
+        bg.addColorStop(1, bgCols[1]);
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, w, h);
+
+        const roles = [
+          { id: "mage", label: "MAGE (BUILD)", x: w * 0.18, y: h * 0.34 },
+          { id: "warrior", label: "WARRIOR (DEBUG)", x: w * 0.5, y: h * 0.34 },
+          { id: "scout", label: "SCOUT (EXPLORE)", x: w * 0.82, y: h * 0.34 },
+          { id: "artificer", label: "ARTIFICER (REFACTOR)", x: w * 0.18, y: h * 0.78 },
+          { id: "cleric", label: "CLERIC (REVIEW)", x: w * 0.5, y: h * 0.78 },
+          { id: "demolitionist", label: "SAPPER (TEARDOWN)", x: w * 0.82, y: h * 0.78 }
+        ];
+
+        roles.forEach((r, idx) => {
+          drawCharacter(ctx, r.x, r.y - 16, 1.08, t + idx * 0.6, r.id, styleCode);
+          ctx.font = "bold 10px monospace";
+          ctx.fillStyle = "#e2e8f0";
+          ctx.textAlign = "center";
+          ctx.fillText(r.label, r.x, r.y + 38);
+        });
+      }
+
+      // ============================================================================
+      // CATEGORY 4: 6 DISTINCT WALL PREPARATION STATION SUITES (4A - 4F)
+      // ============================================================================
+      function renderCategory4(ctx, w, h, variant, t) {
+        ctx.fillStyle = "#0e0b16";
+        ctx.fillRect(0, 0, w, h);
+
+        const quads = [
+          { x: w * 0.26, y: h * 0.28, label: "READ: ARCHIVE / LIBRARY" },
+          { x: w * 0.74, y: h * 0.28, label: "BASH: FORGE / FURNACE" },
+          { x: w * 0.26, y: h * 0.75, label: "WEB: WINDOW OBSERVATORY" },
+          { x: w * 0.74, y: h * 0.75, label: "EDIT: CRAFTING WORKBENCH" }
+        ];
+
+        quads.forEach((q, idx) => {
+          rrect(ctx, q.x - 155, q.y - 82, 310, 155, 14);
+          ctx.fillStyle = "#171326";
+          ctx.fill();
+          ctx.strokeStyle = ["#f59e0b", "#ef4444", "#38bdf8", "#a855f7"][idx];
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          if (idx === 0) {
+            // READ STATION VARIATIONS (A..F)
+            if (variant === "B") {
+              // 4B: Rotating Brass Book-Wheel Carousel
+              drawGear(ctx, q.x, q.y - 12, 46, 12, 8, t * 0.7, "#d97706", "#78350f", "#fef08a");
+            } else if (variant === "C") {
+              // 4C: Floating Levitating Crystal Tomes
+              for (let k = -1; k <= 1; k++) {
+                const fy = q.y - 15 + Math.sin(t * 3 + k) * 8;
+                glow(ctx, q.x + k * 48, fy, 28, "#c084fc", "rgba(168,85,247,0.2)");
+                ctx.fillStyle = "#f3e8ff";
+                rrect(ctx, q.x + k * 48 - 14, fy - 10, 28, 20, 3);
+                ctx.fill();
+              }
+            } else {
+              // Grand Multi-Tiered Bookshelf with Rolling Ladder
+              ctx.fillStyle = variant === "D" ? "#334155" : "#451a03";
+              rrect(ctx, q.x - 105, q.y - 58, 210, 88, 6);
+              ctx.fill();
+              for (let r = 0; r < 2; r++) {
+                for (let b = 0; b < 13; b++) {
+                  ctx.fillStyle = ["#ef4444", "#38bdf8", "#10b981", "#f59e0b", "#a855f7"][(b + r) % 5];
+                  ctx.fillRect(q.x - 95 + b * 14.5, q.y - 50 + r * 40, 11, 32);
+                }
+              }
+            }
+          } else if (idx === 1) {
+            // BASH FORGE STATION VARIATIONS (A..F)
+            const fCol = variant === "C" ? "#a855f7" : variant === "E" ? "#10b981" : "#f97316";
+            glow(ctx, q.x - 45, q.y - 12, 64, "#ffffff", fCol);
+            drawFlame(ctx, q.x - 45, q.y + 8, 1.3, t, fCol, "#fde047", "#ffffff");
+            // Anvil / Steam Hammer
+            ctx.fillStyle = "#64748b";
+            rrect(ctx, q.x + 20, q.y - 18, 64, 32, 6);
+            ctx.fill();
+            if (variant === "B") {
+              // Hydraulic Piston Hammer
+              const py = Math.abs(Math.sin(t * 6)) * 18;
+              ctx.fillStyle = "#f59e0b";
+              ctx.fillRect(q.x + 38, q.y - 54 + py, 28, 22);
+            }
+          } else if (idx === 2) {
+            // WEB OBSERVATORY SPYGLASS VARIATIONS (A..F)
+            glow(ctx, q.x - 45, q.y - 18, 68, "rgba(186,230,253,0.5)", "rgba(56,189,248,0.15)");
+            ctx.strokeStyle = variant === "C" ? "#c084fc" : "#f59e0b";
+            ctx.lineWidth = 9;
+            ctx.beginPath();
+            ctx.moveTo(q.x + 50, q.y + 18);
+            ctx.lineTo(q.x - 35, q.y - 28 + Math.sin(t * 2) * 6);
+            ctx.stroke();
+          } else {
+            // EDIT WORKBENCH VARIATIONS (A..F)
+            ctx.fillStyle = "#78350f";
+            rrect(ctx, q.x - 105, q.y - 48, 210, 76, 8);
+            ctx.fill();
+            ctx.fillStyle = variant === "C" ? "#3b0764" : "#1e3a8a";
+            ctx.fillRect(q.x - 88, q.y - 38, 115, 56);
+            drawGear(ctx, q.x + 62, q.y - 10, 26, 8, 8, t * 1.4, "#f59e0b", "#78350f", "#fef08a");
+          }
+
+          ctx.font = "bold 11px monospace";
+          ctx.fillStyle = "#f8fafc";
+          ctx.textAlign = "center";
+          ctx.fillText(q.label, q.x, q.y + 56);
+        });
+      }
+
+      // ============================================================================
+      // CATEGORY 5: 6 DISTINCT CENTRAL GOAL ASSEMBLIES (5A - 5F)
+      // ============================================================================
+      function renderCategory5(ctx, w, h, variant, t) {
+        ctx.fillStyle = "#090710";
+        ctx.fillRect(0, 0, w, h);
+
+        // Center Divider: Left = Bleak Unbuilt Wireframe, Right = Vibrant Assembled Structure
+        ctx.strokeStyle = "rgba(148,163,184,0.3)";
+        ctx.setLineDash([6, 6]);
+        ctx.beginPath();
+        ctx.moveTo(w / 2, 20);
+        ctx.lineTo(w / 2, h - 20);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const lx = w * 0.25;
+        const rx = w * 0.75;
+        const cy = h * 0.48;
+
+        if (variant === "A") {
+          // 5A: Grand Sky-Galleon Airship
+          // Left: Bleak Skeletal Hull Ribs
+          ctx.strokeStyle = "#475569";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.ellipse(lx, cy, 110, 48, 0, 0, Math.PI * 2);
+          for (let r = -3; r <= 3; r++) {
+            ctx.moveTo(lx + r * 28, cy - 46);
+            ctx.lineTo(lx + r * 28, cy + 46);
+          }
+          ctx.stroke();
+
+          // Right: Vibrant Copper-Plated Airship with Spinning Propellers & Glowing Sails
+          glow(ctx, rx, cy, 150, "rgba(56,189,248,0.35)", "rgba(245,158,11,0.15)");
+          const hullG = ctx.createLinearGradient(rx - 110, cy - 50, rx + 110, cy + 50);
+          hullG.addColorStop(0, "#fbbf24");
+          hullG.addColorStop(0.5, "#b45309");
+          hullG.addColorStop(1, "#451a03");
+          ctx.fillStyle = hullG;
+          ctx.beginPath();
+          ctx.ellipse(rx, cy, 115, 52, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "#fef08a";
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          drawGear(ctx, rx - 65, cy - 58, 26, 7, 6, t * 4, "#38bdf8", "#0284c7", "#e0f2fe");
+          drawGear(ctx, rx + 65, cy - 58, 26, 7, 6, -t * 4, "#38bdf8", "#0284c7", "#e0f2fe");
+          glow(ctx, rx, cy, 38, "#ffffff", "#38bdf8");
+        } else if (variant === "B") {
+          // 5B: Celestial Astral Orrery & Clockwork Planetarium
+          ctx.strokeStyle = "#334155";
+          ctx.lineWidth = 2;
+          [40, 75, 110].forEach((r) => {
+            ctx.beginPath();
+            ctx.arc(lx, cy, r, 0, Math.PI * 2);
+            ctx.stroke();
+          });
+
+          glow(ctx, rx, cy, 145, "rgba(250,204,21,0.4)", "rgba(168,85,247,0.18)");
+          [45, 82, 118].forEach((r, idx) => {
+            ctx.strokeStyle = idx === 1 ? "#38bdf8" : "#f59e0b";
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(rx, cy, r, 0, Math.PI * 2);
+            ctx.stroke();
+            const pa = t * (1.5 - idx * 0.35) + idx;
+            glow(ctx, rx + Math.cos(pa) * r, cy + Math.sin(pa) * r, 16, "#fff", idx === 0 ? "#ef4444" : idx === 1 ? "#38bdf8" : "#c084fc");
+          });
+          glow(ctx, rx, cy, 36, "#ffffff", "#facc15");
+        } else if (variant === "C") {
+          // 5C: Arcane Mythril Guardian Colossus
+          ctx.strokeStyle = "#475569";
+          ctx.setLineDash([5, 5]);
+          rrect(ctx, lx - 55, cy - 85, 110, 165, 16);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          glow(ctx, rx, cy, 145, "rgba(56,189,248,0.4)", "rgba(99,102,241,0.18)");
+          drawCharacter(ctx, rx, cy + 12, 2.1, t, "warrior", "3D");
+        } else if (variant === "D") {
+          // 5D: Alchemical Philosopher's Grand Reactor
+          ctx.strokeStyle = "#475569";
+          ctx.strokeRect(lx - 70, cy - 75, 140, 150);
+
+          glow(ctx, rx, cy, 145, "rgba(16,185,129,0.45)", "rgba(250,204,21,0.2)");
+          ctx.fillStyle = "#065f46";
+          rrect(ctx, rx - 60, cy - 75, 120, 150, 24);
+          ctx.fill();
+          ctx.strokeStyle = "#f59e0b";
+          ctx.lineWidth = 5;
+          ctx.stroke();
+          for (let b = 0; b < 8; b++) {
+            const by = cy + 50 - ((t * 60 + b * 18) % 110);
+            glow(ctx, rx + Math.sin(t * 3 + b) * 32, by, 12, "#fff", "#34d399");
+          }
+        } else if (variant === "E") {
+          // 5E: Royal Guild Cathedral & Stained-Glass Rose Window
+          ctx.strokeStyle = "#475569";
+          ctx.beginPath();
+          ctx.moveTo(lx, cy - 105);
+          ctx.lineTo(lx + 85, cy + 85);
+          ctx.lineTo(lx - 85, cy + 85);
+          ctx.closePath();
+          ctx.stroke();
+
+          glow(ctx, rx, cy, 145, "rgba(244,114,182,0.38)", "rgba(251,191,36,0.2)");
+          ctx.fillStyle = "#e2e8f0";
+          ctx.beginPath();
+          ctx.moveTo(rx, cy - 110);
+          ctx.lineTo(rx + 90, cy + 85);
+          ctx.lineTo(rx - 90, cy + 85);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = "#f59e0b";
+          ctx.lineWidth = 4;
+          ctx.stroke();
+          drawGear(ctx, rx, cy + 15, 48, 12, 16, t * 0.4, "#ec4899", "#eab308", "#38bdf8");
+        } else {
+          // 5F: Dimensional Stargate & Arcane Nexus Portal
+          ctx.strokeStyle = "#475569";
+          ctx.lineWidth = 8;
+          ctx.beginPath();
+          ctx.arc(lx, cy, 95, 0, Math.PI * 2);
+          ctx.stroke();
+
+          glow(ctx, rx, cy, 150, "rgba(192,132,252,0.55)", "rgba(56,189,248,0.25)");
+          drawGear(ctx, rx, cy, 102, 74, 9, t * 0.6, "#6366f1", "#fde047", "#e0e7ff");
+          glow(ctx, rx, cy, 74, "#ffffff", "#a855f7", "#1e1b4b");
+        }
+
+        ctx.font = "bold 11px monospace";
+        ctx.fillStyle = "#64748b";
+        ctx.textAlign = "center";
+        ctx.fillText("BLEAK UNBUILT WIREFRAME", lx, h - 20);
+        ctx.fillStyle = "#fde047";
+        ctx.fillText("VIBRANT ASSEMBLED MONUMENT", rx, h - 20);
+      }
+
+      // ============================================================================
+      // CATEGORY 6: 6 DISTINCT MUTATING MONSTER LINEAGES (6A - 6F) — FULL ANATOMY
+      // ============================================================================
+      function renderCategory6(ctx, w, h, variant, t) {
+        const bgG = ctx.createRadialGradient(w / 2, h / 2, 20, w / 2, h / 2, w * 0.65);
+        bgG.addColorStop(0, "#191129");
+        bgG.addColorStop(1, "#07050c");
+        ctx.fillStyle = bgG;
+        ctx.fillRect(0, 0, w, h);
+
+        const lineages = {
+          A: { c1: "#10b981", c2: "#f59e0b", c3: "#ef4444", n1: "ACID SLIME", n2: "CHITIN ARACHNID", n3: "MAGMA GOLEM TITAN" },
+          B: { c1: "#a855f7", c2: "#6366f1", c3: "#ec4899", n1: "SHADOW MITE", n2: "VOID STALKER HOUND", n3: "3-HEADED ABYSSAL HYDRA" },
+          C: { c1: "#eab308", c2: "#f97316", c3: "#dc2626", n1: "RUST GREMLIN", n2: "SAWBLADE AUTOMATON", n3: "STEAM JUGGERNAUT" },
+          D: { c1: "#84cc16", c2: "#10b981", c3: "#22c55e", n1: "BLIGHT SPORELING", n2: "VENOM SCYTHE MANTIS", n3: "CORRUPTED ELDER TREANT" },
+          E: { c1: "#2dd4bf", c2: "#38bdf8", c3: "#818cf8", n1: "CRYPT SKULL WISP", n2: "CURSED DEATH KNIGHT", n3: "ARCH-LICH WARLORD" },
+          F: { c1: "#fb923c", c2: "#ea580c", c3: "#ef4444", n1: "GOBLIN SABOTEUR", n2: "ARMORED ORC WARLORD", n3: "BLOOD-IRON BEHEMOTH" }
+        }[variant];
+
+        const wob = Math.sin(t * 4.5) * 5;
+        const lunge = Math.sin(t * 6) * 6;
+
+        // Evolution Arrows
+        ctx.strokeStyle = "rgba(255,255,255,0.18)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(w * 0.25, h * 0.5);
+        ctx.lineTo(w * 0.31, h * 0.5);
+        ctx.moveTo(w * 0.56, h * 0.5);
+        ctx.lineTo(w * 0.62, h * 0.5);
+        ctx.stroke();
+
+        // ------------------------------------------------------------------
+        // TIER 1: MINOR PEST (LEFT)
+        // ------------------------------------------------------------------
+        const x1 = w * 0.14, y1 = h * 0.56;
+        glow(ctx, x1, y1, 58, lineages.c1, "rgba(0,0,0,0)");
+        // Translucent Gelatinous / Smoke / Spore Body with Inner Nucleus
+        const g1 = ctx.createRadialGradient(x1 - 8, y1 - 10, 2, x1, y1, 34);
+        g1.addColorStop(0, "#ffffff");
+        g1.addColorStop(0.35, lineages.c1);
+        g1.addColorStop(1, "#090d16");
+        ctx.fillStyle = g1;
+        ctx.beginPath();
+        ctx.moveTo(x1 - 30 - wob * 0.5, y1 + 18);
+        ctx.quadraticCurveTo(x1 - 32, y1 - 28 + wob, x1, y1 - 30 + wob);
+        ctx.quadraticCurveTo(x1 + 32, y1 - 28 + wob, x1 + 30 + wob * 0.5, y1 + 18);
+        ctx.quadraticCurveTo(x1, y1 + 26, x1 - 30 - wob * 0.5, y1 + 18);
+        ctx.closePath();
+        ctx.fill();
+        // Inner suspended skull/gear/core
+        ctx.fillStyle = "rgba(255,255,255,0.65)";
+        ctx.beginPath();
+        ctx.arc(x1 - 4, y1 - 4 + wob * 0.5, 7, 0, Math.PI * 2);
+        ctx.fill();
+        glow(ctx, x1 - 9, y1 - 2, 5, "#fff", "#ef4444");
+        glow(ctx, x1 + 9, y1 - 2, 5, "#fff", "#ef4444");
+
+        // ------------------------------------------------------------------
+        // TIER 2: SERIOUS BEAST (CENTER)
+        // ------------------------------------------------------------------
+        const x2 = w * 0.43, y2 = h * 0.53;
+        glow(ctx, x2, y2, 85, lineages.c2, "rgba(0,0,0,0)");
+        // 6 Articulated Jointed Legs / Tendrils / Saw-Arms
+        ctx.strokeStyle = lineages.c2;
+        ctx.lineWidth = 4;
+        for (let leg = -1; leg <= 1; leg++) {
+          const ly = y2 + leg * 16;
+          const swing = Math.sin(t * 7 + leg) * 6;
+          // Left leg
+          ctx.beginPath();
+          ctx.moveTo(x2 - 28, ly);
+          ctx.lineTo(x2 - 54, ly - 8 + swing);
+          ctx.lineTo(x2 - 66, ly + 12 + swing);
+          ctx.stroke();
+          // Right leg
+          ctx.beginPath();
+          ctx.moveTo(x2 + 28, ly);
+          ctx.lineTo(x2 + 54, ly - 8 - swing);
+          ctx.lineTo(x2 + 66, ly + 12 - swing);
+          ctx.stroke();
+        }
+        if (variant === "C") {
+          drawGear(ctx, x2 - 48, y2 - 12, 20, 6, 8, t * 5, "#cbd5e1", "#ea580c", "#fff");
+          drawGear(ctx, x2 + 48, y2 - 12, 20, 6, 8, -t * 5, "#cbd5e1", "#ea580c", "#fff");
+        }
+        // Segmented Armored Carapace / Torso
+        const g2 = ctx.createRadialGradient(x2 - 10, y2 - 12, 4, x2, y2, 46);
+        g2.addColorStop(0, lineages.c2);
+        g2.addColorStop(0.55, "#27173a");
+        g2.addColorStop(1, "#09070f");
+        ctx.fillStyle = g2;
+        ctx.beginPath();
+        ctx.ellipse(x2, y2, 42, 34 + wob * 0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = lineages.c2;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        // Pinching Mandibles / Tusks
+        ctx.fillStyle = "#f8fafc";
+        ctx.beginPath();
+        ctx.moveTo(x2 - 16, y2 + 24);
+        ctx.lineTo(x2 - 6, y2 + 42);
+        ctx.lineTo(x2 - 4, y2 + 26);
+        ctx.moveTo(x2 + 16, y2 + 24);
+        ctx.lineTo(x2 + 6, y2 + 42);
+        ctx.lineTo(x2 + 4, y2 + 26);
+        ctx.fill();
+        glow(ctx, x2 - 13, y2 + 8, 7, "#fff", "#ef4444");
+        glow(ctx, x2 + 13, y2 + 8, 7, "#fff", "#ef4444");
+
+        // ------------------------------------------------------------------
+        // TIER 3: EPIC BOSS TITAN + LIVE WARRIOR DUEL (RIGHT)
+        // ------------------------------------------------------------------
+        const x3 = w * 0.78, y3 = h * 0.44;
+        glow(ctx, x3, y3, 135, lineages.c3, "rgba(0,0,0,0)");
+
+        if (variant === "B") {
+          // 6B: Three-Headed Abyssal Hydra
+          [-42, 0, 42].forEach((hx, idx) => {
+            const sway = Math.sin(t * 4 + idx) * 8;
+            ctx.strokeStyle = "#311042";
+            ctx.lineWidth = 18;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(x3, y3 + 55);
+            ctx.quadraticCurveTo(x3 + hx * 0.6 + sway, y3, x3 + hx + sway, y3 - 45);
+            ctx.stroke();
+            ctx.fillStyle = "#581c87";
+            ctx.beginPath();
+            ctx.arc(x3 + hx + sway, y3 - 48, 20, 0, Math.PI * 2);
+            ctx.fill();
+            glow(ctx, x3 + hx + sway - 6, y3 - 48, 5, "#fff", "#ec4899");
+            glow(ctx, x3 + hx + sway + 6, y3 - 48, 5, "#fff", "#ec4899");
+          });
+        }
+
+        // Boss Colossal Hulk Shoulders & Torso
+        const g3 = ctx.createLinearGradient(x3 - 65, y3 - 65, x3 + 65, y3 + 65);
+        g3.addColorStop(0, "#3f3f46");
+        g3.addColorStop(0.5, "#18181b");
+        g3.addColorStop(1, "#09090b");
+        ctx.fillStyle = g3;
+        rrect(ctx, x3 - 64, y3 - 58 + wob * 0.5, 128, 112, 28);
+        ctx.fill();
+        ctx.strokeStyle = lineages.c3;
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        // Boss Horned Crown & Glowing Fissure Core
+        ctx.fillStyle = lineages.c3;
+        ctx.beginPath();
+        ctx.moveTo(x3 - 45, y3 - 52);
+        ctx.lineTo(x3 - 68, y3 - 92);
+        ctx.lineTo(x3 - 22, y3 - 56);
+        ctx.moveTo(x3 + 45, y3 - 52);
+        ctx.lineTo(x3 + 68, y3 - 92);
+        ctx.lineTo(x3 + 22, y3 - 56);
+        ctx.fill();
+
+        drawFlame(ctx, x3, y3 + 18, 1.45, t, lineages.c3, "#fde047", "#ffffff");
+        glow(ctx, x3 - 22, y3 - 22, 11, "#fff", lineages.c3);
+        glow(ctx, x3 + 22, y3 - 22, 11, "#fff", lineages.c3);
+
+        // Warrior Hero Engaging the Tier 3 Boss with Slashing Blade Arc
+        const heroX = x3 - 78;
+        const heroY = y3 + 68;
+        drawCharacter(ctx, heroX, heroY, 0.78, t, "warrior", "3A");
+
+        // Sword Slash Crescent & Impact Sparks on Boss
+        ctx.strokeStyle = "#fef08a";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(x3 - 38, y3 + 38, 36, -Math.PI * 0.6 + lunge * 0.05, Math.PI * 0.2 + lunge * 0.05);
+        ctx.stroke();
+
+        ctx.font = "bold 11px monospace";
+        ctx.fillStyle = "#f8fafc";
+        ctx.textAlign = "center";
+        ctx.fillText("T1: " + lineages.n1, x1, h - 18);
+        ctx.fillText("T2: " + lineages.n2, x2, h - 18);
+        ctx.fillText("T3: " + lineages.n3, x3, h - 18);
+      }
+
+      // ============================================================================
+      // CATEGORY 7: 6 DISTINCT IN-PLACE COMPACTION EXHALATION EFFECTS (7A - 7F)
+      // ============================================================================
+      function renderCategory7(ctx, w, h, variant, t) {
+        const bg = ctx.createRadialGradient(w / 2, h / 2, 20, w / 2, h / 2, w * 0.65);
+        bg.addColorStop(0, "#161228");
+        bg.addColorStop(1, "#07060c");
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, w, h);
+
+        const cx = w * 0.5;
+        const cy = h * 0.68;
+
+        const styles = {
+          A: { c0: "#e0f2fe", c1: "rgba(56,189,248,0.55)", bar: "#38bdf8", label: "SILVER-CYAN MISTY BREATH VAPOR & MANA DEW" },
+          B: { c0: "#fef9c3", c1: "rgba(250,204,21,0.55)", bar: "#facc15", label: "GOLDEN ALCHEMICAL SIGH & DISSOLVING GLYPHS" },
+          C: { c0: "#f3e8ff", c1: "rgba(192,132,252,0.55)", bar: "#c084fc", label: "ASTRAL NEBULA BREATH & CONSTELLATION STARS" },
+          D: { c0: "#d1fae5", c1: "rgba(52,211,153,0.55)", bar: "#34d399", label: "EMERALD PRANA EXHALE & HARMONY RIPPLES" },
+          E: { c0: "#ffedd5", c1: "rgba(251,146,60,0.6)", bar: "#fb923c", label: "PHOENIX SMOKE-TO-EMBER CONTEXT PURGE" },
+          F: { c0: "#f0f9ff", c1: "rgba(125,211,252,0.65)", bar: "#7dd3fc", label: "CRYSTALLINE WINTER FROST-VAPOR PLUME" }
+        }[variant];
+
+        // Ground Ripple Ring (Especially prominent in 7D, subtle in others)
+        for (let r = 0; r < 3; r++) {
+          const rp = ((t * 0.5 + r * 0.33) % 1);
+          ctx.strokeStyle = styles.c1;
+          ctx.lineWidth = variant === "D" ? 3 : 1.5;
+          ctx.beginPath();
+          ctx.ellipse(cx, cy + 34, 30 + rp * 95, 10 + rp * 28, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        // Character Standing In-Place Breathing Deeply
+        drawCharacter(ctx, cx, cy, 1.45, t, "mage", "3A");
+
+        // Live Context Mana Distillation Bar Overhead (Showing 95% -> 18% Relief)
+        const cycle = (Math.sin(t * 1.6) + 1) * 0.5;
+        const fillPct = 0.2 + cycle * 0.72;
+        rrect(ctx, cx - 70, cy + 52, 140, 12, 6);
+        ctx.fillStyle = "#09070f";
+        ctx.fill();
+        ctx.strokeStyle = "#334155";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        rrect(ctx, cx - 68, cy + 54, 136 * (1 - fillPct * 0.7), 8, 4);
+        ctx.fillStyle = styles.bar;
+        ctx.fill();
+
+        // Volumetric Curling Exhalation Cloud Puffs + Variant-Specific Particles
+        for (let p = 0; p < 14; p++) {
+          const age = (t * 0.62 + p * 0.071) % 1;
+          const py = cy - 38 - age * 210;
+          const px = cx + Math.sin(age * 6.5 + p * 1.2) * (16 + age * 62);
+          const pr = 16 + age * 64;
+
+          ctx.save();
+          ctx.globalAlpha = Math.sin(age * Math.PI) * 0.85;
+          if (variant === "E" && age < 0.45) {
+            // 7E: Starts as heavy dark smoke before igniting into golden phoenix embers
+            glow(ctx, px, py, pr, "#475569", "rgba(30,41,59,0.7)");
+          } else {
+            glow(ctx, px, py, pr, styles.c0, styles.c1);
+          }
+
+          // Variant-specific fine details inside the rising breath plume
+          if (variant === "B") {
+            // Dissolving Alchemical Runes
+            ctx.font = "bold 12px serif";
+            ctx.fillStyle = "#fef08a";
+            ctx.fillText(["◊", "∆", "Ω", "Ψ", "Σ"][p % 5], px, py);
+          } else if (variant === "C") {
+            // Twinkling 4-Point Stars
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(px - 6, py);
+            ctx.lineTo(px + 6, py);
+            ctx.moveTo(px, py - 6);
+            ctx.lineTo(px, py + 6);
+            ctx.stroke();
+          } else if (variant === "F") {
+            // 6-Pointed Geometric Frost Crystals
+            ctx.strokeStyle = "#e0f2fe";
+            ctx.lineWidth = 1.4;
+            for (let a = 0; a < 3; a++) {
+              const ang = (a / 3) * Math.PI + age * 2;
+              ctx.beginPath();
+              ctx.moveTo(px - Math.cos(ang) * 7, py - Math.sin(ang) * 7);
+              ctx.lineTo(px + Math.cos(ang) * 7, py + Math.sin(ang) * 7);
+              ctx.stroke();
+            }
+          }
+          ctx.restore();
+        }
+
+        ctx.font = "bold 11px monospace";
+        ctx.fillStyle = styles.c0;
+        ctx.textAlign = "center";
+        ctx.fillText(styles.label, cx, h - 16);
+      }
+
+      function renderScene(ctx, w, h, code, t) {
+        ctx.save();
+        const cat = parseInt(code[0], 10);
+        const variant = code[1];
+        if (cat === 1) renderCategory1(ctx, w, h, variant, t);
+        else if (cat === 2) renderCategory2(ctx, w, h, variant, t);
+        else if (cat === 3) renderCategory3(ctx, w, h, variant, t);
+        else if (cat === 4) renderCategory4(ctx, w, h, variant, t);
+        else if (cat === 5) renderCategory5(ctx, w, h, variant, t);
+        else if (cat === 6) renderCategory6(ctx, w, h, variant, t);
+        else if (cat === 7) renderCategory7(ctx, w, h, variant, t);
+        ctx.restore();
+      }
+
+      function tick(now) {
+        const t = now * 0.001;
+        for (const item of activeCanvases) {
+          renderScene(item.ctx, item.canvas.width, item.canvas.height, item.code, t);
+        }
+        if (modalCode) {
+          renderScene(modalCtx, modalCanvas.width, modalCanvas.height, modalCode, t);
+        }
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    </script>
+  </body>
+</html>

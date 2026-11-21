@@ -3,6 +3,7 @@ export * from "./context-mana.ts";
 export * from "./equipment-loadout.ts";
 export * from "./reducer-types.ts";
 export * from "./armory-and-workflow.ts";
+export * from "./archived-payload-compactor.ts";
 export * from "./reducer-helpers.ts";
 export * from "./session-handlers.ts";
 export * from "./tool-and-gate-handlers.ts";

@@ -74,7 +74,7 @@ export function createSweepDigestTracker(): SweepDigestTracker {
     shouldEmitTaskProgress(dir, nextProg, prevSnapProg, isLocalGit, isReconnect) {
       const digest = computeTaskProgressDigest(nextProg, isLocalGit);
       const prevMatches =
-        !isLocalGit || !prevSnapProg || computeTaskProgressDigest(prevSnapProg, isLocalGit) === digest;
+        !isLocalGit || (prevSnapProg !== undefined && computeTaskProgressDigest(prevSnapProg, isLocalGit) === digest);
       if (!isReconnect && lastTaskByDir.get(dir) === digest && prevMatches) return false;
       lastTaskByDir.set(dir, digest);
       return true;
@@ -85,6 +85,12 @@ export function createSweepDigestTracker(): SweepDigestTracker {
     evictDir(dir) {
       lastCatalogByDir.delete(dir);
       lastTaskByDir.delete(dir);
+      for (const k of lastCatalogByDir.keys()) {
+        if (k.startsWith(`${dir}/.worktrees/`) || k.startsWith(`${dir}/worktree/`)) lastCatalogByDir.delete(k);
+      }
+      for (const k of lastTaskByDir.keys()) {
+        if (k.startsWith(`${dir}/.worktrees/`) || k.startsWith(`${dir}/worktree/`)) lastTaskByDir.delete(k);
+      }
     },
     clear() {
       lastCatalogByDir.clear();

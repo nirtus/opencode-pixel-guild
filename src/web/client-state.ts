@@ -51,7 +51,7 @@ export interface WalkerState {
   departureUntilMs?: number; pacingLeg?: number; pacingSide?: "top" | "left" | "right" | "bottom";
   pacingSideOcc?: number; hasActiveDetour?: boolean; smoothVx?: number; smoothVy?: number;
   overlapGraceUntilMs?: number; routeGraceUntilMs?: number; isClearingPerimeter?: boolean;
-  actionSequenceCounter?: number; lastEnqueuedArmoryKey?: string;
+  actionSequenceCounter?: number; lastEnqueuedArmoryKey?: string; lastActionSyncKey?: string;
 }
 
 export interface DynamicLanternFlare {

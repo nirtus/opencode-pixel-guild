@@ -17,7 +17,10 @@ export const expandedChatMessageIds = new Set<string>();
 function buildOneLinerPreviewText(cleanText: string): string {
   const singleLine = cleanText
     .replace(/```[\s\S]*?```/g, (block) => {
-      const firstCodeLine = block.split("\n").slice(1, -1).find((l) => l.trim().length > 0) || "code";
+      const lines = block.split("\n");
+      const lang = (lines[0] || "").replace(/^\s*```/, "").trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+      if (lang === "mermaid") return "[📊 Mermaid diagram]";
+      const firstCodeLine = lines.slice(1, -1).find((l) => l.trim().length > 0) || "code";
       return `[${firstCodeLine.trim()}]`;
     })
     .replace(/^#{1,6}\s+/gm, "")

@@ -14,6 +14,12 @@ import { getCachedOperatorProfile, getOperatorHeaders } from "./operator-pairing
 import {
   applyAuthoritativeSnapshot, isRoomDemolishing, isSessionKilling, markSessionKilling, recordClientDeletedSession,
 } from "./snapshot-gate.ts";
+import {
+  markCharacterSheetHidden,
+  maybeHydrateSessionMessagesOnDemand,
+  resetSessionMessageHydrationGuard,
+} from "./session-message-hydration-guard.ts";
+import { pruneDeletedSessionClientCaches } from "./session-cache-pruner.ts";
 import { resolveCharacterDisplayBadge } from "./station-and-workflow-routing.ts";
 import { hasActiveTextSelection } from "./text-selection-guard.ts";
 
@@ -21,30 +27,20 @@ export { reconcileTicker };
 
 let lastHeaderSignature = "";
 let lastSidePanelSignature = "";
-let lastSelectedHydratedSessionId: string | null = null;
 let lastChatScrollSessionId: string | null = null;
 let lastChatScrollSubtab: string | null = null;
 let lastChatScrollDispatchRev = "";
 let lastChatScrollVisible = false;
-const onDemandHydratedSessionRev = new Map<string, string>();
 
 export function resetSidePanelSignatures(): void {
   lastHeaderSignature = "";
   lastSidePanelSignature = "";
-  lastSelectedHydratedSessionId = null;
   lastChatScrollSessionId = null;
   lastChatScrollSubtab = null;
   lastChatScrollDispatchRev = "";
   lastChatScrollVisible = false;
-  onDemandHydratedSessionRev.clear();
+  resetSessionMessageHydrationGuard();
   resetTickerSignature();
-}
-
-function buildCharHydrationDigest(c: CharacterState | null | undefined): string {
-  if (!c) return "";
-  const msgs = c.messages ?? [];
-  const lastMsg = msgs[msgs.length - 1];
-  return `${msgs.length}:${lastMsg?.messageId ?? ""}:${lastMsg?.text?.length ?? 0}:${(c.lastAssistantText || "").length}:${c.questGate?.gateId ?? ""}`;
 }
 
 async function executeKillCharacterSession(rawChar: CharacterState, onStateChanged: () => void): Promise<void> {
@@ -106,10 +102,7 @@ function bindHeroHeaderButtons(headerSlot: HTMLElement, onStateChanged: () => vo
 export function reconcileSidePanel(onStateChanged: () => void): void {
   syncClientViewedSessionsToSnapshot(clientState.currentSnapshot);
   syncSpectatorDrawerChrome();
-  const snapshotChars = clientState.currentSnapshot.characters || {};
-  for (const sid of onDemandHydratedSessionRev.keys()) {
-    if (!snapshotChars[sid]) onDemandHydratedSessionRev.delete(sid);
-  }
+  pruneDeletedSessionClientCaches(clientState.currentSnapshot);
   const container = document.getElementById("character-sheet");
   if (!container) return;
 
@@ -137,6 +130,7 @@ export function reconcileSidePanel(onStateChanged: () => void): void {
   const rawChar = selectedChar;
 
   if (!rawChar || clientState.mobileActiveTab === "ledger") {
+    markCharacterSheetHidden();
     const prof = getCachedOperatorProfile();
     const selectedProjRoom = getSelectedProjectRoom();
     const effectiveRoomId = selectedProjRoom?.roomId ?? activeRoom?.roomId ?? null;
@@ -164,37 +158,25 @@ export function reconcileSidePanel(onStateChanged: () => void): void {
   const isSheetVisible =
     typeof window === "undefined" ||
     (window.innerWidth > 960 ? !clientState.isGamemasterCollapsed : clientState.mobileDrawerState !== "collapsed");
-  if (activeSubtab === "chat" && isSheetVisible && hasCharacterUnviewedResult(rawChar)) {
+  const includeDispatchLog =
+    clientState.mobileActiveTab === "character" && isSheetVisible && activeSubtab === "chat";
+  if (includeDispatchLog && hasCharacterUnviewedResult(rawChar)) {
     acknowledgeSessionResultAsRead(rawChar.sessionId, onStateChanged);
   }
-  const sheet = buildCharacterSheetViewModel(clientState.currentSnapshot, rawChar.sessionId);
-  const hydrationRev = `${rawChar.lastActivityAtMs}:${rawChar.idleAtMs ?? 0}:${rawChar.lifecycleState}:${rawChar.sequenceCursor}:${rawChar.recentTools?.length ?? 0}:${rawChar.recentTools?.[0]?.callId ?? ""}:${rawChar.recentTools?.[0]?.status ?? ""}`;
-  const isNewlySelectedHero = lastSelectedHydratedSessionId !== rawChar.sessionId;
-  lastSelectedHydratedSessionId = rawChar.sessionId;
-  if (
-    typeof window !== "undefined" && typeof fetch === "function" &&
-    (!/HeadlessChrome/i.test(navigator.userAgent || "") || (sheet.messages?.length ?? 0) === 0) &&
-    (isNewlySelectedHero || onDemandHydratedSessionRev.get(rawChar.sessionId) !== hydrationRev)
-  ) {
-    onDemandHydratedSessionRev.set(rawChar.sessionId, hydrationRev);
-    const prevDigest = buildCharHydrationDigest(rawChar);
-    const dirQ = rawChar.locationDirectory ? `?directory=${encodeURIComponent(rawChar.locationDirectory)}` : "";
-    void fetch(`/api/guild/session/${encodeURIComponent(rawChar.sessionId)}/messages${dirQ}`, {
-      headers: getOperatorHeaders(),
-      signal: typeof AbortSignal?.timeout === "function" ? AbortSignal.timeout(2500) : undefined,
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((payload) => {
-        if (payload?.snapshot && clientState.currentSnapshot.characters?.[rawChar.sessionId]) {
-          const nextDigest = buildCharHydrationDigest(payload.snapshot.characters?.[rawChar.sessionId]);
-          if (applyAuthoritativeSnapshot(payload.snapshot) && nextDigest !== prevDigest) {
-            lastSidePanelSignature = "";
-            onStateChanged();
-          }
-        }
-      })
-      .catch(() => {});
-  }
+  const sheet = buildCharacterSheetViewModel(clientState.currentSnapshot, rawChar.sessionId, { includeDispatchLog });
+  maybeHydrateSessionMessagesOnDemand({
+    char: rawChar,
+    messageCount: sheet.messages?.length ?? 0,
+    mobileActiveTab: clientState.mobileActiveTab,
+    isSheetVisible,
+    getHeaders: getOperatorHeaders,
+    hasSessionInSnapshot: (sid) => Boolean(clientState.currentSnapshot.characters?.[sid]),
+    applySnapshot: (snap) => applyAuthoritativeSnapshot(snap as typeof clientState.currentSnapshot),
+    onHydratedChanged: () => {
+      lastSidePanelSignature = "";
+      onStateChanged();
+    },
+  });
 
   const badge = resolveCharacterDisplayBadge(rawChar, bugs.length > 0);
   const wf = badge.workflowIntent;
@@ -287,6 +269,10 @@ export function reconcileSidePanel(onStateChanged: () => void): void {
           ? ["tools", sheet.sessionId, clientState.selectedToolCallId, sheet.recentTools.map((t) => `${t.callId}:${t.status}:${(t.outputPreview ?? "").length}`)]
           : ["chat", sheet.sessionId, isSheetVisible, sheet.lifecycleState, overheadVerb, lastUserPrompt, lastReply, sheet.dispatchLog?.revisionKey ?? "", sheet.pendingQuestGate?.gateId, sheet.hasUnviewedResult, sheet.turnOutcome, Array.from(expandedChatMessageIds)],
   );
+  if (activeSubtab === "chat" && !includeDispatchLog) {
+    lastChatScrollVisible = false;
+    return;
+  }
   const staticSig = computeStaticSig();
   if (staticSig === lastSidePanelSignature) return;
   if (

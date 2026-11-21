@@ -1,6 +1,7 @@
 import { compileCharacterToilQueue, computeRingCorridorWaypoints, stepCharacterToilQueue } from "../encounter/index.ts";
 import type { SceneHitboxSpec } from "../scene/index.ts";
 import { resolveStationFacingDirection } from "../sprites/index.ts";
+import { createBoundedSeenToolCallIds } from "./action-queue-sync-key.ts";
 import { resolveActiveGoalAssemblyAndLayout } from "./canvas-assembly-painter.ts";
 import { appendGoalAssemblySceneHitboxes } from "./canvas-mini-assembly-painter.ts";
 import { deriveProjectBugMonsters } from "./canvas-wilds-painter.ts";
@@ -13,6 +14,7 @@ import {
 } from "./character-action-queue.ts";
 import { clientState, getActiveRoom, getVisibleProjectCharacters, isMobileViewport, triggerPlatformSnapBurst } from "./client-state.ts";
 import { getLastSummonedSessionId } from "./command-scroll-controller.ts";
+import { pruneDeletedSessionClientCaches } from "./session-cache-pruner.ts";
 import { PENTAGRAM_CENTER, SOUTH_GUILD_DOOR_ENTRANCE, type ResolvedCharacterSlot, resolveCharacterTargetSlot, resolveEffectiveCharacterLifecycleState, resolveInwardStationFacing } from "./station-and-workflow-routing.ts";
 import { ensureAvailableStationSlot, PREPARATION_STATION_HITBOX_SPECS } from "./station-geometry-catalog.ts";
 import { advanceThinkingRoamLeg, advanceWalkerStrideCycle, canReevaluateWalkerRoute, enforceWalkerPersonalSpace, ROUTE_RETARGET_GRACE_MS, resolveCharacterWalkSpeed, resolveDepartureStaggerMs, resolveSmoothedWalkerFacing, resolveSmoothPerimeterExitTarget, STATION_ACTION_DWELL_GRACE_MS, updatePassThroughOverlapGrace } from "./walker-separation.ts";
@@ -88,15 +90,21 @@ export function stepClientChoreography(dtSec: number, nowMs: number): void {
 
   // 5. Prune deleted sessions & manage summoning rituals
   const snapshotChars = clientState.currentSnapshot.characters || {};
+  let removedAnySession = false;
   for (const sid of clientState.characterWalkers.keys()) {
     if (!snapshotChars[sid]) {
       clientState.characterWalkers.delete(sid);
       clientState.activeSummoningRituals.delete(sid);
+      removedAnySession = true;
     }
   }
   for (const sid of clientState.knownSessionIds) {
-    if (!snapshotChars[sid]) clientState.knownSessionIds.delete(sid);
+    if (!snapshotChars[sid]) {
+      clientState.knownSessionIds.delete(sid);
+      removedAnySession = true;
+    }
   }
+  pruneDeletedSessionClientCaches(clientState.currentSnapshot, { hadRemovedSession: removedAnySession });
 
   for (const [childId, ritual] of clientState.activeSummoningRituals.entries()) {
     if (nowMs - ritual.startedAtMs >= ritual.durationMs) {
@@ -151,7 +159,7 @@ export function stepClientChoreography(dtSec: number, nowMs: number): void {
       walker = {
         currentX: isSubagent ? PENTAGRAM_CENTER.x : slot.x, currentY: isSubagent ? PENTAGRAM_CENTER.y : slot.y,
         targetX: slot.x, targetY: slot.y, resolvedSlot: slot, pendingSlot: null, slotQueue: [],
-        seenToolCallIds: new Set((c.recentTools ?? []).map((r) => r.callId).filter((id): id is string => Boolean(id))),
+        seenToolCallIds: createBoundedSeenToolCallIds(c.recentTools),
         initializedQueue: true, hasReachedAssemblyPacing: false, dwellUntilMs: 0, isWalking: false,
         facingLeft: false, walkCycle: 0, lastToolCategory: "", armoryUntilMs: 0,
         searchWaypointIdx: loungeSeatIndex, wasActiveSubagent: isSubagent && !isAlreadyDespawning, despawnCompleted: isAlreadyDespawning,
@@ -159,14 +167,14 @@ export function stepClientChoreography(dtSec: number, nowMs: number): void {
       clientState.characterWalkers.set(c.sessionId, walker);
     } else if (!walker.initializedQueue) {
       walker.slotQueue = [];
-      walker.seenToolCallIds = new Set((c.recentTools ?? []).map((r) => r.callId).filter((id): id is string => Boolean(id)));
+      walker.seenToolCallIds = createBoundedSeenToolCallIds(c.recentTools);
       if (!walker.resolvedSlot) {
         walker.resolvedSlot = slot;
         walker.targetX = slot.x;
         walker.targetY = slot.y;
         if (walker.isWalking) walker.waypoints = [{ x: slot.x, y: slot.y }];
       }
-      walker.initializedQueue = true;
+      walker.initializedQueue = true; walker.lastActionSyncKey = undefined;
     } else if (!walker.resolvedSlot) {
       walker.resolvedSlot = slot;
     }

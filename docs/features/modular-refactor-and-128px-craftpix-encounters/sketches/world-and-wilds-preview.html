@@ -1,0 +1,1107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Step 3: Unified Generic Workshop Room + Outdoor Bug-Hunting Wilderness &amp; Monsters</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Plus+Jakarta+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+      body {
+        background-color: #14100d;
+        color: #f5ebe1;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+      }
+      .serif-title {
+        font-family: 'Cinzel', Georgia, serif;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen p-4 md:p-8 space-y-8">
+    <!-- Header & Interactive Simulation Controls -->
+    <header class="max-w-[1680px] mx-auto border-b border-amber-200/15 pb-6 space-y-5">
+      <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+        <div>
+          <p class="text-xs font-bold tracking-[0.2em] uppercase text-amber-400">
+            STEP 3 · UNIFIED GENERIC ROOM + OUTDOOR VEGETATION &amp; MUTATING BUG MONSTERS
+          </p>
+          <h1 class="serif-title text-2xl md:text-4xl font-bold text-[#f5d08a] mt-1">
+            PROJECT WORLD: INDOOR GENERIC WORKSHOP &amp; OUTDOOR BUG-HUNT WILDS
+          </h1>
+          <p class="text-xs md:text-sm text-stone-300 mt-1 max-w-4xl">
+            <strong>Left Chamber:</strong> Unified Generic Workshop Room combining approved elements from <em>01 Grand Library</em>, <em>02 Smithy Forge</em>, <em>04 Alchemy Lab</em>, <em>06 Enchanter's Study</em>, and <em>10 Artificer's Workshop</em> around the central <strong>Feature Object Assembly Platform</strong>.
+            <strong>Right Wilderness:</strong> Connected outdoor biome (<code class="text-amber-300">docs/examples/outside/</code>) shrouded in Fog of War where heroes hunt mutating Bug Monsters (<code class="text-amber-300">docs/examples/monsters/</code>).
+          </p>
+        </div>
+
+        <!-- Quick Action Triggers -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="btn-flare" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500 text-stone-950 hover:bg-amber-400 transition shadow">
+            🏮 Cast Lantern Flare (Reveal Fog)
+          </button>
+          <button id="btn-mutate" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-purple-600 text-white hover:bg-purple-500 transition shadow">
+            ⚡ Escalate Bug Severity (Mutate Monster)
+          </button>
+          <button id="btn-slay" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-500 transition shadow">
+            ⚔️ Pass Test &amp; Slay Bug!
+          </button>
+        </div>
+      </div>
+
+      <!-- Interactive Parameter Bar -->
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4 bg-[#211a15] p-4 rounded-2xl border border-amber-200/15 text-xs">
+        <!-- 1. Central Feature Assembly Progress (0 to 5 Parts) -->
+        <div class="space-y-1.5">
+          <div class="flex justify-between font-bold text-amber-300">
+            <span>⚙️ Center Feature Object Assembly:</span>
+            <span id="assembly-label">5 / 5 Parts (100% Complete)</span>
+          </div>
+          <input id="assembly-slider" type="range" min="0" max="5" value="5" class="w-full accent-amber-400 cursor-pointer" />
+          <p class="text-[11px] text-stone-400">Drag 0→5 to watch bleak wireframe parts snap in as vibrant animated components</p>
+        </div>
+
+        <!-- 2. Outdoor Wilderness Biome Selector -->
+        <div class="space-y-1.5">
+          <label class="font-bold text-emerald-300 block">🌲 Outdoor Vegetation Biome (`docs/examples/outside/`):</label>
+          <select id="biome-select" class="w-full bg-[#14100d] border border-stone-700 rounded-lg px-3 py-1.5 text-stone-100 font-semibold">
+            <option value="forest">Forest Biome (Hangman's Oak, Lantern Log, Bloodcaps, Widow Ferns)</option>
+            <option value="dungeon">Dungeon Biome (Bone Root, Ghostcaps, Chainweed, Eyestalks, Leech Moss)</option>
+            <option value="dryland">Dryland Biome (Skeleton Tree, Gallows Cactus, Dust Blossoms, Razor Grass)</option>
+          </select>
+        </div>
+
+        <!-- 3. Bug Monster Severity Tier (1-4) -->
+        <div class="space-y-1.5">
+          <label class="font-bold text-purple-300 block">👾 Bug Severity &amp; Monster Mutation Tier:</label>
+          <select id="tier-select" class="w-full bg-[#14100d] border border-stone-700 rounded-lg px-3 py-1.5 text-stone-100 font-semibold">
+            <option value="0">Tier 1 · Minor Warning: SLIME (Scale 0.85x · Wobble)</option>
+            <option value="1">Tier 2 · Unit Test Failure: GOBLIN (Scale 1.1x · Blade Slash)</option>
+            <option value="2" selected>Tier 3 · Suite Failure (2-3 Retries): CYCLOPS (Scale 1.45x · Shockwave)</option>
+            <option value="3">Tier 4 · Critical Crash Boss: TROLL (Scale 1.85x · Seismic Roar)</option>
+          </select>
+        </div>
+
+        <!-- 4. Monster Set Selector (set01 - set10) -->
+        <div class="space-y-1.5">
+          <label class="font-bold text-cyan-300 block">🎨 Monster Lineage Set (`docs/examples/monsters/`):</label>
+          <select id="set-select" class="w-full bg-[#14100d] border border-stone-700 rounded-lg px-3 py-1.5 text-stone-100 font-semibold">
+            <option value="01">Set 01 (Gloop / Snik / Polybrute / Grumbold)</option>
+            <option value="02">Set 02 (Dripsy / Grubnose / Oculon / Mossback)</option>
+            <option value="03">Set 03 (Lil Imp / Ratchet / Brontes / Thudd)</option>
+            <option value="04">Set 04 (Wobbleton / Fizzwick / Glare / Bramblejaw)</option>
+            <option value="05">Set 05 (Glimmer / Nogg / Monocle Mo / Ogg)</option>
+            <option value="06">Set 06 (Trioculus / Skrank / Steropes / Stonehide)</option>
+            <option value="07">Set 07 (Coinbelly / Pip / Uno / Gurk)</option>
+            <option value="08">Set 08 (Honeydrop / Weaselbit / Ironbrow / Bogwarden)</option>
+            <option value="09">Set 09 (Gazey / Grizzle / Arges / Rumblegut)</option>
+            <option value="10">Set 10 (Cap'n Gel / Mukk / Blinky / Old Knuckles)</option>
+          </select>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Unified Project World Canvas (1600 x 720) -->
+    <main class="max-w-[1680px] mx-auto space-y-10">
+      <div class="bg-[#211a15] rounded-2xl overflow-hidden border-2 border-amber-500/40 shadow-2xl">
+        <div class="px-5 py-2.5 bg-[#16110e] border-b border-amber-200/10 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div class="flex items-center gap-4">
+            <span class="font-bold text-amber-400">🏰 LEFT: UNIFIED GENERIC WORKSHOP ROOM (800×720)</span>
+            <span class="text-stone-500">|</span>
+            <span class="font-bold text-emerald-400">🌲 RIGHT: OUTDOOR BUG-HUNTING WILDERNESS &amp; FOG OF WAR (800×720)</span>
+          </div>
+          <span class="font-mono text-stone-400">Click anywhere in the right wilderness to cast a Lantern Flare &amp; reveal Fog of War!</span>
+        </div>
+        <canvas id="world-canvas" width="1600" height="720" class="cursor-crosshair"></canvas>
+      </div>
+
+      <!-- Asset Catalog Inspector: All 30 Outside Vegetation Assets & 40 Monsters -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Outside Vegetation Reference Strip -->
+        <section class="bg-[#211a15] rounded-2xl p-5 border border-stone-800 space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="serif-title text-lg font-bold text-emerald-300">OUTDOOR VEGETATION CATALOG (`docs/examples/outside/`)</h2>
+            <span id="veg-biome-badge" class="text-xs font-mono text-stone-400">10 Assets in Active Biome</span>
+          </div>
+          <div id="veg-grid" class="grid grid-cols-5 gap-3"></div>
+        </section>
+
+        <!-- Monster Evolution Lineup Strip -->
+        <section class="bg-[#211a15] rounded-2xl p-5 border border-stone-800 space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="serif-title text-lg font-bold text-purple-300">MONSTER SEVERITY LINEAGE (`docs/examples/monsters/`)</h2>
+            <span class="text-xs font-mono text-stone-400">Click any tier card to test in wilderness</span>
+          </div>
+          <div id="monster-grid" class="grid grid-cols-4 gap-3"></div>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const INK = "#281e18";
+
+      // ============================================================================
+      // ASSET MANIFESTS FOR docs/examples/outside/ AND docs/examples/monsters/
+      // ============================================================================
+      const VEGETATION_BIOMES = {
+        forest: {
+          name: "Dark Forest Wilderness",
+          groundBase: "#1d281d",
+          groundAlt: "#162016",
+          pathCol: "#3d2e20",
+          fogTint: "rgba(10, 16, 12, 0.94)",
+          assets: [
+            { id: "f01", name: "Hangman's Oak", file: "../../../examples/outside/forest/f01_hangmans_oak.png", scale: 1.25 },
+            { id: "f02", name: "Thornwall", file: "../../../examples/outside/forest/f02_thornwall.png", scale: 1.0 },
+            { id: "f03", name: "Weeping Ash", file: "../../../examples/outside/forest/f03_weeping_ash.png", scale: 1.2 },
+            { id: "f04", name: "Lantern Log", file: "../../../examples/outside/forest/f04_lantern_log.png", scale: 0.95 },
+            { id: "f05", name: "Strangler", file: "../../../examples/outside/forest/f05_strangler.png", scale: 1.1 },
+            { id: "f06", name: "Ashen Birch", file: "../../../examples/outside/forest/f06_ashen_birch.png", scale: 1.1 },
+            { id: "f07", name: "Bloodcaps", file: "../../../examples/outside/forest/f07_bloodcaps.png", scale: 0.85 },
+            { id: "f08", name: "Widow Ferns", file: "../../../examples/outside/forest/f08_widow_ferns.png", scale: 0.95 },
+            { id: "f09", name: "Rootfall", file: "../../../examples/outside/forest/f09_rootfall.png", scale: 1.0 },
+            { id: "f10", name: "Mourning Willow", file: "../../../examples/outside/forest/f10_mourning_willow.png", scale: 1.25 }
+          ]
+        },
+        dungeon: {
+          name: "Blighted Dungeon Wilds",
+          groundBase: "#221e29",
+          groundAlt: "#1a1721",
+          pathCol: "#332d3b",
+          fogTint: "rgba(12, 9, 18, 0.95)",
+          assets: [
+            { id: "d01", name: "Leech Moss", file: "../../../examples/outside/dungeon/d01_leech_moss.png", scale: 0.95 },
+            { id: "d02", name: "Bone Root", file: "../../../examples/outside/dungeon/d02_bone_root.png", scale: 1.1 },
+            { id: "d03", name: "Ghostcaps", file: "../../../examples/outside/dungeon/d03_ghostcaps.png", scale: 0.95 },
+            { id: "d04", name: "Rot Creeper", file: "../../../examples/outside/dungeon/d04_rot_creeper.png", scale: 1.0 },
+            { id: "d05", name: "Chainweed", file: "../../../examples/outside/dungeon/d05_chainweed.png", scale: 1.15 },
+            { id: "d06", name: "Tomb Lilies", file: "../../../examples/outside/dungeon/d06_tomb_lilies.png", scale: 0.9 },
+            { id: "d07", name: "Mold Veils", file: "../../../examples/outside/dungeon/d07_mold_veils.png", scale: 1.0 },
+            { id: "d08", name: "Eyestalks", file: "../../../examples/outside/dungeon/d08_eyestalks.png", scale: 0.95 },
+            { id: "d09", name: "Drainroot", file: "../../../examples/outside/dungeon/d09_drainroot.png", scale: 1.05 },
+            { id: "d10", name: "Hollow Pods", file: "../../../examples/outside/dungeon/d10_hollow_pods.png", scale: 0.95 }
+          ]
+        },
+        dryland: {
+          name: "Scorched Dryland Badlands",
+          groundBase: "#423325",
+          groundAlt: "#36291d",
+          pathCol: "#574432",
+          fogTint: "rgba(18, 13, 9, 0.93)",
+          assets: [
+            { id: "y01", name: "Skeleton Tree", file: "../../../examples/outside/dryland/y01_skeleton_tree.png", scale: 1.25 },
+            { id: "y02", name: "Razor Grass", file: "../../../examples/outside/dryland/y02_razor_grass.png", scale: 0.95 },
+            { id: "y03", name: "Gallows Cactus", file: "../../../examples/outside/dryland/y03_gallows_cactus.png", scale: 1.05 },
+            { id: "y04", name: "Tumble Thorns", file: "../../../examples/outside/dryland/y04_tumble_thorns.png", scale: 0.9 },
+            { id: "y05", name: "Bitterroot", file: "../../../examples/outside/dryland/y05_bitterroot.png", scale: 1.0 },
+            { id: "y06", name: "Dust Blossoms", file: "../../../examples/outside/dryland/y06_dust_blossoms.png", scale: 0.95 },
+            { id: "y07", name: "Vulture Shrub", file: "../../../examples/outside/dryland/y07_vulture_shrub.png", scale: 1.1 },
+            { id: "y08", name: "Salt Reeds", file: "../../../examples/outside/dryland/y08_salt_reeds.png", scale: 0.95 },
+            { id: "y09", name: "Scorched Agave", file: "../../../examples/outside/dryland/y09_scorched_agave.png", scale: 1.0 },
+            { id: "y10", name: "Ironwood Stumps", file: "../../../examples/outside/dryland/y10_ironwood_stumps.png", scale: 1.0 }
+          ]
+        }
+      };
+
+      const MONSTER_SETS = {
+        "01": [
+          { tier: 1, role: "Slime", name: "Gloop", file: "../../../examples/monsters/set01-slime-gloop.png", scale: 0.85, aura: "#22c55e" },
+          { tier: 2, role: "Goblin", name: "Snik", file: "../../../examples/monsters/set01-goblin-snik.png", scale: 1.08, aura: "#eab308" },
+          { tier: 3, role: "Cyclops", name: "Polybrute", file: "../../../examples/monsters/set01-cyclops-polybrute.png", scale: 1.42, aura: "#f97316" },
+          { tier: 4, role: "Troll Boss", name: "Grumbold", file: "../../../examples/monsters/set01-troll-grumbold.png", scale: 1.82, aura: "#ef4444" }
+        ],
+        "02": [
+          { tier: 1, role: "Slime", name: "Dripsy", file: "../../../examples/monsters/set02-slime-dripsy.png", scale: 0.85, aura: "#38bdf8" },
+          { tier: 2, role: "Goblin", name: "Grubnose", file: "../../../examples/monsters/set02-goblin-grubnose.png", scale: 1.08, aura: "#eab308" },
+          { tier: 3, role: "Cyclops", name: "Oculon", file: "../../../examples/monsters/set02-cyclops-oculon.png", scale: 1.42, aura: "#f97316" },
+          { tier: 4, role: "Troll Boss", name: "Mossback", file: "../../../examples/monsters/set02-troll-mossback.png", scale: 1.82, aura: "#ef4444" }
+        ],
+        "03": [
+          { tier: 1, role: "Slime", name: "Lil Imp", file: "../../../examples/monsters/set03-slime-lil-imp.png", scale: 0.85, aura: "#c084fc" },
+          { tier: 2, role: "Goblin", name: "Ratchet", file: "../../../examples/monsters/set03-goblin-ratchet.png", scale: 1.08, aura: "#eab308" },
+          { tier: 3, role: "Cyclops", name: "Brontes", file: "../../../examples/monsters/set03-cyclops-brontes.png", scale: 1.42, aura: "#a855f7" },
+          { tier: 4, role: "Troll Boss", name: "Thudd", file: "../../../examples/monsters/set03-troll-thudd.png", scale: 1.82, aura: "#ef4444" }
+        ],
+        "04": [
+          { tier: 1, role: "Slime", name: "Wobbleton", file: "../../../examples/monsters/set04-slime-wobbleton.png", scale: 0.85, aura: "#34d399" },
+          { tier: 2, role: "Goblin", name: "Fizzwick", file: "../../../examples/monsters/set04-goblin-fizzwick.png", scale: 1.08, aura: "#eab308" },
+          { tier: 3, role: "Cyclops", name: "Glare", file: "../../../examples/monsters/set04-cyclops-glare.png", scale: 1.42, aura: "#f97316" },
+          { tier: 4, role: "Troll Boss", name: "Bramblejaw", file: "../../../examples/monsters/set04-troll-bramblejaw.png", scale: 1.82, aura: "#ef4444" }
+        ],
+        "05": [
+          { tier: 1, role: "Slime", name: "Glimmer", file: "../../../examples/monsters/set05-slime-glimmer.png", scale: 0.85, aura: "#60a5fa" },
+          { tier: 2, role: "Goblin", name: "Nogg", file: "../../../examples/monsters/set05-goblin-nogg.png", scale: 1.08, aura: "#eab308" },
+          { tier: 3, role: "Cyclops", name: "Monocle Mo", file: "../../../examples/monsters/set05-cyclops-monocle-mo.png", scale: 1.42, aura: "#f97316" },
+          { tier: 4, role: "Troll Boss", name: "Ogg", file: "../../../examples/monsters/set05-troll-ogg.png", scale: 1.82, aura: "#ef4444" }
+        ],
+        "06": [
+          { tier: 1, role: "Slime", name: "Trioculus", file: "../../../examples/monsters/set06-slime-trioculus.png", scale: 0.85, aura: "#4ade80" },
+          { tier: 2, role: "Goblin", name: "Skrank", file: "../../../examples/monsters/set06-goblin-skrank.png", scale: 1.08, aura: "#eab308" },
+          { tier: 3, role: "Cyclops", name: "Steropes", file: "../../../examples/monsters/set06-cyclops-steropes.png", scale: 1.42, aura: "#2dd4bf" },
+          { tier: 4, role: "Troll Boss", name: "Stonehide", file: "../../../examples/monsters/set06-troll-stonehide.png", scale: 1.82, aura: "#ef4444" }
+        ],
+        "07": [
+          { tier: 1, role: "Slime", name: "Coinbelly", file: "../../../examples/monsters/set07-slime-coinbelly.png", scale: 0.85, aura: "#facc15" },
+          { tier: 2, role: "Goblin", name: "Pip", file: "../../../examples/monsters/set07-goblin-pip.png", scale: 1.08, aura: "#eab308" },
+          { tier: 3, role: "Cyclops", name: "Uno", file: "../../../examples/monsters/set07-cyclops-uno.png", scale: 1.42, aura: "#f97316" },
+          { tier: 4, role: "Troll Boss", name: "Gurk", file: "../../../examples/monsters/set07-troll-gurk.png", scale: 1.82, aura: "#ef4444" }
+        ],
+        "08": [
+          { tier: 1, role: "Slime", name: "Honeydrop", file: "../../../examples/monsters/set08-slime-honeydrop.png", scale: 0.85, aura: "#fbbf24" },
+          { tier: 2, role: "Goblin", name: "Weaselbit", file: "../../../examples/monsters/set08-goblin-weaselbit.png", scale: 1.08, aura: "#eab308" },
+          { tier: 3, role: "Cyclops", name: "Ironbrow", file: "../../../examples/monsters/set08-cyclops-ironbrow.png", scale: 1.42, aura: "#f97316" },
+          { tier: 4, role: "Troll Boss", name: "Bogwarden", file: "../../../examples/monsters/set08-troll-bogwarden.png", scale: 1.82, aura: "#ef4444" }
+        ],
+        "09": [
+          { tier: 1, role: "Slime", name: "Gazey", file: "../../../examples/monsters/set09-slime-gazey.png", scale: 0.85, aura: "#f472b6" },
+          { tier: 2, role: "Goblin", name: "Grizzle", file: "../../../examples/monsters/set09-goblin-grizzle.png", scale: 1.08, aura: "#eab308" },
+          { tier: 3, role: "Cyclops", name: "Arges", file: "../../../examples/monsters/set09-cyclops-arges.png", scale: 1.42, aura: "#f97316" },
+          { tier: 4, role: "Troll Boss", name: "Rumblegut", file: "../../../examples/monsters/set09-troll-rumblegut.png", scale: 1.82, aura: "#ef4444" }
+        ],
+        "10": [
+          { tier: 1, role: "Slime", name: "Cap'n Gel", file: "../../../examples/monsters/set10-slime-cap-n-gel.png", scale: 0.85, aura: "#38bdf8" },
+          { tier: 2, role: "Goblin", name: "Mukk", file: "../../../examples/monsters/set10-goblin-mukk.png", scale: 1.08, aura: "#eab308" },
+          { tier: 3, role: "Cyclops", name: "Blinky", file: "../../../examples/monsters/set10-cyclops-blinky.png", scale: 1.42, aura: "#f97316" },
+          { tier: 4, role: "Troll Boss", name: "Old Knuckles", file: "../../../examples/monsters/set10-troll-old-knuckles.png", scale: 1.82, aura: "#ef4444" }
+        ]
+      };
+
+      // Preload Image Cache
+      const imgCache = new Map();
+      function getImg(src) {
+        if (!imgCache.has(src)) {
+          const img = new Image();
+          img.src = src;
+          imgCache.set(src, img);
+        }
+        return imgCache.get(src);
+      }
+
+      // State
+      let assembledPartsCount = 5;
+      let activeBiomeKey = "forest";
+      let activeMonsterSet = "01";
+      let activeMonsterTierIdx = 2; // 0=Slime, 1=Goblin, 2=Cyclops, 3=Troll
+      let mutationFlashTimer = 0;
+      let slayVictoryTimer = 0;
+
+      // Lantern Flares clearing Fog of War in Right Wilderness (x: 800..1600)
+      const lanternFlares = [
+        { x: 980, y: 360, r: 165, birth: 0 },
+        { x: 1180, y: 280, r: 175, birth: 0 },
+        { x: 1320, y: 390, r: 215, birth: 0 }
+      ];
+
+      function rrect(ctx, x, y, w, h, r = 4) {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, r);
+        ctx.closePath();
+      }
+      function fillStroke(ctx, fillCol, strokeCol = INK, lw = 2.4) {
+        ctx.fillStyle = fillCol;
+        ctx.fill();
+        ctx.strokeStyle = strokeCol;
+        ctx.lineWidth = lw;
+        ctx.stroke();
+      }
+      function withShadow(ctx, fn, dx = 5, dy = 7, blur = 10, alpha = 0.38) {
+        ctx.save();
+        ctx.shadowColor = `rgba(0,0,0,${alpha})`;
+        ctx.shadowBlur = blur;
+        ctx.shadowOffsetX = dx;
+        ctx.shadowOffsetY = dy;
+        fn();
+        ctx.restore();
+      }
+
+      // ============================================================================
+      // LEFT HALF (x: 0..800): UNIFIED GENERIC GUILD WORKSHOP ROOM
+      // Combines 01 Library, 02 Smithy Forge, 04 Alchemy Lab, 06 Enchanter's Study,
+      // and 10 Artificer's Workshop around the Central Feature Object Assembly!
+      // ============================================================================
+      function renderUnifiedGenericRoom(ctx, w, h, t) {
+        ctx.save();
+
+        // 1. Warm Staggered Oak Floorboards (from 01 Grand Library / 10 Artificer)
+        const baseCol = "#855634";
+        const altCol = "#784c2c";
+        ctx.fillStyle = baseCol;
+        ctx.fillRect(32, 32, w - 64, h - 64);
+
+        const rowH = 36;
+        const plankW = 110;
+        let idx = 0;
+        for (let y = 32; y < h - 32; y += rowH) {
+          const offset = (Math.floor((y - 32) / rowH) % 2) * (plankW * 0.5);
+          for (let x = 32 - offset; x < w - 32; x += plankW) {
+            const px = Math.max(32, x);
+            const pw = Math.min(w - 32, x + plankW) - px;
+            const ph = Math.min(h - 32 - y, rowH);
+            if (pw <= 0 || ph <= 0) continue;
+            ctx.fillStyle = idx % 3 === 0 ? altCol : baseCol;
+            ctx.fillRect(px, y, pw, ph);
+            ctx.strokeStyle = "rgba(38,22,12,0.42)";
+            ctx.lineWidth = 1.2;
+            ctx.strokeRect(px, y, pw, ph);
+            idx++;
+          }
+        }
+
+        // Stone Flagstone Hearth Apron under NE Smithy Forge (from 02 Smithy Forge)
+        ctx.fillStyle = "#5d534b";
+        rrect(ctx, 450, 32, 318, 175, 4);
+        ctx.fill();
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // 2. Perimeter Brick Walls + East Wilderness Gateway (connecting Indoor -> Outdoor Wilds!)
+        const vig = ctx.createRadialGradient(w / 2, h / 2, w * 0.25, w / 2, h / 2, w * 0.62);
+        vig.addColorStop(0, "rgba(0,0,0,0)");
+        vig.addColorStop(1, "rgba(0,0,0,0.38)");
+        ctx.fillStyle = vig;
+        ctx.fillRect(32, 32, w - 64, h - 64);
+
+        ctx.fillStyle = "#59483e";
+        ctx.fillRect(0, 0, w, 32);
+        ctx.fillRect(0, h - 32, w, 32);
+        ctx.fillRect(0, 32, 32, h - 64);
+        ctx.fillRect(w - 32, 32, 32, h - 64);
+
+        ctx.strokeStyle = "#3b2e27";
+        ctx.lineWidth = 1.4;
+        for (let x = 0; x < w; x += 38) {
+          ctx.strokeRect(x, 0, 38, 16);
+          ctx.strokeRect(x + 19, 16, 38, 16);
+          ctx.strokeRect(x, h - 32, 38, 16);
+          ctx.strokeRect(x + 19, h - 16, 38, 16);
+        }
+        for (let y = 32; y < h - 32; y += 28) {
+          ctx.strokeRect(0, y, 16, 28);
+          ctx.strokeRect(16, y + 14, 16, 28);
+          ctx.strokeRect(w - 32, y, 16, 28);
+          ctx.strokeRect(w - 16, y + 14, 16, 28);
+        }
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(32, 32, w - 64, h - 64);
+
+        // East Wall Archway Portal into Bug-Hunting Wilderness (y: 310..390)
+        ctx.fillStyle = "#695e56";
+        ctx.fillRect(w - 34, 315, 36, 76);
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(w - 32, 315);
+        ctx.lineTo(w, 315);
+        ctx.moveTo(w - 32, 391);
+        ctx.lineTo(w, 391);
+        ctx.stroke();
+
+        // ------------------------------------------------------------------------
+        // WALL STATION 1 (NORTH-WEST): GRAND LIBRARY ARCHIVE (`read`, `glob`, `grep`)
+        // Bookcases + Rolling Ladder + Reading Desk with Open Manuscript & Quill
+        // ------------------------------------------------------------------------
+        withShadow(ctx, () => {
+          rrect(ctx, 48, 36, 280, 26, 3);
+          fillStroke(ctx, "#4d311e", INK, 2.5);
+        });
+        const bookCols = ["#b83b2b", "#2e6f95", "#3b7a57", "#d49b35", "#6d4c7d", "#c86432"];
+        for (let bx = 54; bx < 320; bx += 9) {
+          ctx.fillStyle = bookCols[Math.floor(bx / 9) % bookCols.length];
+          ctx.fillRect(bx, 41, 7, 16);
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 1.1;
+          ctx.strokeRect(bx, 41, 7, 16);
+        }
+        // Rolling Ladder
+        ctx.strokeStyle = "#a67041";
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(95, 60);
+        ctx.lineTo(95, 114);
+        ctx.moveTo(125, 60);
+        ctx.lineTo(125, 114);
+        for (let ry = 72; ry <= 104; ry += 11) {
+          ctx.moveTo(95, ry);
+          ctx.lineTo(125, ry);
+        }
+        ctx.stroke();
+        // Reading Desk + Open Manuscript + Quill + Chair
+        withShadow(ctx, () => {
+          rrect(ctx, 195, 152, 44, 34, 5);
+          fillStroke(ctx, "#3b6659", INK, 2.2);
+          rrect(ctx, 145, 82, 148, 62, 5);
+          fillStroke(ctx, "#6e4427", INK, 2.5);
+        });
+        rrect(ctx, 188, 94, 60, 36, 2);
+        fillStroke(ctx, "#f7f1e1", INK, 1.8);
+        ctx.beginPath();
+        ctx.moveTo(218, 94);
+        ctx.lineTo(218, 130);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(266, 102, 7, 0, Math.PI * 2);
+        fillStroke(ctx, "#e6a82e", INK, 1.8);
+
+        // ------------------------------------------------------------------------
+        // WALL STATION 2 (NORTH-EAST): SMITHY FORGE & ANVIL (`bash`, build, test)
+        // Red-brick Hearth Furnace + Bellows + Horned Anvil with Red-Hot Billet + Quench Barrel
+        // ------------------------------------------------------------------------
+        const heatG = ctx.createRadialGradient(600, 100, 10, 600, 130, 150);
+        heatG.addColorStop(0, "rgba(255,120,30,0.42)");
+        heatG.addColorStop(1, "rgba(255,120,30,0)");
+        ctx.fillStyle = heatG;
+        ctx.fillRect(450, 32, 318, 175);
+
+        withShadow(ctx, () => {
+          // Bellows
+          ctx.beginPath();
+          ctx.moveTo(520, 88);
+          ctx.lineTo(468, 62);
+          ctx.lineTo(468, 114);
+          ctx.closePath();
+          fillStroke(ctx, "#8a5a36", INK, 2.2);
+          // Brick Hearth
+          rrect(ctx, 525, 36, 165, 100, 5);
+          fillStroke(ctx, "#7d4536", INK, 2.6);
+        });
+        ctx.fillStyle = "#261a16";
+        rrect(ctx, 545, 50, 125, 68, 12);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(608, 84, 50 + Math.sin(t * 6) * 2.5, 26, 0, 0, Math.PI * 2);
+        fillStroke(ctx, "#ff6b00", "#ffd000", 2);
+
+        // Horned Steel Anvil + Red-Hot Blade Billet + Quench Barrel
+        withShadow(ctx, () => {
+          ctx.beginPath();
+          ctx.arc(585, 168, 32, 0, Math.PI * 2);
+          fillStroke(ctx, "#8a5632", INK, 2.2);
+          ctx.beginPath();
+          ctx.moveTo(538, 168);
+          ctx.lineTo(564, 156);
+          ctx.lineTo(622, 154);
+          ctx.lineTo(622, 182);
+          ctx.lineTo(564, 180);
+          ctx.closePath();
+          fillStroke(ctx, "#5c646d", INK, 2.4);
+
+          ctx.beginPath();
+          ctx.arc(718, 148, 32, 0, Math.PI * 2);
+          fillStroke(ctx, "#7c5234", INK, 2.2);
+          ctx.beginPath();
+          ctx.arc(718, 148, 25, 0, Math.PI * 2);
+          fillStroke(ctx, "#356888", INK, 1.8);
+        });
+        rrect(ctx, 558, 165, 60, 6, 2);
+        fillStroke(ctx, "#ff9f1c", "#d62828", 1.6);
+
+        // ------------------------------------------------------------------------
+        // WALL STATION 3 (WEST WALL): ARTIFICER'S TINKER BENCH & BLUEPRINT TABLE (`edit`, `write`)
+        // Clockwork Owl + Vise + Magnifier Lamp + Blue Engineering Schematic Table
+        // ------------------------------------------------------------------------
+        withShadow(ctx, () => {
+          rrect(ctx, 38, 185, 76, 175, 5);
+          fillStroke(ctx, "#78492a", INK, 2.5);
+          // Clockwork Owl on Bench
+          ctx.beginPath();
+          ctx.arc(76, 235, 18, 0, Math.PI * 2);
+          fillStroke(ctx, "#d49b35", INK, 2.2);
+          [-5, 5].forEach((ox) => {
+            ctx.beginPath();
+            ctx.arc(76 + ox, 231, 5, 0, Math.PI * 2);
+            fillStroke(ctx, "#7ce8ff", INK, 1.6);
+          });
+          // Blue Schematic Blueprint Table below
+          rrect(ctx, 38, 380, 92, 108, 5);
+          fillStroke(ctx, "#6e472b", INK, 2.5);
+          ctx.fillStyle = "#1d4e89";
+          ctx.fillRect(46, 390, 76, 88);
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 1.4;
+          ctx.strokeRect(52, 396, 64, 76);
+        });
+
+        // ------------------------------------------------------------------------
+        // WALL STATION 4 (SOUTH-WEST): ENCHANTER'S RUNE STUDY (`skill`, `subagent`)
+        // Rotating Cyan Pentagram Rune Circle + Crystal Ball + Levitating Spellbooks
+        // ------------------------------------------------------------------------
+        ctx.save();
+        ctx.translate(155, 585);
+        ctx.rotate(t * 0.3);
+        ctx.strokeStyle = "#7ce8ff";
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = "#00bbf9";
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(0, 0, 74, 0, Math.PI * 2);
+        ctx.arc(0, 0, 62, 0, Math.PI * 2);
+        for (let i = 0; i <= 5; i++) {
+          const a = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+          const px = Math.cos(a) * 60;
+          const py = Math.sin(a) * 60;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        ctx.restore();
+
+        withShadow(ctx, () => {
+          ctx.beginPath();
+          ctx.arc(155, 585, 22, 0, Math.PI * 2);
+          fillStroke(ctx, "#483d66", INK, 2.2);
+          ctx.beginPath();
+          ctx.arc(155, 585, 14, 0, Math.PI * 2);
+          fillStroke(ctx, "#4ea8de", INK, 2);
+        });
+        // Levitating Open Grimoire beside Rune Circle
+        ctx.save();
+        ctx.translate(242, 545 + Math.sin(t * 3) * 4);
+        rrect(ctx, -22, -16, 44, 32, 3);
+        fillStroke(ctx, "#6b2d5c", INK, 2);
+        ctx.fillStyle = "#fbf6e8";
+        ctx.fillRect(-18, -12, 36, 24);
+        ctx.restore();
+
+        // ------------------------------------------------------------------------
+        // WALL STATION 5 (EAST WALL): ALCHEMY DISTILLATION & CAULDRON (`execute`)
+        // Bubbling Neon-Green Cauldron + Coiled Copper Condenser Table
+        // ------------------------------------------------------------------------
+        withShadow(ctx, () => {
+          rrect(ctx, 668, 415, 92, 165, 5);
+          fillStroke(ctx, "#78492a", INK, 2.5);
+          ctx.beginPath();
+          ctx.arc(714, 445, 15, 0, Math.PI * 2);
+          fillStroke(ctx, "#c76be8", INK, 2);
+          ctx.beginPath();
+          ctx.arc(714, 495, 18, 0, Math.PI * 2);
+          fillStroke(ctx, "#6c757d", INK, 2);
+          ctx.beginPath();
+          ctx.arc(714, 545, 14, 0, Math.PI * 2);
+          fillStroke(ctx, "#52e388", INK, 2);
+
+          // Bubbling Green Cauldron
+          ctx.beginPath();
+          ctx.arc(595, 485, 42, 0, Math.PI * 2);
+          fillStroke(ctx, "#2b2628", INK, 2.6);
+          ctx.beginPath();
+          ctx.arc(595, 485, 32, 0, Math.PI * 2);
+          fillStroke(ctx, "#52e388", INK, 2);
+        });
+
+        // ------------------------------------------------------------------------
+        // SOUTH-EAST CORNER: BREAK LOUNGE (Armchair with Sleeping Orange Cat & Globe)
+        // ------------------------------------------------------------------------
+        withShadow(ctx, () => {
+          rrect(ctx, 465, 588, 78, 78, 10);
+          fillStroke(ctx, "#3b6659", INK, 2.4);
+          ctx.beginPath();
+          ctx.arc(504, 627, 16 + Math.sin(t * 2.8), 0, Math.PI * 2);
+          fillStroke(ctx, "#d97f2b", INK, 2);
+
+          ctx.beginPath();
+          ctx.arc(590, 632, 30, 0, Math.PI * 2);
+          fillStroke(ctx, "#d9a74a", INK, 2.2);
+          ctx.beginPath();
+          ctx.arc(590, 632, 23, 0, Math.PI * 2);
+          fillStroke(ctx, "#3a7ca5", INK, 1.8);
+        });
+
+        // ------------------------------------------------------------------------
+        // CENTER OF THE ROOM: THE "FEATURE OBJECT" ASSEMBLY PLATFORM (x: 240..520, y: 230..470)
+        // Agents bring crafted parts from the wall stations to build the Feature Object!
+        // ------------------------------------------------------------------------
+        withShadow(ctx, () => {
+          // Crimson Fringed Guild Carpet Underlay
+          rrect(ctx, 225, 220, 310, 260, 12);
+          fillStroke(ctx, "#7d2422", INK, 2.8);
+          // Riveted Steel Assembly Deck Platform
+          rrect(ctx, 248, 240, 264, 220, 8);
+          fillStroke(ctx, "#4d5359", INK, 2.8);
+        });
+
+        // Helper for rendering each of the 5 Feature Object Assembly Parts
+        // If partIndex < assembledPartsCount => VIBRANT & ANIMATED! Otherwise => BLEAK WIREFRAME!
+        const isPartBuilt = (idx) => idx < assembledPartsCount;
+
+        // PART 1 (idx 0): Copper Steam Power Pipeline & Pressure Gauge
+        ctx.save();
+        ctx.globalAlpha = isPartBuilt(0) ? 1 : 0.28;
+        ctx.fillStyle = isPartBuilt(0) ? "#d4874b" : "#6c757d";
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2.2;
+        ctx.fillRect(260, 252, 240, 12);
+        ctx.strokeRect(260, 252, 240, 12);
+        ctx.beginPath();
+        ctx.arc(475, 258, 13, 0, Math.PI * 2);
+        fillStroke(ctx, isPartBuilt(0) ? "#fbf3d5" : "#495057", INK, 2);
+        ctx.restore();
+
+        // PART 2 (idx 1): Interlocking Brass & Copper Spur Gear Train
+        const drawFeatureGear = (gx, gy, r, teeth, ang, col, built) => {
+          ctx.save();
+          ctx.translate(gx, gy);
+          ctx.rotate(built ? ang : 0);
+          ctx.globalAlpha = built ? 1 : 0.28;
+          ctx.beginPath();
+          for (let i = 0; i < teeth; i++) {
+            const a1 = (i / teeth) * Math.PI * 2;
+            const a2 = ((i + 0.4) / teeth) * Math.PI * 2;
+            const a3 = ((i + 0.6) / teeth) * Math.PI * 2;
+            const a4 = ((i + 0.9) / teeth) * Math.PI * 2;
+            ctx.lineTo(Math.cos(a1) * (r - 7), Math.sin(a1) * (r - 7));
+            ctx.lineTo(Math.cos(a2) * (r + 4), Math.sin(a2) * (r + 4));
+            ctx.lineTo(Math.cos(a3) * (r + 4), Math.sin(a3) * (r + 4));
+            ctx.lineTo(Math.cos(a4) * (r - 7), Math.sin(a4) * (r - 7));
+          }
+          ctx.closePath();
+          fillStroke(ctx, built ? col : "#6c757d", INK, 2.2);
+          ctx.beginPath();
+          ctx.arc(0, 0, r * 0.26, 0, Math.PI * 2);
+          fillStroke(ctx, "#343a40", INK, 1.8);
+          ctx.restore();
+        };
+        drawFeatureGear(405, 332, 46, 14, t * 0.9, "#d49b35", isPartBuilt(1));
+        drawFeatureGear(474, 336, 32, 10, -t * 1.25, "#c28d2b", isPartBuilt(1));
+
+        // PART 3 (idx 2): Clockwork Automaton Core Chassis (from 10 Artificer)
+        ctx.save();
+        ctx.globalAlpha = isPartBuilt(2) ? 1 : 0.28;
+        rrect(ctx, 278, 312, 58, 68, 6);
+        fillStroke(ctx, isPartBuilt(2) ? "#d49b35" : "#6c757d", INK, 2.4);
+        ctx.beginPath();
+        ctx.arc(307, 290, 19, 0, Math.PI * 2);
+        fillStroke(ctx, isPartBuilt(2) ? "#d49b35" : "#6c757d", INK, 2.4);
+        ctx.beginPath();
+        ctx.arc(307, 290, 8, 0, Math.PI * 2);
+        fillStroke(ctx, isPartBuilt(2) ? "#7ce8ff" : "#495057", INK, 2);
+        ctx.restore();
+
+        // PART 4 (idx 3): Arcane Emerald Elixir Cell & Forged Crest
+        ctx.save();
+        ctx.globalAlpha = isPartBuilt(3) ? 1 : 0.28;
+        ctx.beginPath();
+        ctx.arc(307, 344, 16, 0, Math.PI * 2);
+        fillStroke(ctx, isPartBuilt(3) ? "#52e388" : "#495057", INK, 2);
+        ctx.restore();
+
+        // PART 5 (idx 4): Telemetry Control Console & Crackling Tesla Coil
+        ctx.save();
+        ctx.globalAlpha = isPartBuilt(4) ? 1 : 0.28;
+        rrect(ctx, 376, 396, 56, 48, 5);
+        fillStroke(ctx, "#343a40", INK, 2.2);
+        ctx.fillStyle = isPartBuilt(4) ? "#52e388" : "#495057";
+        ctx.fillRect(386, 405, 36, 16);
+        ctx.beginPath();
+        ctx.arc(472, 418, 24, 0, Math.PI * 2);
+        fillStroke(ctx, isPartBuilt(4) ? "#b5653b" : "#6c757d", INK, 2.2);
+        ctx.beginPath();
+        ctx.arc(472, 418, 10, 0, Math.PI * 2);
+        fillStroke(ctx, "#ced4da", INK, 2);
+        if (isPartBuilt(4)) {
+          ctx.strokeStyle = "#7ce8ff";
+          ctx.lineWidth = 2.2;
+          ctx.beginPath();
+          ctx.moveTo(480, 410);
+          ctx.lineTo(496, 396 + Math.sin(t * 18) * 5);
+          ctx.moveTo(480, 426);
+          ctx.lineTo(496, 440 + Math.cos(t * 18) * 5);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        // Feature Assembly Platform Label
+        ctx.font = "bold 11px monospace";
+        ctx.fillStyle = "#f5d08a";
+        ctx.textAlign = "center";
+        ctx.fillText(`FEATURE OBJECT ASSEMBLY (${assembledPartsCount}/5 PARTS BUILT)`, 380, 234);
+
+        // ------------------------------------------------------------------------
+        // STEP 1 HEROES MOVING & WORKING BETWEEN WALL STATIONS AND CENTER FEATURE
+        // ------------------------------------------------------------------------
+        const drawIndoorHero = (hx, hy, role, label, col, acc) => {
+          ctx.save();
+          ctx.translate(hx, hy + Math.sin(t * 3.2 + hx) * 2.5);
+          ctx.fillStyle = "rgba(0,0,0,0.3)";
+          ctx.beginPath();
+          ctx.ellipse(0, 26, 18, 5.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          rrect(ctx, -13, 2, 26, 22, 6);
+          fillStroke(ctx, col, INK, 2.2);
+          ctx.beginPath();
+          ctx.arc(0, -10, 13, 0, Math.PI * 2);
+          fillStroke(ctx, "#f4d2bc", INK, 2.2);
+          [-4.5, 4.5].forEach((ex) => {
+            ctx.beginPath();
+            ctx.arc(ex, -10, 3.2, 0, Math.PI * 2);
+            fillStroke(ctx, "#fff", INK, 1.4);
+            ctx.fillStyle = INK;
+            ctx.beginPath();
+            ctx.arc(ex, -10, 1.6, 0, Math.PI * 2);
+            ctx.fill();
+          });
+          rrect(ctx, -13, -21, 26, 5.5, 2.5);
+          fillStroke(ctx, acc, INK, 1.8);
+          ctx.font = "bold 10px sans-serif";
+          ctx.fillStyle = "#fff";
+          ctx.textAlign = "center";
+          ctx.fillText(label, 0, 39);
+          ctx.restore();
+        };
+
+        // Mage reading at Library Desk, Artificer carrying part to Center Feature, Alchemist at Condenser
+        drawIndoorHero(218, 175, "MAGE", "Ilsa (read)", "#c83d28", "#e6a82e");
+        const carryMix = (Math.sin(t * 1.4) + 1) * 0.5;
+        const carrierX = 135 + carryMix * 125;
+        const carrierY = 335 + carryMix * 15;
+        drawIndoorHero(carrierX, carrierY, "ALCHEMIST", "Pip (fitting part)", "#2b547e", "#62b6ea");
+        drawIndoorHero(615, 210, "WARRIOR", "Brann (forge bash)", "#34673d", "#7ce04b");
+
+        ctx.restore();
+      }
+
+      // ============================================================================
+      // RIGHT HALF (x: 800..1600): OUTDOOR BUG-HUNTING WILDERNESS & MONSTERS
+      // Uses exact PNGs from docs/examples/outside/ and docs/examples/monsters/
+      // ============================================================================
+      function renderOutdoorWilderness(ctx, ox, w, h, t) {
+        ctx.save();
+        ctx.translate(ox, 0);
+
+        const biome = VEGETATION_BIOMES[activeBiomeKey];
+
+        // 1. Wilderness Ground Terrain & Winding Hunting Trail from Workshop Gate
+        ctx.fillStyle = biome.groundBase;
+        ctx.fillRect(0, 0, w, h);
+        for (let r = 0; r < 15; r++) {
+          for (let c = 0; c < 16; c++) {
+            if ((r + c) % 2 === 0) {
+              ctx.fillStyle = biome.groundAlt;
+              ctx.fillRect(c * 50, r * 48, 50, 48);
+            }
+          }
+        }
+
+        // Dirt/Stone Trail leading from West Workshop Gate (x:0, y:352) to Monster Lair (x:540, y:390)
+        ctx.strokeStyle = biome.pathCol;
+        ctx.lineWidth = 54;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(0, 352);
+        ctx.bezierCurveTo(180, 352, 260, 260, 520, 390);
+        ctx.stroke();
+
+        // Glowing Bug Tracks / Slime Footprints along the Trail
+        for (let step = 0; step < 8; step++) {
+          const u = step / 8;
+          const tx = 60 + u * 420;
+          const ty = 350 - Math.sin(u * Math.PI) * 55 + (step % 2) * 14;
+          ctx.fillStyle = "rgba(74, 222, 128, 0.55)";
+          ctx.beginPath();
+          ctx.ellipse(tx, ty, 8, 5, 0.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // 2. Render the 10 Authentic Biome Vegetation Sprites from docs/examples/outside/
+        const vegPositions = [
+          [110, 110, 0],
+          [280, 95, 1],
+          [480, 105, 2],
+          [670, 115, 3],
+          [140, 250, 4],
+          [380, 195, 5],
+          [660, 275, 6],
+          [125, 545, 7],
+          [340, 565, 8],
+          [650, 580, 9]
+        ];
+        vegPositions.forEach(([vx, vy, assetIdx]) => {
+          const asset = biome.assets[assetIdx % biome.assets.length];
+          const img = getImg(asset.file);
+          if (img.complete && img.naturalWidth > 0) {
+            const sz = 135 * asset.scale;
+            ctx.save();
+            ctx.translate(vx, vy);
+            ctx.rotate(Math.sin(t * 1.2 + assetIdx) * 0.025);
+            ctx.drawImage(img, -sz / 2, -sz / 2, sz, sz);
+            ctx.restore();
+          }
+        });
+
+        // 3. Bug-Hunting Heroes (Scout with Lantern + Warrior with Sword)
+        const drawWildsHero = (hx, hy, name, col, isWarrior) => {
+          ctx.save();
+          ctx.translate(hx, hy + Math.sin(t * 4 + hx) * 3);
+          ctx.fillStyle = "rgba(0,0,0,0.35)";
+          ctx.beginPath();
+          ctx.ellipse(0, 30, 22, 7, 0, 0, Math.PI * 2);
+          ctx.fill();
+          rrect(ctx, -15, 2, 30, 26, 7);
+          fillStroke(ctx, col, INK, 2.4);
+          ctx.beginPath();
+          ctx.arc(0, -12, 15, 0, Math.PI * 2);
+          fillStroke(ctx, "#f4d2bc", INK, 2.4);
+          [-5, 5].forEach((ex) => {
+            ctx.beginPath();
+            ctx.arc(ex, -12, 3.6, 0, Math.PI * 2);
+            fillStroke(ctx, "#fff", INK, 1.5);
+            ctx.fillStyle = INK;
+            ctx.beginPath();
+            ctx.arc(ex, -12, 1.8, 0, Math.PI * 2);
+            ctx.fill();
+          });
+          if (isWarrior) {
+            // Slashing Broadsword
+            ctx.save();
+            ctx.translate(20, 4);
+            ctx.rotate(Math.sin(t * 8) * 0.55 + 0.3);
+            rrect(ctx, -3, -38, 6, 38, 2);
+            fillStroke(ctx, "#e6edf5", INK, 2);
+            ctx.restore();
+          } else {
+            // Glowing Scout Lantern
+            ctx.beginPath();
+            ctx.arc(22, 6, 8, 0, Math.PI * 2);
+            fillStroke(ctx, "#fde047", INK, 2);
+          }
+          ctx.font = "bold 11px sans-serif";
+          ctx.fillStyle = "#fff";
+          ctx.textAlign = "center";
+          ctx.fillText(name, 0, 46);
+          ctx.restore();
+        };
+
+        drawWildsHero(245, 295, "Kael (Scout · grep)", "#34673d", false);
+        drawWildsHero(415, 395, "Sigrun (Warrior · debug)", "#c83d28", true);
+
+        // 4. Active Mutating Bug Monster (`docs/examples/monsters/set01..set10`)
+        const monsterSet = MONSTER_SETS[activeMonsterSet];
+        const monster = monsterSet[activeMonsterTierIdx];
+        const mx = 555;
+        const my = 385;
+
+        if (slayVictoryTimer <= 0) {
+          // Monster Threat Aura
+          const auraR = 95 * monster.scale + Math.sin(t * 5) * 8;
+          const auraG = ctx.createRadialGradient(mx, my, 10, mx, my, auraR);
+          auraG.addColorStop(0, monster.aura + "66");
+          auraG.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.fillStyle = auraG;
+          ctx.beginPath();
+          ctx.arc(mx, my, auraR, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Render Authentic High-Res Monster Sprite from docs/examples/monsters/
+          const mImg = getImg(monster.file);
+          if (mImg.complete && mImg.naturalWidth > 0) {
+            const baseSz = 130 * monster.scale;
+            const squish = Math.sin(t * 5.5) * 0.05;
+            ctx.save();
+            ctx.translate(mx, my + Math.sin(t * 4) * 5);
+            ctx.scale(1 + squish, 1 - squish);
+            ctx.drawImage(mImg, -baseSz / 2, -baseSz / 2, baseSz, baseSz);
+            ctx.restore();
+          }
+
+          // Combat Slash Sparks & Monster Severity Header Bar
+          const barY = my - 72 * monster.scale;
+          rrect(ctx, mx - 68, barY - 22, 136, 12, 6);
+          fillStroke(ctx, "#14100d", INK, 2);
+          rrect(ctx, mx - 66, barY - 20, 132 * (0.45 + 0.15 * activeMonsterTierIdx), 8, 4);
+          ctx.fillStyle = monster.aura;
+          ctx.fill();
+
+          ctx.font = "bold 12px sans-serif";
+          ctx.fillStyle = "#ffffff";
+          ctx.textAlign = "center";
+          ctx.fillText(`TIER ${monster.tier} ${monster.role.toUpperCase()}: ${monster.name.toUpperCase()}`, mx, barY - 28);
+
+          // Mutation Escalation Lightning Ring Effect
+          if (mutationFlashTimer > 0) {
+            mutationFlashTimer -= 0.025;
+            ctx.strokeStyle = "#f0abfc";
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(mx, my, (1 - mutationFlashTimer) * 160, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        } else {
+          // Victory Crystal Burst when Bug is Fixed!
+          slayVictoryTimer -= 0.02;
+          for (let c = 0; c < 12; c++) {
+            const a = (c / 12) * Math.PI * 2 + t * 2;
+            const dist = (1 - slayVictoryTimer) * 120;
+            const cx = mx + Math.cos(a) * dist;
+            const cy = my + Math.sin(a) * dist;
+            ctx.fillStyle = c % 2 === 0 ? "#c084fc" : "#4ade80";
+            ctx.beginPath();
+            ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = INK;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          }
+          ctx.font = "bold 15px sans-serif";
+          ctx.fillStyle = "#4ade80";
+          ctx.textAlign = "center";
+          ctx.fillText("✨ BUG VANQUISHED! TESTS PASSING ✨", mx, my);
+        }
+
+        // 5. Dynamic Fog of War Layer with Lantern Flare Cutouts
+        const fogCanvas = document.createElement("canvas");
+        fogCanvas.width = w;
+        fogCanvas.height = h;
+        const fctx = fogCanvas.getContext("2d");
+
+        fctx.fillStyle = biome.fogTint;
+        fctx.fillRect(0, 0, w, h);
+
+        fctx.globalCompositeOperation = "destination-out";
+        lanternFlares.forEach((fl) => {
+          const lx = fl.x - ox;
+          const ly = fl.y;
+          const pulse = Math.sin(t * 3 + lx) * 8;
+          const radG = fctx.createRadialGradient(lx, ly, fl.r * 0.25, lx, ly, fl.r + pulse);
+          radG.addColorStop(0, "rgba(0,0,0,1)");
+          radG.addColorStop(0.7, "rgba(0,0,0,0.85)");
+          radG.addColorStop(1, "rgba(0,0,0,0)");
+          fctx.fillStyle = radG;
+          fctx.beginPath();
+          fctx.arc(lx, ly, fl.r + pulse, 0, Math.PI * 2);
+          fctx.fill();
+        });
+
+        ctx.drawImage(fogCanvas, 0, 0);
+
+        // Warm Golden Lantern Rim Rings around Revealed Clearings
+        lanternFlares.forEach((fl) => {
+          const lx = fl.x - ox;
+          const ly = fl.y;
+          ctx.strokeStyle = "rgba(253, 224, 71, 0.18)";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(lx, ly, fl.r * 0.85 + Math.sin(t * 3) * 5, 0, Math.PI * 2);
+          ctx.stroke();
+        });
+
+        ctx.restore();
+      }
+
+      // ============================================================================
+      // UI & THUMBNAIL STRIPS SETUP
+      // ============================================================================
+      const worldCanvas = document.getElementById("world-canvas");
+      const worldCtx = worldCanvas.getContext("2d");
+
+      function rebuildCatalogStrips() {
+        // 1. Vegetation Grid
+        const vegGrid = document.getElementById("veg-grid");
+        vegGrid.innerHTML = "";
+        const biome = VEGETATION_BIOMES[activeBiomeKey];
+        document.getElementById("veg-biome-badge").textContent = biome.name;
+
+        biome.assets.forEach((asset) => {
+          const div = document.createElement("div");
+          div.className = "bg-[#16110e] rounded-xl p-2 border border-stone-800 flex flex-col items-center text-center";
+          div.innerHTML = `
+            <img src="${asset.file}" alt="${asset.name}" class="w-20 h-20 object-contain" />
+            <span class="text-[11px] font-bold text-stone-300 mt-1">${asset.name}</span>
+          `;
+          vegGrid.appendChild(div);
+        });
+
+        // 2. Monster Lineage Grid
+        const monGrid = document.getElementById("monster-grid");
+        monGrid.innerHTML = "";
+        const mset = MONSTER_SETS[activeMonsterSet];
+        mset.forEach((m, idx) => {
+          const active = idx === activeMonsterTierIdx;
+          const card = document.createElement("div");
+          card.className = `cursor-pointer bg-[#16110e] rounded-xl p-3 border transition flex flex-col items-center text-center ${
+            active ? "border-purple-400 ring-2 ring-purple-500/30" : "border-stone-800 hover:border-stone-600"
+          }`;
+          card.innerHTML = `
+            <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-700/50">
+              Tier ${m.tier} · ${m.role}
+            </span>
+            <img src="${m.file}" alt="${m.name}" class="w-24 h-24 object-contain my-2" />
+            <span class="text-xs font-bold text-white">${m.name}</span>
+            <span class="text-[10px] text-stone-400">Scale ${m.scale}x</span>
+          `;
+          card.onclick = () => {
+            activeMonsterTierIdx = idx;
+            document.getElementById("tier-select").value = String(idx);
+            mutationFlashTimer = 1;
+            slayVictoryTimer = 0;
+            rebuildCatalogStrips();
+          };
+          monGrid.appendChild(card);
+        });
+      }
+
+      document.getElementById("assembly-slider").oninput = (e) => {
+        assembledPartsCount = parseInt(e.target.value, 10);
+        document.getElementById("assembly-label").textContent = `${assembledPartsCount} / 5 Parts (${assembledPartsCount * 20}% Built)`;
+      };
+      document.getElementById("biome-select").onchange = (e) => {
+        activeBiomeKey = e.target.value;
+        rebuildCatalogStrips();
+      };
+      document.getElementById("tier-select").onchange = (e) => {
+        activeMonsterTierIdx = parseInt(e.target.value, 10);
+        mutationFlashTimer = 1;
+        slayVictoryTimer = 0;
+        rebuildCatalogStrips();
+      };
+      document.getElementById("set-select").onchange = (e) => {
+        activeMonsterSet = e.target.value;
+        rebuildCatalogStrips();
+      };
+
+      document.getElementById("btn-flare").onclick = () => {
+        lanternFlares.push({
+          x: 920 + Math.random() * 580,
+          y: 120 + Math.random() * 480,
+          r: 170,
+          birth: performance.now()
+        });
+        if (lanternFlares.length > 8) lanternFlares.shift();
+      };
+      document.getElementById("btn-mutate").onclick = () => {
+        activeMonsterTierIdx = (activeMonsterTierIdx + 1) % 4;
+        document.getElementById("tier-select").value = String(activeMonsterTierIdx);
+        mutationFlashTimer = 1;
+        slayVictoryTimer = 0;
+        rebuildCatalogStrips();
+      };
+      document.getElementById("btn-slay").onclick = () => {
+        slayVictoryTimer = 1;
+      };
+
+      worldCanvas.addEventListener("click", (e) => {
+        const rect = worldCanvas.getBoundingClientRect();
+        const cx = ((e.clientX - rect.left) / rect.width) * worldCanvas.width;
+        const cy = ((e.clientY - rect.top) / rect.height) * worldCanvas.height;
+        if (cx > 800) {
+          lanternFlares.push({ x: cx, y: cy, r: 175, birth: performance.now() });
+        }
+      });
+
+      function animate(now) {
+        const t = now * 0.001;
+        worldCtx.clearRect(0, 0, 1600, 720);
+        renderUnifiedGenericRoom(worldCtx, 800, 720, t);
+        renderOutdoorWilderness(worldCtx, 800, 800, 720, t);
+        requestAnimationFrame(animate);
+      }
+
+      rebuildCatalogStrips();
+      requestAnimationFrame(animate);
+    </script>
+  </body>
+</html>

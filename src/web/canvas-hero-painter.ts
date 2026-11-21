@@ -17,6 +17,7 @@ import type { GuildSnapshot } from "../types/domain.ts";
 import { createOffscreenBuffer, fillStroke, INK, rrect } from "./asset-manifests.ts";
 import { drawPentagramPortalRitual } from "./canvas-station-painter.ts";
 import { clientState, isMobileViewport } from "./client-state.ts";
+import { resolveTruncatedNameplateRow2 } from "./nameplate-label-cache.ts";
 import type { ResolvedCharacterSlot } from "./station-and-workflow-routing.ts";
 import { resolveWalkStrideAnimPhase } from "./walker-separation.ts";
 import { isCharacterPhysicallyFightingBug, type NamedWildernessBug } from "./wilds-bug-targeting.ts";
@@ -377,13 +378,7 @@ export function drawCharacterHero(
   const badgeLabel = `${heraldry.crestIcon} ${heraldry.shortTag}${heraldry.isWorktree ? " 🌿" : ""}`;
   c.font = "bold 8px monospace";
   const row1TextW = c.measureText(badgeLabel).width, blockW = row1TextW + 8, blockX = -blockW / 2, rowH = 12;
-  let row2Label = name;
-  if (c.measureText(row2Label).width > row1TextW) {
-    const chars = Array.from(row2Label);
-    let k = chars.length - 1;
-    while (k > 1 && c.measureText(`${chars.slice(0, k).join("")}…`).width > row1TextW) k--;
-    row2Label = `${chars.slice(0, Math.max(1, k)).join("")}…`;
-  }
+  const row2Label = resolveTruncatedNameplateRow2(c, name, row1TextW, c.font);
   const tagY = slot.y > 670 ? 7 : slot.station === "Lounge" ? 14 : 18, row2Y = tagY + rowH;
   const borderCol = isSelected ? "#fbbf24" : heraldry.accentHex || "#b45309";
   c.textAlign = "center";

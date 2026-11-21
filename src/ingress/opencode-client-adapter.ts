@@ -174,7 +174,7 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
 
       if (
         (state.skills?.length || state.plugins?.length || state.agents?.length || state.models?.length) &&
-        sweepDigests.shouldEmitCatalog(targetCanonDir, state, isReconnect)
+        sweepDigests.shouldEmitCatalog(locMeta.directory, state, isReconnect)
       ) {
         sweepEvents.push({
           type: "catalog.hydrated", timestampMs: now, locationDirectory: targetCanonDir,

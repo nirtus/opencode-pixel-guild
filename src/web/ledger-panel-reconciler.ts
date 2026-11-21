@@ -1,5 +1,6 @@
-import { buildActivityTickerViewModel, buildGuildMasterLedgerViewModel, escapeHtml, formatInlineMarkdown, sanitizeAndExtractSkillsFromChatText } from "../hud/spectator-hud.ts";
+import { buildGuildMasterLedgerViewModel, escapeHtml, formatInlineMarkdown, sanitizeAndExtractSkillsFromChatText } from "../hud/spectator-hud.ts";
 import { listHostProjectHeraldries, resolveProjectHeraldry } from "../spatial/index.ts";
+import { getScopedActivityTicker, resetScopedActivityTickerCache } from "./activity-ticker-cache.ts";
 import { deriveScopedGameMasterBugMonsters } from "./canvas-wilds-painter.ts";
 import {
   clientState, getScopedGameMasterCharacters, getSelectedProjectRoom, hasCharacterUnviewedResult, isCharacterWaitingAtGate,
@@ -21,7 +22,10 @@ import { hasActiveTextSelection } from "./text-selection-guard.ts";
 export { escapeHtml };
 
 let lastTickerSignature = "";
-export function resetTickerSignature(): void { lastTickerSignature = ""; }
+export function resetTickerSignature(): void {
+  lastTickerSignature = "";
+  resetScopedActivityTickerCache();
+}
 
 function renderLedgerSubtabBarHtml(activeSubtab: LedgerCategorySubtab, resolvedTasks: number, totalTasks: number, rosterCount: number): string {
   const effectiveSubtab = activeSubtab === "roster" ? "overview" : activeSubtab;
@@ -339,30 +343,15 @@ export function syncSpectatorDrawerChrome(): void {
   }
   if (btnTicker) {
     btnTicker.classList.toggle("active", !isMobileWorldActive && clientState.mobileActiveTab === "ticker");
-    const tickerCount = buildScopedActivityTicker().entries.length;
+    const tickerCount = getScopedActivityTicker().entries.length;
     btnTicker.textContent = `⚡ Ticker (${tickerCount})`;
   }
-}
-
-function buildScopedActivityTicker() {
-  const activeRoom = getSelectedProjectRoom();
-  const isAllWorlds =
-    clientState.isAllWorldsFocused ||
-    (!clientState.selectedProjectId && !clientState.selectedRoomId && !activeRoom);
-  const scopedChars = getScopedGameMasterCharacters();
-  return buildActivityTickerViewModel(clientState.tickerLog as never[], 40, {
-    snapshot: clientState.currentSnapshot,
-    selectedRoomId: activeRoom?.roomId ?? clientState.selectedRoomId,
-    selectedProjectId: clientState.selectedProjectId,
-    isAllWorldsFocused: isAllWorlds,
-    characters: scopedChars,
-  });
 }
 
 export function reconcileTicker(): void {
   const container = document.getElementById("ticker-entries");
   if (!container) return;
-  const tickerVm = buildScopedActivityTicker();
+  const tickerVm = getScopedActivityTicker();
   const sig = tickerVm.entries.map((e) => `${e.shortTag ?? ""}:${e.category}:${e.summary}`).join("|");
   if (sig === lastTickerSignature) return;
   if (lastTickerSignature !== "" && hasActiveTextSelection(container)) return;

@@ -178,3 +178,108 @@ export function mapDaemonSessionTokens(
     contextWindowPct: Math.min(100, Math.round((usedTokens / Math.max(1, limitTokens)) * 100)),
   };
 }
+
+interface RawTuiTabEntry {
+  sessionID?: string;
+  sessionId?: string;
+  id?: string;
+}
+
+interface RawTuiTabsPayload {
+  tabs?: Array<RawTuiTabEntry | string>;
+  global?: { tabs?: Array<RawTuiTabEntry | string> };
+  cwd?: Record<string, { tabs?: Array<RawTuiTabEntry | string> } | undefined>;
+}
+
+interface RawTuiSessionPayload {
+  pinned?: Array<RawTuiTabEntry | string>;
+}
+
+const TUI_TABS_TTL_MS = 2_000;
+const tuiOpenSessionsByFetcher = new WeakMap<
+  object,
+  { expiresAtMs: number; sessionIds: Set<string>; inFlight?: Promise<Set<string>> }
+>();
+
+function collectTabListSessionIds(list: unknown, out: Set<string>): void {
+  if (!Array.isArray(list)) return;
+  for (const item of list) {
+    const rawId =
+      typeof item === "string"
+        ? item
+        : item && typeof item === "object"
+          ? ((item as RawTuiTabEntry).sessionID ?? (item as RawTuiTabEntry).sessionId ?? (item as RawTuiTabEntry).id)
+          : undefined;
+    if (typeof rawId === "string" && rawId.trim()) {
+      out.add(rawId.trim());
+    }
+  }
+}
+
+function hasTuiTabsShape(val: unknown): val is RawTuiTabsPayload {
+  if (!val || typeof val !== "object" || Array.isArray(val)) return false;
+  const obj = val as Record<string, unknown>;
+  return ("global" in obj && typeof obj.global === "object") || ("cwd" in obj && typeof obj.cwd === "object") || Array.isArray(obj.tabs);
+}
+
+export async function fetchOpenTuiSessionIds(
+  fetchJson: <T>(path: string, extraHeaders?: Record<string, string>) => Promise<T | null>,
+  daemonDir: string,
+): Promise<Set<string>> {
+  const nowMs = Date.now();
+  const cached = tuiOpenSessionsByFetcher.get(fetchJson);
+  if (cached) {
+    if (cached.inFlight) return cached.inFlight;
+    if (cached.expiresAtMs > nowMs) return cached.sessionIds;
+  }
+
+  const loadPromise = (async (): Promise<Set<string>> => {
+    const sessionIds = new Set<string>();
+    const tabsRelPath = "/api/fs/read/.local/state/opencode/latest/tui/tabs.json";
+    const sessionRelPath = "/api/fs/read/.local/state/opencode/session.json";
+
+    const [rawTabsDefault, rawSessionDefault] = await Promise.all([
+      fetchJson<unknown>(tabsRelPath).catch(() => null),
+      fetchJson<unknown>(sessionRelPath).catch(() => null),
+    ]);
+
+    let rawTabs: RawTuiTabsPayload | null = hasTuiTabsShape(rawTabsDefault) ? rawTabsDefault : null;
+    if (!rawTabs && daemonDir) {
+      const homeMatch = /^((?:[A-Za-z]:[\\/]|\/mnt\/[a-z]\/|\/[a-z]\/|\/)(?:home|Users)[\\/][^\\/]+)/i.exec(daemonDir.trim());
+      const homeDir = homeMatch?.[1];
+      if (homeDir) {
+        const homeQuery = `?location[directory]=${encodeURIComponent(homeDir)}`;
+        const fallbackTabs = await fetchJson<unknown>(`${tabsRelPath}${homeQuery}`, {
+          "x-opencode-directory": homeDir,
+        }).catch(() => null);
+        if (hasTuiTabsShape(fallbackTabs)) rawTabs = fallbackTabs;
+      }
+    }
+
+    if (rawTabs) {
+      collectTabListSessionIds(rawTabs.tabs, sessionIds);
+      collectTabListSessionIds(rawTabs.global?.tabs, sessionIds);
+      if (rawTabs.cwd && typeof rawTabs.cwd === "object") {
+        for (const cwdGroup of Object.values(rawTabs.cwd)) {
+          collectTabListSessionIds(cwdGroup?.tabs, sessionIds);
+        }
+      }
+    }
+    if (rawSessionDefault && typeof rawSessionDefault === "object" && !Array.isArray(rawSessionDefault)) {
+      collectTabListSessionIds((rawSessionDefault as RawTuiSessionPayload).pinned, sessionIds);
+    }
+
+    tuiOpenSessionsByFetcher.set(fetchJson, {
+      expiresAtMs: Date.now() + TUI_TABS_TTL_MS,
+      sessionIds,
+    });
+    return sessionIds;
+  })();
+
+  tuiOpenSessionsByFetcher.set(fetchJson, {
+    expiresAtMs: nowMs + TUI_TABS_TTL_MS,
+    sessionIds: cached?.sessionIds ?? new Set<string>(),
+    inFlight: loadPromise,
+  });
+  return loadPromise;
+}

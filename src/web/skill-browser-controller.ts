@@ -49,6 +49,27 @@ export function setSkillBrowserFilter(scopeId: string, filterText: string): void
   skillFilterByScope.set(scopeId, filterText);
 }
 
+function extractSkillScopeSessionId(scopeId: string): string | null {
+  if (scopeId.startsWith("scroll:")) return scopeId.slice("scroll:".length) || null;
+  if (scopeId.startsWith("gate:")) {
+    const rest = scopeId.slice("gate:".length);
+    const sep = rest.indexOf(":");
+    return (sep > 0 ? rest.slice(0, sep) : rest) || null;
+  }
+  return null;
+}
+
+export function pruneSkillBrowserSessionScopes(hasSession: (sessionId: string) => boolean): void {
+  for (const scopeId of skillOffsetByScope.keys()) {
+    const sid = extractSkillScopeSessionId(scopeId);
+    if (sid && !hasSession(sid)) skillOffsetByScope.delete(scopeId);
+  }
+  for (const scopeId of skillFilterByScope.keys()) {
+    const sid = extractSkillScopeSessionId(scopeId);
+    if (sid && !hasSession(sid)) skillFilterByScope.delete(scopeId);
+  }
+}
+
 export function filterSkillIdsByQuery(
   skills: readonly string[],
   query: string | undefined | null,

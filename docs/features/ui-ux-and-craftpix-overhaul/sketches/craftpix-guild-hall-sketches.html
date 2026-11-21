@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CraftPix Guild Hall Visual Sketches &amp; Asset Comparison Sheet — OpenCode Pixel Guild</title>
+  <style>
+    :root {
+      --bg-void: #090d16;
+      --bg-panel: #111827;
+      --bg-card: #1e293b;
+      --border-gold: #b45309;
+      --border-slate: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-amber: #f59e0b;
+      --accent-emerald: #10b981;
+      --accent-cyan: #38bdf8;
+      --accent-violet: #8b5cf6;
+      --accent-crimson: #ef4444;
+      --font-mono: "JetBrains Mono", "Fira Code", Consolas, monospace;
+      --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg-void);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      line-height: 1.5;
+      padding-bottom: 64px;
+    }
+
+    header {
+      background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+      border-bottom: 2px solid var(--border-gold);
+      padding: 18px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+
+    .title-group h1 {
+      font-size: 19px;
+      font-weight: 800;
+      color: #fef3c7;
+    }
+
+    .title-group p {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+
+    .title-group a {
+      color: var(--accent-amber);
+      text-decoration: underline;
+    }
+
+    .container {
+      max-width: 1360px;
+      margin: 24px auto;
+      padding: 0 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    .sheet-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-slate);
+      border-top: 3px solid var(--accent-amber);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .sheet-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--border-slate);
+      padding-bottom: 10px;
+    }
+
+    .sheet-header h2 {
+      font-size: 16px;
+      color: #fde68a;
+    }
+
+    .sheet-header span {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(520px, 1fr));
+      gap: 18px;
+    }
+
+    .grid-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+      gap: 14px;
+    }
+
+    .sketch-tile {
+      background: var(--bg-card);
+      border: 1px solid var(--border-slate);
+      border-radius: 6px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .sketch-tile-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .sketch-tile-title {
+      font-weight: 700;
+      color: #fef3c7;
+    }
+
+    .sketch-badge {
+      font-size: 9.5px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #0f172a;
+      border: 1px solid var(--border-gold);
+      color: var(--accent-amber);
+    }
+
+    canvas.sketch-canvas {
+      background: #090d16;
+      border: 1px solid #334155;
+      border-radius: 4px;
+      image-rendering: pixelated;
+      width: 100%;
+      display: block;
+    }
+
+    .sketch-caption {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: #cbd5e1;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title-group">
+      <h1>🎨 CraftPix Guild Hall Visual Sketches &amp; Dual-Style Sprite Sheet</h1>
+      <p>
+        Visual Reference:
+        <a href="https://craftpix.net/freebies/free-top-down-pixel-art-guild-hall-asset-pack/" target="_blank" rel="noopener">
+          https://craftpix.net/freebies/free-top-down-pixel-art-guild-hall-asset-pack/
+        </a>
+        · Side-by-Side Pixel-Art Atlas vs. Clean Cartoon Vector Sketches
+      </p>
+    </div>
+    <div>
+      <a href="/guild" style="font-family:var(--font-mono);font-size:12px;padding:8px 14px;background:#78350f;border:1px solid #f59e0b;border-radius:5px;color:#fef3c7;text-decoration:none;">
+        ← Back to Live Guild Floorplan
+      </a>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Sheet 1: Full Room Cutaway Comparison -->
+    <section class="sheet-card">
+      <div class="sheet-header">
+        <h2>Sheet 1 — 16×12 Guild Hall Cutaway Architecture, Quest Bulletin Board &amp; Flooring Zones</h2>
+        <span>CraftPix North Masonry/Timber Wall · Quest Bulletin Board · Pegged Oak Study · Stone Forge · Woven Lounge Rug</span>
+      </div>
+      <div class="grid-2">
+        <div class="sketch-tile">
+          <div class="sketch-tile-header">
+            <span class="sketch-tile-title">Mode A: CraftPix Pixel-Art Atlas ("pixel-atlas")</span>
+            <span class="sketch-badge">16×16 / 32×32 Pixel Grid</span>
+          </div>
+          <canvas id="room-pixel-canvas" class="sketch-canvas" width="560" height="420"></canvas>
+          <div class="sketch-caption">
+            Crisp nearest-neighbor pixel-art sprites (`imageSmoothingEnabled = false`) for every workstation, character, and prop.
+          </div>
+        </div>
+        <div class="sketch-tile">
+          <div class="sketch-tile-header">
+            <span class="sketch-tile-title">Mode B: Clean Cartoon Illustrated ("clean-cartoon")</span>
+            <span class="sketch-badge">Cel-Shaded Vector + Outlines</span>
+          </div>
+          <canvas id="room-cartoon-canvas" class="sketch-canvas" width="560" height="420"></canvas>
+          <div class="sketch-caption">
+            Contoured dark-ink outlines, warm window daylight shafts, de-collided station nameplates, and capped 6-seat Break Lounge.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sheet 2: Workstations & CraftPix Props -->
+    <section class="sheet-card">
+      <div class="sheet-header">
+        <h2>Sheet 2 — Workstations, Resource Stockpile, Break Lounge, Demolition Bomb &amp; CraftPix Guild Props</h2>
+        <span>Drafting Table · Archive Radar · Arcane Lectern · Anvil Forge · Reactor Console · Comms Dish · Altar of Compaction · Quest Bulletin Board · Summoning Ritual</span>
+      </div>
+      <div class="grid-cards" id="workstation-sketch-grid"></div>
+    </section>
+
+    <!-- Sheet 3: 11-Inspired RPG Character Archetypes -->
+    <section class="sheet-card">
+      <div class="sheet-header">
+        <h2>Sheet 3 — CraftPix-Inspired 4-Directional RPG Character Archetypes &amp; Equipment Loadouts</h2>
+        <span>Master Smith (build) · Pointed-Hat Sorcerer (plan) · Hooded Pathfinder (explore) · Plumed Guildmaster (general) · Alchemist · Archon · Squad Subagent</span>
+      </div>
+      <div class="grid-cards" id="character-sketch-grid"></div>
+    </section>
+  </main>
+
+  <script type="module">
+    import {
+      buildGuildSceneFrame,
+      createCanvas2DScenePaintAdapter,
+      paintSceneFrame,
+    } from "/src/scene/guild-scene.ts";
+    import {
+      composeCharacterSprite,
+      composeWorkstationSprite,
+    } from "/src/sprites/pixel-compositor.ts";
+    import { runDemoScenarioPreset } from "/src/simulator/demo-guild-simulator.ts";
+
+    const { snapshot } = runDemoScenarioPreset("cohabited-guild-hall");
+    const roomId = snapshot.roomOrder[0];
+
+    function renderRoomComparison(canvasId, styleMode) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext("2d");
+      const frame = buildGuildSceneFrame(snapshot, new Map(), {
+        widthPx: canvas.width,
+        heightPx: canvas.height,
+        cameraPanX: 24,
+        cameraPanY: 22,
+        cameraZoom: 1.0,
+        selectedRoomId: roomId,
+        style: styleMode,
+        timestampMs: 2400,
+      });
+      paintSceneFrame(frame, createCanvas2DScenePaintAdapter(ctx), 2400);
+    }
+
+    renderRoomComparison("room-pixel-canvas", "pixel-atlas");
+    renderRoomComparison("room-cartoon-canvas", "clean-cartoon");
+
+    const workstationSpecs = [
+      { kind: "Drafting Table", tools: "read · edit · write", note: "Oak drafting table + unrolled blueprint scroll + golden quill" },
+      { kind: "Archive Radar", tools: "glob · grep · lsp", note: "Brass astrolabe rings + emerald scrying lens" },
+      { kind: "Arcane Lectern", tools: "skill (SKILL.md)", note: "Carved mahogany lectern + open glowing rune grimoire" },
+      { kind: "Anvil Forge", tools: "shell · bash · test", note: "Stone chimney hearth + roaring coals + horned blacksmith anvil" },
+      { kind: "Reactor Console", tools: "execute · subagent", note: "Dual cyan arcane crystal conduits + brass coils" },
+      { kind: "Comms Dish", tools: "webfetch · websearch", note: "Parabolic brass transceiver dish + signal waves" },
+      { kind: "Altar of Compaction", tools: "compact (Context Mana)", note: "Stepped obsidian rune dais + floating distillation chalice" },
+    ];
+
+    const wsGrid = document.getElementById("workstation-sketch-grid");
+    for (const item of workstationSpecs) {
+      const card = document.createElement("div");
+      card.className = "sketch-tile";
+      card.innerHTML = `
+        <div class="sketch-tile-header">
+          <span class="sketch-tile-title">${item.kind}</span>
+          <span class="sketch-badge">${item.tools}</span>
+        </div>
+        <canvas class="sketch-canvas" width="200" height="96"></canvas>
+        <div class="sketch-caption">${item.note}</div>
+      `;
+      wsGrid.appendChild(card);
+      const c = card.querySelector("canvas");
+      const cctx = c.getContext("2d");
+      cctx.imageSmoothingEnabled = false;
+      const sprite = composeWorkstationSprite({ kind: item.kind, active: true, timestampMs: 1200 });
+      for (let py = 0; py < sprite.pixels.length; py += 1) {
+        for (let px = 0; px < sprite.pixels[py].length; px += 1) {
+          const hex = sprite.pixels[py][px];
+          if (!hex) continue;
+          cctx.fillStyle = hex;
+          cctx.fillRect(28 + px * 4, 16 + py * 4, 4, 4);
+        }
+      }
+      cctx.fillStyle = "#94a3b8";
+      cctx.font = "10px monospace";
+      cctx.fillText("16×16 Pixel Sprite (4x)", 16, 90);
+    }
+
+    const characterSpecs = [
+      { agentClass: "build", role: "Guild Adventurer", label: "Master Smith (build)", headgear: "visored-helm · Forge Hammer" },
+      { agentClass: "plan", role: "Guild Adventurer", label: "Sorcerer Scholar (plan)", headgear: "arcane-circlet · Golden Quill" },
+      { agentClass: "explore", role: "Guild Adventurer", label: "Pathfinder Scout (explore)", headgear: "hood · Brass Spyglass" },
+      { agentClass: "general", role: "Guild Adventurer", label: "Guild Warden (general)", headgear: "plumed-cap · Archmage Staff" },
+      { agentClass: "artificer", role: "Guild Adventurer", label: "Alchemist Artificer", headgear: "alchemist-goggles · Scepter" },
+      { agentClass: "archon", role: "Squad Subagent", label: "Squad Subagent Companion", headgear: "squad lineage ring + Grimoire" },
+    ];
+
+    const charGrid = document.getElementById("character-sketch-grid");
+    for (const ch of characterSpecs) {
+      const card = document.createElement("div");
+      card.className = "sketch-tile";
+      card.innerHTML = `
+        <div class="sketch-tile-header">
+          <span class="sketch-tile-title">${ch.label}</span>
+          <span class="sketch-badge">${ch.role}</span>
+        </div>
+        <canvas class="sketch-canvas" width="200" height="96"></canvas>
+        <div class="sketch-caption">${ch.headgear}</div>
+      `;
+      charGrid.appendChild(card);
+      const c = card.querySelector("canvas");
+      const cctx = c.getContext("2d");
+      cctx.imageSmoothingEnabled = false;
+      const composed = composeCharacterSprite({
+        characterId: `sketch_${ch.agentClass}`,
+        sessionId: `sketch_${ch.agentClass}`,
+        role: ch.role,
+        agentClass: ch.agentClass,
+        lifecycleState: "WorkingAtStation",
+        skillGrimoires: [{ skillId: "tdd", name: "TDD" }],
+        timestampMs: 1200,
+      });
+      for (let py = 0; py < composed.pixels.length; py += 1) {
+        for (let px = 0; px < composed.pixels[py].length; px += 1) {
+          const hex = composed.pixels[py][px];
+          if (!hex) continue;
+          cctx.fillStyle = hex;
+          cctx.fillRect(68 + px * 4, 12 + py * 4, 4, 4);
+        }
+      }
+      cctx.fillStyle = "#94a3b8";
+      cctx.font = "10px monospace";
+      cctx.fillText("CraftPix 16×16 Sprite (4x)", 28, 90);
+    }
+  </script>
+</body>
+</html>

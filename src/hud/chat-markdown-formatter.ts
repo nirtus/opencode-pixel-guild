@@ -1,20 +1,5 @@
-import type { SessionChatMessage } from "../types/domain.ts";
-import type {
-  AdventurerDispatchLogViewModel,
-  AdventurerDispatchTurnViewModel,
-} from "./hud-character-types.ts";
 import { escapeHtml } from "./hud-formatters.ts";
-
-export interface DispatchLogBuildInput {
-  readonly sessionId: string;
-  readonly agentDisplayName: string;
-  readonly modelId: string;
-  readonly overheadLabel: string;
-  readonly isBusy: boolean;
-  readonly messages: readonly SessionChatMessage[];
-  readonly lastUserPromptText: string | null;
-  readonly lastAssistantText: string | null;
-}
+import { renderMermaidBlockHtml } from "./mermaid-renderer.ts";
 
 export function sanitizeAndExtractSkillsFromChatText(rawText: string): {
   cleanText: string;
@@ -137,8 +122,21 @@ export function formatChatMarkdownHtml(text: string): string {
         codeLines.push(lines[i]);
         i += 1;
       }
-      if (i < lines.length) i += 1;
+      const isClosedFence = i < lines.length;
+      if (isClosedFence) i += 1;
       const rawCode = codeLines.join("\n").replace(/^\n+|\n+$/g, "");
+      if (lang === "mermaid") {
+        if (isClosedFence) {
+          blocks.push(renderMermaidBlockHtml(rawCode, { diagramId: `mmd-${blocks.length}` }));
+        } else {
+          blocks.push(
+            `<div class="chat-md-codeblock" data-mermaid-fallback="true">` +
+            `<div class="chat-md-codeblock-bar"><span class="chat-md-codeblock-lang">mermaid</span></div>` +
+            `<pre class="chat-md-pre tool-log-output">${escapeHtml(rawCode)}</pre></div>`,
+          );
+        }
+        continue;
+      }
       const langBadge = lang
         ? `<div class="chat-md-codeblock-bar"><span class="chat-md-codeblock-lang">${escapeHtml(lang)}</span></div>`
         : "";
@@ -247,153 +245,4 @@ export function formatChatMarkdownHtml(text: string): string {
   }
 
   return blocks.join("");
-}
-
-export function buildAdventurerDispatchLogViewModel(
-  input: DispatchLogBuildInput,
-): AdventurerDispatchLogViewModel {
-  const lastUserPrompt = (input.lastUserPromptText ?? "").trim();
-  const lastReply = (input.lastAssistantText ?? "").trim();
-  const rawTurns: SessionChatMessage[] = Array.isArray(input.messages)
-    ? [...input.messages]
-    : [];
-
-  if (lastUserPrompt) {
-    const cleanPrompt = sanitizeAndExtractSkillsFromChatText(lastUserPrompt).cleanText;
-    const hasMatchingUser = rawTurns.some(
-      (m) =>
-        m.role === "user" &&
-        sanitizeAndExtractSkillsFromChatText(m.text).cleanText.slice(0, 180) ===
-          cleanPrompt.slice(0, 180),
-    );
-    if (!hasMatchingUser && cleanPrompt) {
-      rawTurns.push({
-        messageId: `u:${input.sessionId}`,
-        role: "user",
-        text: lastUserPrompt,
-        createdAtMs: (rawTurns[rawTurns.length - 1]?.createdAtMs ?? 0) + 1,
-      });
-    }
-  }
-
-  if (lastReply) {
-    const cleanReply = sanitizeAndExtractSkillsFromChatText(lastReply).cleanText;
-    const lastTurn = rawTurns[rawTurns.length - 1];
-    const lastAsst = [...rawTurns].reverse().find((m) => m.role === "assistant");
-    const lastAsstClean = lastAsst ? sanitizeAndExtractSkillsFromChatText(lastAsst.text).cleanText : "";
-    const hasMatchingAsst = rawTurns.some(
-      (m) =>
-        m.role === "assistant" &&
-        sanitizeAndExtractSkillsFromChatText(m.text).cleanText.slice(0, 180) ===
-          cleanReply.slice(0, 180),
-    );
-
-    if (!lastAsst && cleanReply) {
-      rawTurns.push({
-        messageId: `a:${input.sessionId}`,
-        role: "assistant",
-        text: lastReply,
-        createdAtMs: (rawTurns[rawTurns.length - 1]?.createdAtMs ?? 0) + 2,
-      });
-    } else if (lastTurn?.role === "assistant" && cleanReply.slice(0, 180) === lastAsstClean.slice(0, 180)) {
-      if (cleanReply.length > lastAsstClean.length) {
-        rawTurns[rawTurns.length - 1] = { ...lastTurn, text: lastReply };
-      }
-    } else if (cleanReply && !hasMatchingAsst) {
-      rawTurns.push({
-        messageId: `a:${input.sessionId}:live`,
-        role: "assistant",
-        text: lastReply,
-        createdAtMs: (rawTurns[rawTurns.length - 1]?.createdAtMs ?? 0) + 2,
-      });
-    }
-  }
-
-  const deduped: Array<{
-    msg: SessionChatMessage;
-    cleanText: string;
-    skills: string[];
-  }> = [];
-  for (const t of rawTurns) {
-    const { cleanText, skills } = sanitizeAndExtractSkillsFromChatText(
-      t.text || "",
-    );
-    const mergedSkills = Array.from(
-      new Set([...(t.attachedSkills ?? []), ...skills]),
-    );
-    if (!cleanText && mergedSkills.length === 0) continue;
-
-    const prev = deduped[deduped.length - 1];
-    if (
-      prev &&
-      prev.msg.role === t.role &&
-      prev.cleanText.slice(0, 180) === cleanText.slice(0, 180)
-    ) {
-      const combinedSkills = Array.from(
-        new Set([...prev.skills, ...mergedSkills]),
-      );
-      if (cleanText.length >= prev.cleanText.length) {
-        deduped[deduped.length - 1] = {
-          msg: t,
-          cleanText,
-          skills: combinedSkills,
-        };
-      } else {
-        prev.skills = combinedSkills;
-      }
-      continue;
-    }
-    deduped.push({ msg: t, cleanText, skills: mergedSkills });
-  }
-
-  const rawModel = String(input.modelId || "").trim();
-  const shortModel =
-    rawModel.indexOf("/") >= 0 ? rawModel.slice(rawModel.indexOf("/") + 1) : rawModel;
-  const badgeText = shortModel
-    ? `${input.agentDisplayName} · ${shortModel}`
-    : input.agentDisplayName;
-
-  const turns: AdventurerDispatchTurnViewModel[] = deduped.map((item, idx) => {
-    const stableTurnId = `turn-${idx}-${item.msg.role}`;
-    const isRecentUnclippedTurn = idx >= deduped.length - 2;
-    const isOlderTurn = !isRecentUnclippedTurn;
-    const isLongMessage =
-      item.cleanText.length > 2400 || item.cleanText.split("\n").length > 40;
-    const previewLimit = 1200;
-    const canCompact = !isRecentUnclippedTurn && isLongMessage;
-    const previewText = canCompact
-      ? buildFenceSafePreviewSlice(item.cleanText, previewLimit)
-      : item.cleanText;
-    const fullHtml = formatChatMarkdownHtml(item.cleanText);
-    const compactHtml = canCompact
-      ? formatChatMarkdownHtml(previewText)
-      : fullHtml;
-
-    return Object.freeze({
-      messageId: stableTurnId,
-      role: item.msg.role,
-      speakerLabel: item.msg.role === "user" ? "📜 You:" : "💬 Reply:",
-      agentBadgeLabel: item.msg.role === "assistant" ? badgeText : null,
-      cleanText: item.cleanText,
-      skills: Object.freeze(item.skills),
-      canCompact,
-      isOlderTurn,
-      isLongMessage,
-      previewText,
-      fullHtml,
-      compactHtml,
-      createdAtMs: item.msg.createdAtMs,
-    });
-  });
-
-  const revisionKey = `${turns.length}:${turns
-    .map((t) => `${t.messageId}:${t.cleanText.length}:${t.skills.length}`)
-    .join("|")}:${input.isBusy ? 1 : 0}:${input.overheadLabel}`;
-
-  return Object.freeze({
-    turns: Object.freeze(turns),
-    revisionKey,
-    isBusy: input.isBusy,
-    overheadVerb: input.overheadLabel || "Working",
-  });
 }

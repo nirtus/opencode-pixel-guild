@@ -7,6 +7,7 @@ import {
 } from "../types/domain.ts";
 import { resolvePreparationStationDisplayName } from "../encounter/index.ts";
 import { applyArmoryTransition, resolveToolCategory, syncCharacterWorkflow } from "./armory-and-workflow.ts";
+import { compactArchivedCharacterPayload } from "./archived-payload-compactor.ts";
 import { createInitialContextMana, syncCharacterTributeRecord } from "./context-mana.ts";
 import { deriveEquipmentLoadout } from "./equipment-loadout.ts";
 import { deriveProjectName, isDeletedHostDirectory, isSystemRootOrHomeDirectory, normalizeLocationDirectory } from "./location-normalization.ts";
@@ -116,7 +117,11 @@ export function transitionCharacterState(
   char.lifecycleState = nextState;
   char.stateEnteredAtMs = timestampMs;
   if (!options?.preserveLastActivity) char.lastActivityAtMs = Math.max(char.lastActivityAtMs, timestampMs);
-  if (nextState === "Archived") char.isOpenInOpenCode = false;
+  if (nextState === "Archived") {
+    char.isOpenInOpenCode = false;
+    state.onBeforeArchiveCharacter?.(char);
+    compactArchivedCharacterPayload(char);
+  }
   if (nextState === "Thinking" || nextState === "RestingInLounge" || nextState === "Archived") {
     char.activeWorkstation = null;
     char.activePluginNamespace = null;
@@ -254,17 +259,16 @@ export function mergeHydratedRecentTools(
   });
 
   char.recentTools = sortRecentToolsNewestFirst([...byCallId.values()]);
-  if (
-    char.questGate?.kind === "question" &&
-    char.recentTools.some(
-      (r) =>
-        r.status === "completed" &&
-        (r.callId === char.questGate?.gateId || r.toolName.trim().toLowerCase() === "question"),
-    )
-  ) {
-    settleCharacterQuestGate(state, char);
-    if (char.lifecycleState === "BlockedAtQuestGate") {
-      char.lifecycleState = char.idleAtMs ? "RestingInLounge" : "Thinking";
+  if (char.questGate?.kind === "question" && char.questGate.source !== "conversational") {
+    const qGate = char.questGate;
+    const latestQTool = char.recentTools.find((r) => r.toolName.trim().toLowerCase() === "question");
+    const matchedDone = char.recentTools.some((r) => r.status === "completed" && r.callId === qGate.gateId);
+    const formSuperseded = Boolean(
+      qGate.gateId.startsWith("frm_") && latestQTool?.status === "completed" && (latestQTool.completedAtMs ?? latestQTool.timestampMs) >= qGate.openedAtMs,
+    );
+    if (matchedDone || formSuperseded) {
+      settleCharacterQuestGate(state, char);
+      if (char.lifecycleState === "BlockedAtQuestGate") char.lifecycleState = char.idleAtMs ? "RestingInLounge" : "Thinking";
     }
   }
   if (!char.lastEquippedToolCategory && char.recentTools.length > 0) {

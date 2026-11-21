@@ -46,6 +46,7 @@ const PARTY_CREST_ICONS: Readonly<Record<string, string>> = Object.freeze({
 });
 
 const snapshotAssignmentCache = new WeakMap<GuildSnapshot, Map<string, string>>();
+const hostHeraldriesCache = new WeakMap<GuildSnapshot, { sig: string; list: readonly ProjectHeraldryDescriptor[] }>();
 
 function hashProjectSeed(seed: string): number {
   let hash = 2166136261;
@@ -294,21 +295,27 @@ export function resolveCharacterWorldFocus(
 
 export function listHostProjectHeraldries(
   snapshot?: GuildSnapshot | null,
-): ProjectHeraldryDescriptor[] {
+): readonly ProjectHeraldryDescriptor[] {
+  let sig = "";
+  if (snapshot) {
+    let rc = 0, cc = 0;
+    if (snapshot.rooms) for (const _ in snapshot.rooms) rc++;
+    if (snapshot.characters) for (const _ in snapshot.characters) cc++;
+    sig = `${snapshot.version ?? 0}:${snapshot.roomOrder?.length ?? 0}:${rc}:${cc}`;
+    const cached = hostHeraldriesCache.get(snapshot);
+    if (cached && cached.sig === sig) return cached.list;
+    if (cached) snapshotAssignmentCache.delete(snapshot);
+  }
   const seen = new Set<string>();
   const result: ProjectHeraldryDescriptor[] = [];
   for (const p of collectCanonicalHostProjects(snapshot)) {
-    const h = resolveProjectHeraldry(
-      { roomId: p.projectRoot, locationDirectory: p.projectRoot, projectName: p.projectName },
-      snapshot,
-    );
+    const h = resolveProjectHeraldry({ roomId: p.projectRoot, locationDirectory: p.projectRoot, projectName: p.projectName }, snapshot);
     const key = h.projectId.toLowerCase();
-    if (!seen.has(key)) {
-      seen.add(key);
-      result.push(h);
-    }
+    if (!seen.has(key)) { seen.add(key); result.push(h); }
   }
-  return result;
+  const frozen = Object.freeze(result);
+  if (snapshot) hostHeraldriesCache.set(snapshot, { sig, list: frozen });
+  return frozen;
 }
 
 export function selectVisibleHostCharacters(

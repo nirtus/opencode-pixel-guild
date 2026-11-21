@@ -283,6 +283,7 @@ export interface ActivityTickerBuildOptions {
 
 export type ActivityTickerInputItem =
   | GuildStateEmission
+  | { readonly delta: GuildDelta }
   | GuildDelta
   | ActivityTickerEntryViewModel
   | {

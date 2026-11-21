@@ -342,6 +342,14 @@ export async function hydrateSessionMessages(
   };
 }
 
+export function isPendingQuestionCompletedByTools(
+  pq: SessionMessageHydration["pendingQuestion"],
+  recentTools: readonly ToolExecutionRecord[] | undefined,
+): boolean {
+  if (!pq || !recentTools?.length || pq.source === "conversational") return false;
+  return recentTools.some((t) => t.status === "completed" && t.callId === pq.gateId);
+}
+
 export function buildHydratedSessionEvents(
   hydrated: SessionMessageHydration,
   sessionId: string,
@@ -351,7 +359,7 @@ export function buildHydratedSessionEvents(
 ): TelemetryEvent[] {
   const now = Date.now();
   const pq = hydrated.pendingQuestion;
-  const pqDone = Boolean(pq && hydrated.recentTools?.some((t) => t.status === "completed" && (t.callId === pq.gateId || t.toolName.trim().toLowerCase() === "question")));
+  const pqDone = isPendingQuestionCompletedByTools(pq, hydrated.recentTools);
   const lastRole = hydrated.messages?.at(-1)?.role;
   const events: TelemetryEvent[] = [];
   if ((!pq || pqDone || lastRole === "user") && existingQuestionGateId) {

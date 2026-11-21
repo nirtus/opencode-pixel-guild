@@ -116,10 +116,15 @@ export function settleCharacterQuestGate(
       delete state.questGates[gid];
     }
   }
-  for (const rec of char.recentTools) {
-    if ((gateId && rec.callId === gateId) || rec.toolName.trim().toLowerCase() === "question") {
-      if (rec.status === "running") rec.status = "completed";
-      recordResolvedQuestGate(state, rec.callId);
+  const isConversationalOnly =
+    char.questGate?.source === "conversational" &&
+    (!options?.explicitGateId || options.explicitGateId === char.questGate.gateId);
+  if (!isConversationalOnly) {
+    for (const rec of char.recentTools) {
+      if ((gateId && rec.callId === gateId) || rec.toolName.trim().toLowerCase() === "question") {
+        if (rec.status === "running") rec.status = "completed";
+        recordResolvedQuestGate(state, rec.callId);
+      }
     }
   }
   if (options?.clearLastAssistantText) {

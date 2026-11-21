@@ -1,72 +1,25 @@
 import type { CharacterState } from "../types/domain.ts";
-import { clientState, type WalkerState } from "./client-state.ts";
 import {
-  allocateStationPerimeterSlot,
-  PENTAGRAM_CENTER,
-  type ResolvedCharacterSlot,
-  resolveToolRecordTargetSlot,
-} from "./station-and-workflow-routing.ts";
+  allocateNextWalkerActionSeq,
+  buildCharacterActionSyncKey,
+  EPOCH_MS_THRESHOLD,
+  getHighestActionTimestampMs,
+  isIdleDestinationSlot,
+  pruneWalkerSeenToolCallIds,
+  resolveToolRecordTimestampMs,
+  sortCharacterActionQueue,
+  stampCharacterActionSlot,
+} from "./action-queue-sync-key.ts";
+import { clientState, type WalkerState } from "./client-state.ts";
+import { allocateStationPerimeterSlot, PENTAGRAM_CENTER, type ResolvedCharacterSlot, resolveToolRecordTargetSlot } from "./station-and-workflow-routing.ts";
 
-export function isIdleDestinationSlot(slot: Pick<ResolvedCharacterSlot, "station" | "overheadLabel">): boolean {
-  return slot.station === "Lounge" || slot.overheadLabel === "Despawning";
-}
-
-export function allocateNextWalkerActionSeq(walker: WalkerState): number {
-  const next = (walker.actionSequenceCounter ?? 0) + 1;
-  walker.actionSequenceCounter = next;
-  return next;
-}
-
-export function stampCharacterActionSlot(walker: WalkerState, slot: ResolvedCharacterSlot, timestampMs: number, actionId?: string): ResolvedCharacterSlot {
-  if (typeof slot.timestampMs !== "number" || !Number.isFinite(slot.timestampMs)) slot.timestampMs = timestampMs;
-  if (typeof slot.sequenceOrder !== "number" || !Number.isFinite(slot.sequenceOrder)) slot.sequenceOrder = allocateNextWalkerActionSeq(walker);
-  if (actionId && !slot.actionId) slot.actionId = actionId;
-  return slot;
-}
-
-export function resolveToolRecordTimestampMs(rec: NonNullable<CharacterState["recentTools"]>[number], fallbackTs: number): { timestampMs: number; hasExplicitTimestamp: boolean } {
-  const started = (rec as { startedAtMs?: number }).startedAtMs;
-  if (typeof started === "number" && Number.isFinite(started) && started > 0) return { timestampMs: started, hasExplicitTimestamp: true };
-  if (typeof rec.timestampMs === "number" && Number.isFinite(rec.timestampMs) && rec.timestampMs > 0) return { timestampMs: rec.timestampMs, hasExplicitTimestamp: true };
-  return { timestampMs: fallbackTs, hasExplicitTimestamp: false };
-}
-
-const EPOCH_MS_THRESHOLD = 1_000_000_000_000;
-
-export function sortCharacterActionQueue(queue: ResolvedCharacterSlot[], walker?: WalkerState, fallbackNowMs = 0): void {
-  for (let i = 0; i < queue.length; i++) {
-    const item = queue[i];
-    if (typeof item.timestampMs !== "number" || !Number.isFinite(item.timestampMs)) item.timestampMs = fallbackNowMs + i;
-    if (typeof item.sequenceOrder !== "number" || !Number.isFinite(item.sequenceOrder)) {
-      item.sequenceOrder = walker ? allocateNextWalkerActionSeq(walker) : i + 1;
-    }
-  }
-  queue.sort((a, b) => {
-    const idleA = isIdleDestinationSlot(a);
-    const idleB = isIdleDestinationSlot(b);
-    if (idleA !== idleB) return idleA ? 1 : -1;
-    const tsA = a.timestampMs ?? 0;
-    const tsB = b.timestampMs ?? 0;
-    const isCrossDomain =
-      (tsA >= EPOCH_MS_THRESHOLD && tsB > 0 && tsB < EPOCH_MS_THRESHOLD) ||
-      (tsB >= EPOCH_MS_THRESHOLD && tsA > 0 && tsA < EPOCH_MS_THRESHOLD);
-    if (!isCrossDomain) {
-      const tsDiff = tsA - tsB;
-      if (tsDiff !== 0) return tsDiff;
-    }
-    return (a.sequenceOrder ?? 0) - (b.sequenceOrder ?? 0);
-  });
-}
-
-function getHighestActionTimestampMs(queue: ResolvedCharacterSlot[], resolvedSlot?: ResolvedCharacterSlot): number {
-  let maxTs = typeof resolvedSlot?.timestampMs === "number" && Number.isFinite(resolvedSlot.timestampMs) ? resolvedSlot.timestampMs : 0;
-  for (const item of queue) {
-    if (typeof item.timestampMs === "number" && Number.isFinite(item.timestampMs) && item.timestampMs > maxTs) {
-      maxTs = item.timestampMs;
-    }
-  }
-  return maxTs;
-}
+export {
+  allocateNextWalkerActionSeq,
+  isIdleDestinationSlot,
+  resolveToolRecordTimestampMs,
+  sortCharacterActionQueue,
+  stampCharacterActionSlot,
+};
 
 function updateSlotMetadataInPlace(target: ResolvedCharacterSlot, candidate: ResolvedCharacterSlot, character: CharacterState, updateCoordinates: boolean): void {
   target.overheadLabel = candidate.overheadLabel; target.questMarker = candidate.questMarker;
@@ -85,6 +38,10 @@ export function enqueueCharacterActions(
   hasActiveRoomBug: boolean,
   nowMs: number,
 ): void {
+  const snapVer = clientState.currentSnapshot.version;
+  const snapTs = clientState.currentSnapshot.timestampMs;
+  const syncKey = buildCharacterActionSyncKey(c, walker, slot, hasActiveRoomBug, snapVer, snapTs);
+  if (syncKey !== null && walker.lastActionSyncKey === syncKey) return;
   const queue = walker.slotQueue ?? (walker.slotQueue = []);
   const seenCalls = walker.seenToolCallIds ?? (walker.seenToolCallIds = new Set<string>());
   const recentToolTs =
@@ -96,11 +53,13 @@ export function enqueueCharacterActions(
   const actionNowMs = nowMs < EPOCH_MS_THRESHOLD && usesEpochClock ? Date.now() : nowMs;
   if (slot.overheadLabel === "Despawning") {
     for (const rec of c.recentTools ?? []) if (rec?.callId) seenCalls.add(rec.callId);
+    pruneWalkerSeenToolCallIds(seenCalls, c.recentTools);
     queue.length = 0;
     walker.dwellUntilMs = 0;
     if (walker.resolvedSlot?.overheadLabel !== "Despawning") {
       queue.push(stampCharacterActionSlot(walker, { ...slot }, actionNowMs));
     }
+    walker.lastActionSyncKey = buildCharacterActionSyncKey(c, walker, slot, hasActiveRoomBug, snapVer, snapTs) ?? undefined;
     return;
   }
   if (walker.resolvedSlot) stampCharacterActionSlot(walker, walker.resolvedSlot, c.stateEnteredAtMs || actionNowMs);
@@ -172,6 +131,7 @@ export function enqueueCharacterActions(
       seq: rec.sequenceOrder, chronIdx: recent.length - 1 - i, isNewestInRecent: i === 0,
     });
   }
+  pruneWalkerSeenToolCallIds(seenCalls, recent);
 
   unseenTools.sort((a, b) => {
     if (a.hasExplicitTs && b.hasExplicitTs && a.ts !== b.ts) return a.ts - b.ts;
@@ -239,6 +199,7 @@ export function enqueueCharacterActions(
   }
 
   sortCharacterActionQueue(queue, walker, actionNowMs);
+  walker.lastActionSyncKey = buildCharacterActionSyncKey(c, walker, slot, hasActiveRoomBug, snapVer, snapTs) ?? undefined;
 }
 
 function isParentAtSummoningStation(parentId: string, nowMs: number): boolean {
