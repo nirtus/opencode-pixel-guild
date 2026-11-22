@@ -158,11 +158,12 @@ export async function executeDaemonCommand(
         const parsed = await response.json().catch(() => null);
         const items: Array<Record<string, any>> = Array.isArray(parsed?.data) ? parsed.data : Array.isArray(parsed) ? parsed : [];
         const match =
-          (gateId ? items.find((it) => it && (it.id === gateId || it.gateId === gateId || it.metadata?.tool?.id === gateId)) : undefined) ??
+          (gateId ? items.find((it) => it && (it.id === gateId || it.gateId === gateId || it.metadata?.tool?.id === gateId || it.tool?.callID === gateId)) : undefined) ??
           items.find((it) => it && (!(it.sessionID ?? it.sessionId) || (it.sessionID ?? it.sessionId) === sessionId));
         const resolvedId = match?.id ?? match?.gateId;
+        const resolvedFields = Array.isArray(match?.fields) ? match.fields : Array.isArray(match?.questions) ? match.questions : undefined;
         if (typeof resolvedId === "string" && resolvedId.trim()) {
-          return { id: resolvedId.trim(), fields: Array.isArray(match?.fields) ? match.fields : undefined };
+          return { id: resolvedId.trim(), fields: resolvedFields };
         }
       } catch {
         // try next path
@@ -315,7 +316,10 @@ export async function executeDaemonCommand(
         if (cmd.kind === "permission" || cmd.source === "permission") {
           await postJson(`/api/session/${encSid}/permission/${encodeURIComponent(cmd.gateId)}/reply${query}`, { decision: "reject" }).catch(() => null);
         } else if (cmd.source === "form") {
-          await postJson(`/api/session/${encSid}/form/${encodeURIComponent(cmd.gateId)}/reject${query}`, {}).catch(() => null);
+          const rejectPath = cmd.gateId.startsWith("que_")
+            ? `/api/question/${encodeURIComponent(cmd.gateId)}/reject${query}`
+            : `/api/session/${encSid}/form/${encodeURIComponent(cmd.gateId)}/reject${query}`;
+          await postJson(rejectPath, {}).catch(() => null);
         }
         return { ok: true, sessionId: cmd.sessionId };
       }
@@ -344,19 +348,26 @@ export async function executeDaemonCommand(
 
       if (cmd.source === "form") {
         let res: { ok: boolean; status: number; raw: Record<string, any> | null } = { ok: false, status: 404, raw: null };
-        const hasDirectFormId = cmd.gateId.startsWith("frm_") || cmd.gateId.startsWith("form_");
+        const hasDirectFormId = cmd.gateId.startsWith("que_") || cmd.gateId.startsWith("frm_") || cmd.gateId.startsWith("form_");
+        const postFormOrQuestionReply = (targetId: string, ansObj: Record<string, unknown>) => {
+          const isQue = targetId.startsWith("que_");
+          const path = isQue
+            ? `/api/question/${encodeURIComponent(targetId)}/reply${query}`
+            : `/api/session/${encSid}/form/${encodeURIComponent(targetId)}/reply${query}`;
+          const body = isQue
+            ? { answers: Object.values(ansObj).map((v) => (Array.isArray(v) ? v.map(String) : [String(v ?? "")])), answer: ansObj }
+            : { answer: ansObj };
+          return postJson(path, body);
+        };
         if (hasDirectFormId && Object.keys(cmd.answers ?? {}).length > 0) {
-          res = await postJson(
-            `/api/session/${encSid}/form/${encodeURIComponent(cmd.gateId)}/reply${query}`,
-            { answer: cmd.answers ?? {} },
-          );
+          res = await postFormOrQuestionReply(cmd.gateId, cmd.answers ?? {});
         }
         if (!res.ok) {
-          const foundForm = await lookupSessionGate([`/api/session/${encSid}/form`, "/api/form"], cmd.sessionId, cmd.gateId);
+          const foundForm = await lookupSessionGate([`/api/session/${encSid}/form`, "/api/form", "/api/question"], cmd.sessionId, cmd.gateId);
           if (res.status === 409 && (!foundForm || foundForm.id === cmd.gateId)) return { ok: true, sessionId: cmd.sessionId };
           if (foundForm) {
             const coercedAnswer = buildCoercedFormAnswer(cmd.answers, foundForm.fields, cmd.promptText);
-            res = await postJson(`/api/session/${encSid}/form/${encodeURIComponent(foundForm.id)}/reply${query}`, { answer: coercedAnswer });
+            res = await postFormOrQuestionReply(foundForm.id, coercedAnswer);
             const settledOk = res.ok || res.status === 409;
             return { ok: settledOk, sessionId: cmd.sessionId, ...(settledOk ? {} : { error: `HTTP ${res.status}` }) };
           }

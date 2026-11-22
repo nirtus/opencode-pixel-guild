@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { normalizeLocationDirectory, resolveLocalProjectDir } from "../state/location-normalization.ts";
 import type { ProjectTaskItem, ProjectTaskProgress } from "../types/domain.ts";
+import { getActiveGitCacheScope } from "./git-status-cache.ts";
 import { runGit } from "./git-status-scanner.ts";
 import { scanGitStatusSync } from "./git-working-tree.ts";
 
@@ -21,14 +22,15 @@ export function invalidateTaskProgressCache(projectDir?: string): void {
     taskProgressCache.clear();
     return;
   }
+  const scope = getActiveGitCacheScope();
   const prefixes = new Set<string>([
-    `${projectDir}::`,
-    `${normalizeLocationDirectory(projectDir)}::`,
+    `${scope}::${projectDir}::`,
+    `${scope}::${normalizeLocationDirectory(projectDir)}::`,
   ]);
   const resolved = resolveLocalProjectDir(projectDir, existsSync);
   if (resolved) {
-    prefixes.add(`${resolved}::`);
-    prefixes.add(`${normalizeLocationDirectory(resolved)}::`);
+    prefixes.add(`${scope}::${resolved}::`);
+    prefixes.add(`${scope}::${normalizeLocationDirectory(resolved)}::`);
   }
   for (const key of taskProgressCache.keys()) {
     for (const prefix of prefixes) {
@@ -283,7 +285,7 @@ export function deriveProjectTaskProgress(
   projectDir: string,
 ): ProjectTaskProgress {
   const normDir = normalizeLocationDirectory(projectDir);
-  const cacheKey = `${normDir}::direct`;
+  const cacheKey = `${getActiveGitCacheScope()}::${normDir}::direct`;
   const cached = taskProgressCache.get(cacheKey);
   if (cached && Date.now() - cached.atMs < 30_000) {
     return cached.value;

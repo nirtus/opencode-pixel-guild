@@ -87,13 +87,18 @@ function resetClientWorldViewState(clearSelection = false): void {
   }
 }
 
-async function refreshSnapshotAndRender(modal: HTMLElement | null, onStateChanged: () => void, fetchImpl?: typeof fetch): Promise<void> {
-  const fn = fetchImpl ?? (typeof fetch === "function" ? fetch : undefined);
-  if (fn) {
-    try { const snapRes = await fn("/api/guild/snapshot", { headers: getOperatorHeaders() }); if (snapRes.ok) applyAuthoritativeSnapshot(await snapRes.json(), { allowVersionReset: true }); } catch { /* ignore */ }
+async function refreshSnapshotAndRender(
+  modal: HTMLElement | null, onStateChanged: () => void, fetchImpl?: typeof fetch,
+  opts?: { inlineSnapshot?: unknown; preserveEventStream?: boolean },
+): Promise<void> {
+  if (opts?.inlineSnapshot && typeof opts.inlineSnapshot === "object") {
+    applyAuthoritativeSnapshot(opts.inlineSnapshot as typeof clientState.currentSnapshot, { allowVersionReset: true });
+  } else {
+    const fn = fetchImpl ?? (typeof fetch === "function" ? fetch : undefined);
+    if (fn) { try { const snapRes = await fn("/api/guild/snapshot", { headers: getOperatorHeaders() }); if (snapRes.ok) applyAuthoritativeSnapshot(await snapRes.json(), { allowVersionReset: true }); } catch { /* ignore */ } }
   }
   resetSidePanelSignatures(); syncAuthLockDom();
-  if (typeof window !== "undefined") window.dispatchEvent(new Event("guild-operator-changed"));
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(opts?.preserveEventStream ? "guild-machine-changed" : "guild-operator-changed"));
   if (modal) mountModalInnerDom(modal, onStateChanged);
   onStateChanged();
 }
@@ -127,7 +132,14 @@ export async function dispatchOperatorModalAction(
   }
   profileMutationEpoch += 1;
   setPendingOperatorAction(fields.machineId ? `${action}:${fields.machineId}` : action);
-  if (action === "activate-machine" || action === "pair-machine" || action === "pair-local-machine") setExpectedMachineDaemonUrl(null);
+  if (action === "activate-machine") {
+    const targetMachine = cachedProfile?.pairedMachines?.find((m) => m.machineId === fields.machineId);
+    setExpectedMachineDaemonUrl(targetMachine?.daemonUrl ?? null);
+    onStateChanged();
+  } else if (action === "pair-machine" || action === "pair-local-machine") {
+    setExpectedMachineDaemonUrl(null);
+    onStateChanged();
+  }
   try {
     if (action === "login" || action === "register") {
       const endpoint = action === "login" ? "/api/guild/auth/login" : "/api/guild/auth/register";
@@ -167,11 +179,12 @@ export async function dispatchOperatorModalAction(
       const payload = await res.json();
       profileMutationEpoch += 1;
       if (res.ok && payload?.operatorId) {
-        cachedProfile = payload; isAuthLocked = false; setSavedOperatorId(payload.operatorId);
-        if (payload.daemonUrl) setExpectedMachineDaemonUrl(payload.daemonUrl);
+        const { snapshot: inlineSnapshot, ...profileOnly } = payload;
+        cachedProfile = profileOnly; isAuthLocked = false; setSavedOperatorId(profileOnly.operatorId);
+        if (profileOnly.daemonUrl) setExpectedMachineDaemonUrl(profileOnly.daemonUrl);
         resetClientWorldViewState(true);
-        statusMessageText = `✅ Step 2 Complete! Paired '${label}' (${formatPublicSafeEndpoint(payload.daemonUrl || daemonUrl.replace(/\/auth\/connect\/.*/, ""))})`;
-        await refreshSnapshotAndRender(modal, onStateChanged, fn);
+        statusMessageText = `✅ Step 2 Complete! Paired '${label}' (${formatPublicSafeEndpoint(profileOnly.daemonUrl || daemonUrl.replace(/\/auth\/connect\/.*/, ""))})`;
+        await refreshSnapshotAndRender(modal, onStateChanged, fn, { inlineSnapshot, preserveEventStream: true });
       } else { statusMessageText = `⚠️ ${payload?.error || "Failed to pair machine"}`; if (modal) mountModalInnerDom(modal, onStateChanged); }
       return;
     }
@@ -185,50 +198,30 @@ export async function dispatchOperatorModalAction(
       const payload = await res.json();
       profileMutationEpoch += 1;
       if (res.ok) {
-        cachedProfile = payload; if (isActivate && payload?.daemonUrl) setExpectedMachineDaemonUrl(payload.daemonUrl);
+        const { snapshot: inlineSnapshot, ...profileOnly } = payload;
+        cachedProfile = profileOnly; if (isActivate && profileOnly?.daemonUrl) setExpectedMachineDaemonUrl(profileOnly.daemonUrl);
         resetClientWorldViewState(true);
         statusMessageText = isActivate ? "✅ Switched active OpenCode machine" : "🗑 Removed OpenCode machine pairing";
-        await refreshSnapshotAndRender(modal, onStateChanged, fn);
+        await refreshSnapshotAndRender(modal, onStateChanged, fn, { inlineSnapshot, preserveEventStream: true });
       } else { statusMessageText = `⚠️ ${payload?.error || "Failed to update machine"}`; if (modal) mountModalInnerDom(modal, onStateChanged); }
       return;
     }
     if (action === "save-profile") {
-      const username = (fields.username || "").trim();
-      const label = (fields.label || "").trim();
-      const password = (fields.password || "").trim();
-      const res = await fn("/api/guild/users/me", {
-        method: "PATCH", headers: getOperatorHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ username, label, ...(password ? { password } : {}) }),
-      });
+      const username = (fields.username || "").trim(), label = (fields.label || "").trim(), password = (fields.password || "").trim();
+      const res = await fn("/api/guild/users/me", { method: "PATCH", headers: getOperatorHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ username, label, ...(password ? { password } : {}) }) });
       const payload = await res.json();
       profileMutationEpoch += 1;
-      if (res.ok) {
-        cachedProfile = payload; statusMessageText = "✅ Profile settings saved";
-        await refreshSnapshotAndRender(modal, onStateChanged, fn);
-      } else {
-        statusMessageText = `⚠️ ${payload?.error || "Failed to save profile"}`;
-        if (modal) mountModalInnerDom(modal, onStateChanged);
-      }
+      if (res.ok) { cachedProfile = payload; statusMessageText = "✅ Profile settings saved"; await refreshSnapshotAndRender(modal, onStateChanged, fn); }
+      else { statusMessageText = `⚠️ ${payload?.error || "Failed to save profile"}`; if (modal) mountModalInnerDom(modal, onStateChanged); }
       return;
     }
     if (action === "logout" || action === "delete-account") {
-      if (action === "logout") {
-        await fn("/api/guild/auth/logout", { method: "POST" });
-        statusMessageText = "Signed out — register or sign in to access your workspace";
-      } else {
-        await fn("/api/guild/users/me", { method: "DELETE", headers: getOperatorHeaders() });
-        statusMessageText = "🗑 Account deleted";
-      }
-      profileMutationEpoch += 1;
-      setSavedOperatorId(null);
-      getBrowserStorage()?.removeItem?.(UI_WINDOW_STATE_STORAGE_KEY);
-      cachedProfile = null;
-      isAuthLocked = true;
-      activeModalTab = "register";
-      resetClientWorldViewState(true);
+      if (action === "logout") { await fn("/api/guild/auth/logout", { method: "POST" }); statusMessageText = "Signed out — register or sign in to access your workspace"; }
+      else { await fn("/api/guild/users/me", { method: "DELETE", headers: getOperatorHeaders() }); statusMessageText = "🗑 Account deleted"; }
+      profileMutationEpoch += 1; setSavedOperatorId(null); getBrowserStorage()?.removeItem?.(UI_WINDOW_STATE_STORAGE_KEY);
+      cachedProfile = null; isAuthLocked = true; activeModalTab = "register"; resetClientWorldViewState(true);
       applyAuthoritativeSnapshot({
-        ...clientState.currentSnapshot,
-        daemonUrl: null, roomOrder: [], rooms: {}, characters: {}, questGates: {},
+        ...clientState.currentSnapshot, daemonUrl: null, roomOrder: [], rooms: {}, characters: {}, questGates: {},
         summary: { totalRooms: 0, activeAdventurers: 0, activeSubagents: 0, openQuestGates: 0, equippedGrimoires: 0, connectedPlugins: 0 },
       }, { allowVersionReset: true });
       await refreshSnapshotAndRender(modal, onStateChanged, fn);

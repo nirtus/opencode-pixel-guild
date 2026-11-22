@@ -250,9 +250,18 @@ export function handleSessionStatus(state: InternalWorldStoreState, event: Extra
     collector.deltaSessionId = char.sessionId; collector.deltaRoomId = char.roomId;
     return;
   }
+  const isSameStepFormGate =
+    char.questGate?.source === "form" && event.timestampMs - char.questGate.openedAtMs < 300;
+  if ((event.status === "thinking" || event.status === "working") && isSameStepFormGate) {
+    char.lifecycleState = "BlockedAtQuestGate";
+    syncCharacterWorkflow(char); bumpCharacterRevision(state, char.characterId);
+    collector.changedCharacterIds.add(char.characterId); collector.changedRoomIds.add(char.roomId);
+    collector.deltaSessionId = char.sessionId; collector.deltaRoomId = char.roomId;
+    return;
+  }
   if (event.status === "thinking" || event.status === "working") {
     if (char.questGate) {
-      settleCharacterQuestGate(state, char, { clearLastAssistantText: char.questGate.kind === "question" });
+      settleCharacterQuestGate(state, char, { clearLastAssistantText: char.questGate.kind === "question", skipRecordResolution: true });
     }
     char.hasUnviewedResult = false; char.isOpenInOpenCode = true; char.reportScroll = null; char.idleAtMs = undefined;
     const p = char.parentId ? state.characters[char.parentId] : undefined;

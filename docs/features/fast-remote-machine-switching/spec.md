@@ -1,7 +1,9 @@
 # Specification: Fast Paired Remote OpenCode Machine Switching & Progressive Hydration
 
 Label: ready-for-agent
-Status: open
+Status: resolved
+
+![Fast Paired Remote OpenCode Machine Switching Verification](../../images/fast-remote-machine-switching.png)
 
 ## 1. Plain-Language Problem Summary
 

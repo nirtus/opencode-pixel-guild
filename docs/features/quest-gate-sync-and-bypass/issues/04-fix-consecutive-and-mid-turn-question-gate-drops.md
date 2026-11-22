@@ -2,7 +2,7 @@
 
 Type: bug
 Label: ready-for-agent
-Status: open
+Status: resolved
 Blocked by: none
 
 ## Context
@@ -67,3 +67,11 @@ Diagnosis (`@diagnosing-bugs`) identified five interacting root causes:
      3. Same-turn `session.status: { type: "busy" }` / `session.step.streamed` arriving right after `tool.started (question)` or `question.asked`.
    - Keep all files under `src/` strictly `<= 400` lines (`tests/00-architecture-invariants.test.ts`).
    - Deploy to `opencode-pixel-guild-visualizer` on port `4310` (`npm run docker:up`), run `npm test`, and capture visual proof.
+
+## Answer
+
+- Scoped `recentTools` question completion checks in `src/state/reducer-helpers.ts`, `src/ingress/daemon-message-hydration.ts` (`isPendingQuestionCompletedByTools`), and `src/server/session-hydration-diff.ts` so historical completed `question` tool calls in `recentTools` never kill subsequent (2nd+) `question` tool or conversational Question Gates, and tool-only assistant turns (where `hydrated.messages.at(-1).role === "user"`) are never treated as user-superseded when `pq.source !== "conversational"`.
+- Filtered generic placeholder strings (`"Awaiting user answer"`, `"Waiting for User Input"`, `"Question Prompt"`, `"{}"`, etc.) out of `recordResolvedQuestionReason`, `isQuestionReasonAlreadyResolved`, and `buildQuestionToolQuestGate` (`src/state/quest-gate-handlers.ts`), and suppressed premature empty-input `status: "pending"` `question` tool frames in `src/ingress/daemon-sse-mapper.ts`.
+- Passed `skipRecordReason: true` when `handleSessionStatus` clears `char.questGate` on `"thinking"` / `"working"` (`src/state/session-handlers.ts`) and scoped `settleCharacterQuestGate` (`src/state/quest-gate-handlers.ts`) so conversational gate settlement never mutates or blacklists `"running"` `question` tools in `char.recentTools` and mid-turn `"thinking"` (`busy`) frames never poison `resolvedGateIdsByState` or `resolvedQuestionReasonsByState` before `session.idle`.
+- Aligned `hydrateSessionMessages` (`src/ingress/daemon-message-hydration.ts`) to prefer `part.callID ?? part.id` (matching `daemon-sse-mapper.ts`) and added OpenCode V2 `/api/question` polling and `/api/question/:id/reply` / `/reject` support alongside `/api/form` in `src/ingress/daemon-location-state.ts` and `src/ingress/daemon-command-ops.ts`.
+- Added unit and integration regression tests (Tests 8, 9, and 10) in `tests/51-quest-gate-sync-and-bypass.test.ts` and verified on the live Docker container (`opencode-pixel-guild-visualizer` on port `4310`).

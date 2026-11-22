@@ -1,15 +1,22 @@
 import { normalizeLocationDirectory, toDaemonDirectoryPath } from "../state/world-reducer.ts";
 import { mergeQuestGateFields, normalizeQuestGateFields, type QuestGateSource, type SessionTokenTelemetry } from "../types/domain.ts";
 import type { OpenCodeDaemonLocationPayload } from "./daemon-types.ts";
-import { hydrateSessionMessages, type SessionMessageHydration } from "./daemon-message-hydration.ts";
 import {
   fetchOpenTuiSessionIds, mapDaemonSessionTokens, mergeDaemonPluginsAndMcps, normalizeDaemonModels,
   type RawDaemonMcpResponse, type RawDaemonModelItem, type RawDaemonPluginItem,
 } from "./daemon-mcp-normalizer.ts";
+import {
+  evictIdleMessageHydrationCache,
+  type LocationHydrationMode,
+  runBoundedSessionHydrations,
+  selectSessionsForHydration,
+} from "./session-hydration-planner.ts";
+
+export { evictIdleMessageHydrationCache };
 
 const TEN_MINUTES_MS = 600_000;
 const ONE_DAY_MS = 86_400_000;
-const STATIC_CATALOG_TTL_MS = 60_000;
+const STATIC_CATALOG_TTL_MS = 300_000;
 
 interface CachedStaticCatalog {
   expiresAtMs: number;
@@ -21,13 +28,6 @@ interface CachedStaticCatalog {
 }
 
 const staticCatalogCache = new Map<string, CachedStaticCatalog>();
-const idleMessageHydrationCache = new Map<string, { updatedAtMs: number; hydration: SessionMessageHydration }>();
-
-export function evictIdleMessageHydrationCache(sessionId?: string): void {
-  if (!sessionId) { idleMessageHydrationCache.clear(); return; }
-  const suffix = `::${sessionId}`;
-  for (const key of idleMessageHydrationCache.keys()) if (key.endsWith(suffix)) idleMessageHydrationCache.delete(key);
-}
 
 interface RawDaemonSessionItem {
   id?: string; sessionId?: string; parentID?: string | null; parentId?: string | null;
@@ -66,7 +66,9 @@ export async function fetchDaemonLocationState(
   _headers: Record<string, string>,
   fetchJson: <T>(path: string, extraHeaders?: Record<string, string>) => Promise<T | null>,
   directory: string,
+  options?: { hydrationMode?: LocationHydrationMode; signal?: AbortSignal },
 ): Promise<OpenCodeDaemonLocationPayload> {
+  const hydrationMode: LocationHydrationMode = options?.hydrationMode ?? "full";
   const daemonDir = toDaemonDirectoryPath(directory);
   const locHeaders = { "x-opencode-directory": daemonDir };
   const query = `?location[directory]=${encodeURIComponent(daemonDir)}`;
@@ -89,7 +91,7 @@ export async function fetchDaemonLocationState(
     }
   }
 
-  const [fetchedSkills, fetchedPlugins, fetchedMcps, fetchedAgents, fetchedRawModels, rawSessions, rawRootSessions, activeSessions, permissions, forms, openTuiSessionIds] =
+  const [fetchedSkills, fetchedPlugins, fetchedMcps, fetchedAgents, fetchedRawModels, rawSessions, activeSessions, permissions, forms, questions, openTuiSessionIds] =
     await Promise.all([
       hasValidCache ? Promise.resolve(cachedCatalog?.skills ?? null) : fetchJson<Array<{ id: string; name?: string; description?: string }>>(`/api/skill${query}`, locHeaders),
       hasValidCache ? Promise.resolve(cachedCatalog?.plugins ?? null) : fetchJson<RawDaemonPluginItem[]>(`/api/plugin${query}`, locHeaders),
@@ -97,12 +99,16 @@ export async function fetchDaemonLocationState(
       hasValidCache ? Promise.resolve(cachedCatalog?.agents ?? null) : fetchJson<Array<{ id?: string; name?: string; color?: string; mode?: string; hidden?: boolean; disabled?: boolean; description?: string }>>(`/api/agent${query}`, locHeaders),
       hasValidCache ? Promise.resolve(cachedCatalog?.rawModels ?? null) : fetchJson<RawDaemonModelItem[]>(`/api/model${query}`, locHeaders),
       fetchJson<RawDaemonSessionItem[]>(`/api/session${sessionQuery}&limit=200`, locHeaders),
-      fetchJson<RawDaemonSessionItem[]>(`/api/session${sessionQuery}&parentID=null&limit=100`, locHeaders),
       fetchJson<Array<string | { id?: string; sessionId?: string }> | Record<string, { type?: string; status?: string }>>(`/api/session/active${query}`, locHeaders),
       isWorktreeOrRoot ? Promise.resolve(null) : fetchJson<RawDaemonGateItem[]>(`/api/permission/request${query}`, locHeaders),
       isWorktreeOrRoot ? Promise.resolve(null) : fetchJson<RawDaemonGateItem[]>(`/api/form${query}`, locHeaders),
-      fetchOpenTuiSessionIds(fetchJson, daemonDir),
+      isWorktreeOrRoot ? Promise.resolve(null) : fetchJson<RawDaemonGateItem[]>(`/api/question${query}`, locHeaders),
+      fetchOpenTuiSessionIds(fetchJson, daemonDir, rootUrl),
     ]);
+  const rawRootSessions =
+    Array.isArray(rawSessions) && rawSessions.length >= 100
+      ? await fetchJson<RawDaemonSessionItem[]>(`/api/session${sessionQuery}&parentID=null&limit=100`, locHeaders)
+      : null;
 
   const skills = fetchedSkills ?? cachedCatalog?.skills ?? hostCatalog?.skills ?? null;
   const plugins = fetchedPlugins ?? cachedCatalog?.plugins ?? hostCatalog?.plugins ?? null;
@@ -223,20 +229,26 @@ export async function fetchDaemonLocationState(
     }))
     .filter((p) => Boolean(p.gateId && p.sessionId));
 
-  const rawFormList = Array.isArray(forms) ? forms : Array.isArray((forms as any)?.data) ? (forms as any).data : [];
+  const rawFormItems = Array.isArray(forms) ? forms : Array.isArray((forms as any)?.data) ? (forms as any).data : [];
+  const rawQuestionItems = Array.isArray(questions) ? questions : Array.isArray((questions as any)?.data) ? (questions as any).data : [];
+  const rawFormList = [...rawFormItems, ...rawQuestionItems];
   const pendingQuestions = (rawFormList as RawDaemonGateItem[])
-    .map((q) => ({
-      gateId: q.gateId ?? q.id ?? "",
-      sessionId: q.sessionId ?? q.sessionID ?? "",
-      title: q.title ?? "Question Prompt",
-      reason:
-        q.reason ??
-        (Array.isArray(q.fields)
-          ? q.fields.map((fld) => fld.title ?? fld.description ?? fld.label ?? fld.key ?? "").filter(Boolean).join("; ")
-          : ""),
-      source: ((q as any).source ?? "form") as QuestGateSource,
-      fields: normalizeQuestGateFields((q as any).fields ?? (q as any).questions),
-    }))
+    .map((q) => {
+      const fields = normalizeQuestGateFields((q as any).fields ?? (q as any).questions);
+      const joinedQ = fields.map((f) => f.question.trim()).filter(Boolean).join("\n\n");
+      return {
+        gateId: q.gateId ?? q.id ?? (q as any).tool?.callID ?? "",
+        sessionId: q.sessionId ?? q.sessionID ?? "",
+        title: q.title ?? fields[0]?.header ?? "Question Prompt",
+        reason:
+          q.reason ??
+          (Array.isArray(q.fields)
+            ? q.fields.map((fld) => fld.title ?? fld.description ?? fld.label ?? fld.key ?? "").filter(Boolean).join("; ")
+            : joinedQ),
+        source: ((q as any).source ?? "form") as QuestGateSource,
+        fields,
+      };
+    })
     .filter((q) => Boolean(q.gateId && q.sessionId));
 
   const pendingGateSessionIds = new Set<string>([
@@ -249,51 +261,40 @@ export async function fetchDaemonLocationState(
     .sort((a, b) => (resolveSessionActivityMs(b) ?? 0) - (resolveSessionActivityMs(a) ?? 0));
 
   const mostRecentRootSessionId = sortedRootSessions[0]?.sessionId ?? sortedRootSessions[0]?.id ?? null;
-  const topRootSlice = sortedRootSessions.slice(0, 60).map((s) => s.sessionId ?? s.id).filter((id): id is string => Boolean(id));
-  const openTuiRootIds = sortedRootSessions
-    .filter((s) => { const sid = s.sessionId ?? s.id; return Boolean(sid && !s.archived && !s.time?.archived && openTuiSessionIds.has(sid)); })
-    .map((s) => (s.sessionId ?? s.id)!);
-  const unviewedRootIds = sortedRootSessions
-    .filter((s) => isUnviewedRootSession(s, activeIdSet))
-    .slice(0, 60)
-    .map((s) => s.sessionId ?? s.id)
-    .filter((id): id is string => Boolean(id));
-  const recentChildIds = isWorktreeOrRoot
-    ? []
-    : filteredRawSessions
-        .filter((s) => {
-          const pid = s.parentId ?? s.parentID ?? null;
-          return Boolean(pid && !isParentFinished(pid) && !s.archived && !s.time?.archived && !s.outcome && cacheNowMs - (resolveSessionActivityMs(s) ?? 0) < TEN_MINUTES_MS);
-        })
-        .slice(0, 30)
-        .map((s) => s.sessionId ?? s.id)
-        .filter((id): id is string => Boolean(id));
-  const hydrateSessionIds = new Set<string>([...activeIdSet, ...(isWorktreeOrRoot ? [] : [...topRootSlice, ...openTuiRootIds, ...unviewedRootIds, ...recentChildIds]), ...pendingGateSessionIds]);
+  const hydrateSessionIds = selectSessionsForHydration({
+    mode: hydrationMode,
+    isWorktreeOrRoot,
+    sortedRootSessions,
+    filteredRawSessions,
+    activeIdSet,
+    pendingGateSessionIds,
+    openTuiSessionIds,
+    cacheNowMs,
+    recentChildWindowMs: TEN_MINUTES_MS,
+    getId: (s) => s.sessionId ?? s.id,
+    getParentId: (s) => s.parentId ?? s.parentID ?? null,
+    isArchived: (s) => Boolean(s.archived || s.time?.archived),
+    hasOutcome: (s) => Boolean(s.outcome),
+    isParentFinished,
+    isUnviewedRoot: (s) => isUnviewedRootSession(s, activeIdSet),
+    getActivityMs: resolveSessionActivityMs,
+  });
 
-  const messageHydrationBySession = new Map<string, SessionMessageHydration>();
-  await Promise.all(
-    [...hydrateSessionIds].map(async (sessionId) => {
-      const sItem = filteredRawSessions.find((s) => (s.sessionId ?? s.id) === sessionId);
-      const sUpdatedAt = sItem ? resolveSessionActivityMs(sItem) ?? 1 : 1;
-      const cacheEntryKey = `${rootUrl}::${sessionId}`;
-      const isIdle = !activeIdSet.has(sessionId) && !pendingGateSessionIds.has(sessionId);
-      if (!isIdle && rootUrl) idleMessageHydrationCache.delete(cacheEntryKey);
-      if (isIdle && rootUrl) {
-        const cachedHyd = idleMessageHydrationCache.get(cacheEntryKey);
-        const cachedMsgs = cachedHyd?.hydration.messages ?? [];
-        const hasCompletedTurn = cachedMsgs.length > 0 && cachedMsgs[cachedMsgs.length - 1]?.role !== "user";
-        if (cachedHyd && cachedHyd.updatedAtMs === sUpdatedAt && hasCompletedTurn && !cachedHyd.hydration.pendingQuestion) {
-          messageHydrationBySession.set(sessionId, cachedHyd.hydration);
-          return;
-        }
-      }
-      const hydration = await hydrateSessionMessages(fetchJson, sessionId, query, locHeaders);
-      if (hydration !== null) {
-        messageHydrationBySession.set(sessionId, hydration);
-        if (isIdle && !hydration.pendingQuestion && rootUrl) idleMessageHydrationCache.set(cacheEntryKey, { updatedAtMs: sUpdatedAt, hydration });
-      }
-    }),
-  );
+  const messageHydrationBySession = await runBoundedSessionHydrations({
+    sessionIds: hydrateSessionIds,
+    rootUrl,
+    mode: hydrationMode,
+    activeIdSet,
+    pendingGateSessionIds,
+    getUpdatedAtMs: (sid) => {
+      const item = mergedRawSessionsMap.get(sid);
+      return item ? resolveSessionActivityMs(item) ?? 1 : 1;
+    },
+    fetchJson,
+    query,
+    locHeaders,
+    signal: options?.signal,
+  });
 
   const nowMs = Date.now();
   const hasAnyRecentlyOpenRoot = sortedRootSessions.some((rs) => {
@@ -388,7 +389,7 @@ export async function fetchDaemonLocationState(
     .filter((a): a is NonNullable<typeof a> => Boolean(a));
   return {
     skills: normalizedSkills, plugins: mergedPlugins, agents: normalizedAgents, models, activeSessionIds,
-    sessions: Array.isArray(rawSessions) && Array.isArray(rawRootSessions) ? sessions : sessions.length > 0 ? sessions : undefined,
+    sessions: Array.isArray(rawSessions) || Array.isArray(rawRootSessions) ? sessions : sessions.length > 0 ? sessions : undefined,
     pendingPermissions, pendingQuestions,
   };
 }

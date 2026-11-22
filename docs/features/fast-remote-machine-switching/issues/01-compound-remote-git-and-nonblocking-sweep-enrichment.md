@@ -2,7 +2,7 @@
 
 Type: task
 Label: ready-for-agent
-Status: open
+Status: resolved
 Blocked by: None (can start immediately)
 
 ## What to build
@@ -31,8 +31,12 @@ Eliminate the single largest remote machine-switching bottleneck (**R1** & **R6*
 
 ## Acceptance Criteria
 
-- [ ] `computeRemoteGitStatusAsync` executes **at most 1** `runShellCommand()` call for a dirty POSIX Git repository (down from 3–4) and **1** call for a non-Git directory (down from 2).
-- [ ] `executeDaemonShellCommand` uses adaptive poll backoff starting at `<= 50ms` and does not block return on `DELETE /api/shell/:id`.
-- [ ] `OpenCodeClientAdapter.start()` completes and emits rooms/characters **without blocking** on slow remote `scanGitStatusAsync()` calls; background `tasks.hydrated` updates arrive asynchronously and abort cleanly if `adapter.stop()` is called mid-scan.
-- [ ] Switching `Machine A → Machine B → Machine A` where both machines contain identical directory paths (e.g. `/home/dev/app`) never leaks Machine A's Git status or remote runner into Machine B, while keeping Machine A's cache warm on return.
-- [ ] `tests/54-paired-machine-switch-leak-prevention.test.ts` and `tests/00-architecture-invariants.test.ts` (all `src/**/*` `<= 400` lines) pass.
+- [x] `computeRemoteGitStatusAsync` executes **at most 1** `runShellCommand()` call for a dirty POSIX Git repository (down from 3–4) and **1** call for a non-Git directory (down from 2).
+- [x] `executeDaemonShellCommand` uses adaptive poll backoff starting at `<= 50ms` and does not block return on `DELETE /api/shell/:id`.
+- [x] `OpenCodeClientAdapter.start()` completes and emits rooms/characters **without blocking** on slow remote `scanGitStatusAsync()` calls; background `tasks.hydrated` updates arrive asynchronously and abort cleanly if `adapter.stop()` is called mid-scan.
+- [x] Switching `Machine A → Machine B → Machine A` where both machines contain identical directory paths (e.g. `/home/dev/app`) never leaks Machine A's Git status or remote runner into Machine B, while keeping Machine A's cache warm on return.
+- [x] `tests/54-paired-machine-switch-leak-prevention.test.ts` and `tests/00-architecture-invariants.test.ts` (all `src/**/*` `<= 400` lines) pass.
+
+## Answer
+
+Implemented in `src/ingress/git-status-cache.ts`, `src/ingress/git-status-scanner.ts`, `src/ingress/remote-git-ops.ts`, `src/ingress/daemon-session-ops.ts`, `src/ingress/issue-tracker-scanner.ts`, `src/ingress/opencode-client-adapter.ts`, `src/ingress/adapter-sweep-helpers.ts`, and `src/server/machine-switch-reconciler.ts`. Verified via `tests/55-fast-remote-machine-switching.test.ts` (Slices 1A–1C, including real POSIX `sh -c` execution against a sandbox Git repo), `tests/48-paired-machine-worlds-and-state.test.ts`, and `tests/54-paired-machine-switch-leak-prevention.test.ts`.

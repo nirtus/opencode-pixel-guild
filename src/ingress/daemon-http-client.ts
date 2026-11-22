@@ -23,10 +23,12 @@ export function createHttpOpenCodeDaemonClient(
   const timeoutMs = options?.timeoutMs ?? (isLocalDaemonEndpoint(rootUrl) ? 3500 : 10000);
   let cachedProjects: Awaited<ReturnType<OpenCodeDaemonClientPort["getProjects"]>> | null = null;
   let cachedProjectsAtMs = 0;
+  let inFlightProjectsPromise: Promise<Awaited<ReturnType<OpenCodeDaemonClientPort["getProjects"]>>> | null = null;
   let cachedLocations: Awaited<ReturnType<OpenCodeDaemonClientPort["getLocations"]>> | null = null;
   let cachedLocationsAtMs = 0;
   const cachedSessionsByPath = new Map<string, { data: unknown; atMs: number }>();
   const rawDirByNormDir = new Map<string, string>();
+  const clientAbortController = new AbortController();
   let isWindowsDaemon = false;
   let anySuccessResponse = false;
   let lastTransportError: Error | null = null;
@@ -42,7 +44,7 @@ export function createHttpOpenCodeDaemonClient(
       rawDirByNormDir.set(norm, trimmed);
     }
     registerRemoteDirectoryRunner(trimmed, rootUrl, (dir, cmd) =>
-      executeDaemonShellCommand(rootUrl, headers, resolveDaemonDir(dir), cmd, options?.fetchImpl),
+      executeDaemonShellCommand(rootUrl, headers, resolveDaemonDir(dir), cmd, options?.fetchImpl, clientAbortController.signal),
     );
   }
 
@@ -62,7 +64,14 @@ export function createHttpOpenCodeDaemonClient(
   }
 
   async function fetchFn(url: string, init?: RequestInit): Promise<Response> {
-    return fetchWithDockerHostFallback(url, init, options?.fetchImpl, timeoutMs);
+    const signals: AbortSignal[] = [clientAbortController.signal];
+    if (init?.signal) signals.push(init.signal);
+    else if (timeoutMs && typeof AbortSignal?.timeout === "function") signals.push(AbortSignal.timeout(timeoutMs));
+    const combinedSignal =
+      signals.length > 1 && typeof AbortSignal?.any === "function"
+        ? AbortSignal.any(signals)
+        : signals[0]!;
+    return fetchWithDockerHostFallback(url, { ...init, signal: combinedSignal }, options?.fetchImpl);
   }
 
   async function fetchJson<T>(
@@ -109,71 +118,49 @@ export function createHttpOpenCodeDaemonClient(
       anySuccessResponse = true;
       return cachedProjects;
     }
-    const data = await fetchJson<
-      Array<{
-        id: string;
-        name?: string;
-        canonical?: string;
-        directory?: string;
-        worktree?: string;
-        sandboxes?: string[];
-      }>
-    >("/api/project");
-    if (!Array.isArray(data)) return [];
-    for (const proj of data) {
-      const dir = proj?.canonical ?? proj?.directory ?? proj?.worktree;
-      if (dir) normalizeLocationDirectory(dir);
-    }
-    const projects = await Promise.all(
-      data.map(async (proj) => {
-        const directory =
-          proj.canonical ?? proj.directory ?? proj.worktree ?? "/";
-        if (isDeletedHostDirectory(directory, undefined, rootUrl)) {
-          return null;
-        }
-        recordDaemonDirectory(directory);
-        const normRoot = normalizeLocationDirectory(directory);
-        const sandboxSet = new Set<string>(
-          (Array.isArray(proj.sandboxes) ? proj.sandboxes : []).filter(
-            (sb) => !isDeletedHostDirectory(sb, undefined, rootUrl),
-          ),
-        );
-        for (const sb of sandboxSet) recordDaemonDirectory(sb);
-        if (proj.id) {
-          const wtList = await fetchJson<
-            Array<string | { directory?: string; path?: string; strategy?: string }>
-          >(`/api/worktree?projectID=${encodeURIComponent(proj.id)}`);
-          if (Array.isArray(wtList)) {
-            for (const wt of wtList) {
-              const wtDir =
-                typeof wt === "string"
-                  ? wt
-                  : (wt?.directory ?? wt?.path ?? "");
-              if (
-                wtDir &&
-                normalizeLocationDirectory(wtDir) !== normRoot &&
-                !isDeletedHostDirectory(wtDir, undefined, rootUrl)
-              ) {
-                recordDaemonDirectory(wtDir);
-                sandboxSet.add(wtDir);
+    if (inFlightProjectsPromise) return inFlightProjectsPromise;
+    inFlightProjectsPromise = (async () => {
+      const data = await fetchJson<Array<{ id: string; name?: string; canonical?: string; directory?: string; worktree?: string; sandboxes?: string[] }>>("/api/project");
+      if (!Array.isArray(data)) return [];
+      for (const proj of data) {
+        const dir = proj?.canonical ?? proj?.directory ?? proj?.worktree;
+        if (dir) normalizeLocationDirectory(dir);
+      }
+      const projects = await Promise.all(
+        data.map(async (proj) => {
+          const directory = proj.canonical ?? proj.directory ?? proj.worktree ?? "/";
+          if (isDeletedHostDirectory(directory, undefined, rootUrl)) return null;
+          recordDaemonDirectory(directory);
+          const normRoot = normalizeLocationDirectory(directory);
+          const sandboxSet = new Set<string>(
+            (Array.isArray(proj.sandboxes) ? proj.sandboxes : []).filter((sb) => !isDeletedHostDirectory(sb, undefined, rootUrl)),
+          );
+          for (const sb of sandboxSet) recordDaemonDirectory(sb);
+          if (proj.id && proj.id !== "global") {
+            const wtList = await fetchJson<Array<string | { directory?: string; path?: string; strategy?: string }>>(
+              `/api/worktree?projectID=${encodeURIComponent(proj.id)}`,
+            );
+            if (Array.isArray(wtList)) {
+              for (const wt of wtList) {
+                const wtDir = typeof wt === "string" ? wt : (wt?.directory ?? wt?.path ?? "");
+                if (wtDir && normalizeLocationDirectory(wtDir) !== normRoot && !isDeletedHostDirectory(wtDir, undefined, rootUrl)) {
+                  recordDaemonDirectory(wtDir);
+                  sandboxSet.add(wtDir);
+                }
               }
             }
           }
-        }
-        return {
-          id: proj.id,
-          name: proj.name,
-          directory,
-          sandboxes: [...sandboxSet],
-        };
-      }),
-    );
-    const filtered = projects.filter(
-      (proj): proj is NonNullable<typeof proj> => Boolean(proj?.directory),
-    );
-    cachedProjects = filtered;
-    cachedProjectsAtMs = Date.now();
-    return filtered;
+          return { id: proj.id, name: proj.name, directory, sandboxes: [...sandboxSet] };
+        }),
+      );
+      const filtered = projects.filter((proj): proj is NonNullable<typeof proj> => Boolean(proj?.directory));
+      cachedProjects = filtered;
+      cachedProjectsAtMs = Date.now();
+      return filtered;
+    })().finally(() => {
+      inFlightProjectsPromise = null;
+    });
+    return inFlightProjectsPromise;
   }
 
   return {
@@ -241,16 +228,22 @@ export function createHttpOpenCodeDaemonClient(
       return combined;
     },
 
-    async getLocationState(directory: string) {
-      return fetchDaemonLocationState(rootUrl, headers, fetchJson, resolveDaemonDir(directory));
+    async getLocationState(directory: string, locOpts?: { hydrationMode?: "fast" | "full" }) {
+      return fetchDaemonLocationState(rootUrl, headers, fetchJson, resolveDaemonDir(directory), {
+        hydrationMode: locOpts?.hydrationMode,
+        signal: clientAbortController.signal,
+      });
+    },
+    abortAll() {
+      clientAbortController.abort();
     },
 
     async listWorkspaceDirectories(parentDirectory?: string) {
       return listDaemonWorkspaceDirectories(fetchJson, parentDirectory);
     },
 
-    async probeDirectory(directory: string) {
-      return probeDaemonDirectory(fetchJson, resolveDaemonDir(directory));
+    async probeDirectory(directory: string, probeOpts?: { checkGit?: boolean }) {
+      return probeDaemonDirectory(fetchJson, resolveDaemonDir(directory), probeOpts);
     },
 
     async getSessionLogAfter(sessionId: string, afterCursor: number) {
@@ -296,7 +289,7 @@ export function createHttpOpenCodeDaemonClient(
     },
 
     async runShellCommand(directory: string, command: string) {
-      return executeDaemonShellCommand(rootUrl, headers, resolveDaemonDir(directory), command, options?.fetchImpl);
+      return executeDaemonShellCommand(rootUrl, headers, resolveDaemonDir(directory), command, options?.fetchImpl, clientAbortController.signal);
     },
 
     clearCaches() {

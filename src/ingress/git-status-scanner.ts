@@ -2,7 +2,20 @@ import { execFile, execFileSync } from "node:child_process";
 import { existsSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { normalizeLocationDirectory, resolveLocalProjectDir } from "../state/location-normalization.ts";
+import {
+  deleteInFlightGitScanIfMatches,
+  getCachedGitStatus,
+  getDirGitEpoch,
+  getInFlightGitScan,
+  invalidateGitStatusCache,
+  makeScopedGitKey,
+  peekCachedGitStatus,
+  setInFlightGitScan,
+  storeCachedGitStatus,
+} from "./git-status-cache.ts";
 import { computeRemoteGitStatusAsync, getRemoteDirectoryRunner } from "./remote-git-ops.ts";
+
+export { getCachedGitStatus, invalidateGitStatusCache, peekCachedGitStatus };
 
 export interface RoomGitFileEntry {
   readonly path: string; readonly indexStatus: string; readonly worktreeStatus: string;
@@ -57,7 +70,7 @@ function acquireAsyncGitSlot(): Promise<() => void> {
         asyncGitWaitQueue.shift()?.();
       });
     };
-    if (activeAsyncGitCount < 2) grant();
+    if (activeAsyncGitCount < 3) grant();
     else asyncGitWaitQueue.push(grant);
   });
 }
@@ -119,81 +132,12 @@ export interface ScannedGitStatus {
   isGitRepo: boolean; branch: string | null; upstream?: string | null;
   ahead?: number; behind?: number; headCommit: { hash: string; subject: string } | null;
   files: RoomGitFileEntry[];
+  transientError?: boolean;
 }
 
 const EMPTY_SCANNED_GIT: ScannedGitStatus = Object.freeze({
   isGitRepo: false, branch: null, upstream: null, ahead: 0, behind: 0, headCommit: null, files: [],
 });
-
-const gitStatusCache = new Map<string, { atMs: number; value: ScannedGitStatus }>();
-const inFlightGitScans = new Map<string, Promise<ScannedGitStatus>>();
-let globalGitCacheEpoch = 0;
-const gitCacheEpochByDir = new Map<string, number>();
-
-function getDirGitEpoch(normDir: string): number {
-  return (gitCacheEpochByDir.get(normDir) ?? 0) + globalGitCacheEpoch;
-}
-
-function bumpDirGitEpoch(normDir: string): void {
-  if (!normDir) return;
-  gitCacheEpochByDir.set(normDir, (gitCacheEpochByDir.get(normDir) ?? 0) + 1);
-}
-
-function storeCachedGitStatus(projectDir: string, resolved: string, value: ScannedGitStatus): void {
-  const entry = { atMs: Date.now(), value };
-  const normProj = normalizeLocationDirectory(projectDir);
-  const normRes = normalizeLocationDirectory(resolved);
-  gitStatusCache.set(normProj, entry);
-  gitStatusCache.set(normRes, entry);
-}
-
-export function getCachedGitStatus(projectDir: string, ttlMs = 30_000): ScannedGitStatus | null {
-  const now = Date.now();
-  const direct = gitStatusCache.get(normalizeLocationDirectory(projectDir));
-  if (direct && now - direct.atMs < ttlMs) return direct.value;
-  const resolved = resolveLocalProjectDir(projectDir, existsSync);
-  if (resolved) {
-    const byResolved = gitStatusCache.get(normalizeLocationDirectory(resolved));
-    if (byResolved && now - byResolved.atMs < ttlMs) return byResolved.value;
-  }
-  return null;
-}
-
-export function peekCachedGitStatus(projectDir: string): ScannedGitStatus | null {
-  const direct = gitStatusCache.get(normalizeLocationDirectory(projectDir));
-  if (direct) return direct.value;
-  const resolved = resolveLocalProjectDir(projectDir, existsSync);
-  if (resolved) {
-    const byResolved = gitStatusCache.get(normalizeLocationDirectory(resolved));
-    if (byResolved) return byResolved.value;
-  }
-  return null;
-}
-
-export function invalidateGitStatusCache(resolvedDir?: string): void {
-  if (resolvedDir) {
-    const norm = normalizeLocationDirectory(resolvedDir);
-    bumpDirGitEpoch(norm);
-    gitStatusCache.delete(resolvedDir);
-    gitStatusCache.delete(norm);
-    inFlightGitScans.delete(resolvedDir);
-    inFlightGitScans.delete(norm);
-    const local = resolveLocalProjectDir(resolvedDir, existsSync);
-    if (local) {
-      const normLocal = normalizeLocationDirectory(local);
-      bumpDirGitEpoch(normLocal);
-      gitStatusCache.delete(local);
-      gitStatusCache.delete(normLocal);
-      inFlightGitScans.delete(local);
-      inFlightGitScans.delete(normLocal);
-    }
-  } else {
-    globalGitCacheEpoch += 1;
-    gitCacheEpochByDir.clear();
-    gitStatusCache.clear();
-    inFlightGitScans.clear();
-  }
-}
 
 export function isLocalGitRepository(projectDir: string): boolean {
   const resolved = resolveLocalProjectDir(projectDir, existsSync);
@@ -213,20 +157,21 @@ export function scanGitStatusSync(projectDir: string, ttlMs = 30_000): ScannedGi
 
 export async function scanGitStatusAsync(
   projectDir: string,
-  options?: { force?: boolean; ttlMs?: number },
+  options?: { force?: boolean; ttlMs?: number; daemonUrl?: string | null },
 ): Promise<ScannedGitStatus> {
   const ttlMs = options?.ttlMs ?? 30_000;
-  if (!options?.force) {
-    const cached = getCachedGitStatus(projectDir, ttlMs);
-    if (cached) return cached;
-  }
   const resolved = resolveLocalProjectDir(projectDir, existsSync);
   const remoteRunner = !resolved ? getRemoteDirectoryRunner(projectDir) : null;
+  const effectiveDaemonUrl = options?.daemonUrl ?? (remoteRunner ? remoteRunner.daemonUrl : undefined);
+  if (!options?.force) {
+    const cached = getCachedGitStatus(projectDir, ttlMs, effectiveDaemonUrl);
+    if (cached) return cached;
+  }
   if (!resolved && !remoteRunner) return { ...EMPTY_SCANNED_GIT, files: [] };
   const targetDir = resolved ?? remoteRunner!.rawDirectory;
-  const inFlightKey = normalizeLocationDirectory(targetDir);
+  const inFlightKey = makeScopedGitKey(normalizeLocationDirectory(targetDir), effectiveDaemonUrl);
   if (!options?.force) {
-    const existing = inFlightGitScans.get(inFlightKey);
+    const existing = getInFlightGitScan(inFlightKey);
     if (existing) return existing;
   }
   const startEpoch = getDirGitEpoch(inFlightKey);
@@ -235,19 +180,17 @@ export async function scanGitStatusAsync(
     const release = await acquireAsyncGitSlot();
     try {
       const computed = resolved ? await computeGitStatusAsync(resolved) : await computeRemoteGitStatusAsync(remoteRunner!);
-      if (options?.force || getDirGitEpoch(inFlightKey) === startEpoch) {
-        storeCachedGitStatus(projectDir, targetDir, computed);
+      if (!computed.transientError && (options?.force || getDirGitEpoch(inFlightKey) === startEpoch)) {
+        storeCachedGitStatus(projectDir, targetDir, computed, effectiveDaemonUrl);
         return computed;
       }
-      return getCachedGitStatus(projectDir, ttlMs) ?? computed;
+      return computed.transientError ? computed : (getCachedGitStatus(projectDir, ttlMs, effectiveDaemonUrl) ?? computed);
     } finally {
       release();
-      if (scanPromise && inFlightGitScans.get(inFlightKey) === scanPromise) {
-        inFlightGitScans.delete(inFlightKey);
-      }
+      deleteInFlightGitScanIfMatches(inFlightKey, scanPromise);
     }
   })();
-  inFlightGitScans.set(inFlightKey, scanPromise);
+  setInFlightGitScan(inFlightKey, scanPromise);
   return scanPromise;
 }
 

@@ -2,8 +2,7 @@ import {
   clearRemoteDirectoryRunners,
   createHttpOpenCodeDaemonClient,
   createOpenCodeClientAdapter,
-  invalidateGitStatusCache,
-  invalidateTaskProgressCache,
+  setActiveGitCacheScope,
   type DiscoveredOpenCodeService,
   type OpenCodeClientAdapter,
   type OpenCodeDaemonClientPort,
@@ -25,6 +24,12 @@ export function buildDaemonAuthHeaders(password?: string): Record<string, string
     : {};
 }
 
+const LOCAL_DISCOVERY_CACHE_TTL_MS = 60_000;
+const localDiscoveryInfoCache = new WeakMap<
+  () => Promise<DiscoveredOpenCodeService>,
+  { expiresAtMs: number; url: string; headers: Record<string, string>; urls: string[] }
+>();
+
 export async function resolveEffectiveDaemonEndpoint(
   cleanUrl: string,
   password: string | undefined,
@@ -41,21 +46,34 @@ export async function resolveEffectiveDaemonEndpoint(
     /\.(opentunnel\.xyz|lhr\.life)\b/i.test(cleanUrl)
   ) {
     try {
-      const svc = await options.discoverService();
-      const infoRes = await fetch(`${svc.url.replace(/\/+$/, "")}/api/info`, {
-        headers: { Accept: "application/json", ...svc.headers },
-        signal: AbortSignal.timeout(1500),
-      });
-      if (infoRes.ok) {
-        const info = (await infoRes.json()) as { urls?: string[] };
-        const normClean = normalizeDaemonEndpointUrl(cleanUrl);
-        if (
-          Array.isArray(info?.urls) &&
-          info.urls.some((u) => normalizeDaemonEndpointUrl(u) === normClean)
-        ) {
-          effectiveUrl = svc.url;
-          effectiveHeaders = svc.headers;
+      const nowMs = Date.now();
+      let cached = localDiscoveryInfoCache.get(options.discoverService);
+      if (!cached || cached.expiresAtMs <= nowMs) {
+        try {
+          const svc = await options.discoverService();
+          let urls = Array.isArray(svc.urls) ? svc.urls : null;
+          if (!urls) {
+            const infoRes = await fetch(`${svc.url.replace(/\/+$/, "")}/api/info`, {
+              headers: { Accept: "application/json", ...svc.headers },
+              signal: AbortSignal.timeout(800),
+            });
+            if (infoRes.ok) {
+              const info = (await infoRes.json()) as { urls?: string[] };
+              urls = Array.isArray(info?.urls) ? info.urls : [];
+            } else {
+              urls = [];
+            }
+          }
+          cached = { expiresAtMs: Date.now() + LOCAL_DISCOVERY_CACHE_TTL_MS, url: svc.url, headers: svc.headers, urls };
+        } catch {
+          cached = { expiresAtMs: Date.now() + LOCAL_DISCOVERY_CACHE_TTL_MS, url: "", headers: {}, urls: [] };
         }
+        localDiscoveryInfoCache.set(options.discoverService, cached);
+      }
+      const normClean = normalizeDaemonEndpointUrl(cleanUrl);
+      if (cached.url && cached.urls.some((u) => normalizeDaemonEndpointUrl(u) === normClean)) {
+        effectiveUrl = cached.url;
+        effectiveHeaders = cached.headers;
       }
     } catch {
       /* use remote tunnel directly */
@@ -157,11 +175,11 @@ export function createRuntimePairingController(
             clearRemoteDirectoryRunners(prevSnap.daemonUrl);
           }
           if (!prevStableUrl && !prevSnap.daemonUrl) clearRemoteDirectoryRunners();
-          invalidateGitStatusCache();
-          invalidateTaskProgressCache();
+          setActiveGitCacheScope(cleanUrl);
         }
         opts.reducer.reset?.({ adapter: "opencode-client", daemonUrl: cleanUrl });
       } else {
+        setActiveGitCacheScope(cleanUrl);
         opts.reducer.dispatch({
           type: "adapter.switched",
           timestampMs: Date.now(),

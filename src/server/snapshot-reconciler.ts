@@ -68,15 +68,20 @@ export async function reconcilePersistedSnapshotWithDaemon(
   ]);
   const liveParentPrefixes = extractParentAndHomePrefixes(Object.keys(stagedSnapshot.rooms));
   const prunedForeignRoomIds = new Set<string>();
-  const probedDirCache = new Map<string, boolean>();
+  const probedDirCache = new Map<string, Promise<boolean>>();
 
   const probeDirOnce = async (rawDir: string): Promise<boolean | null> => {
     if (!daemonClient.probeDirectory) return null;
     const norm = normalizeLocationDirectory(rawDir);
-    if (probedDirCache.has(norm)) return probedDirCache.get(norm)!;
-    const probe = await daemonClient.probeDirectory(rawDir).catch(() => ({ exists: false, isGitRepo: false }));
-    probedDirCache.set(norm, probe.exists);
-    return probe.exists;
+    let pending = probedDirCache.get(norm);
+    if (!pending) {
+      pending = daemonClient
+        .probeDirectory(rawDir, { checkGit: false })
+        .then((p) => p.exists)
+        .catch(() => false);
+      probedDirCache.set(norm, pending);
+    }
+    return pending;
   };
 
   const baseRoomsWithChars = new Set<string>();
@@ -87,6 +92,7 @@ export async function reconcilePersistedSnapshotWithDaemon(
     if (ch?.roomId) baseRoomsWithChars.add(normalizeLocationDirectory(ch.roomId));
   }
 
+  const candidateRooms: Array<{ normRoomId: string; rawDir: string; persistedRoom: NonNullable<(typeof persistedSnapshot)["rooms"]>[string] }> = [];
   for (const [rawRoomId, persistedRoom] of Object.entries(persistedSnapshot?.rooms ?? {})) {
     const normRoomId = normalizeLocationDirectory(rawRoomId);
     if (mergedRooms[normRoomId] || mergedDeletedRooms.has(normRoomId)) continue;
@@ -98,10 +104,16 @@ export async function reconcilePersistedSnapshotWithDaemon(
       prunedForeignRoomIds.add(normRoomId);
       continue;
     }
-    const rawDir = persistedRoom.locationDirectory || normRoomId;
+    candidateRooms.push({ normRoomId, rawDir: persistedRoom.locationDirectory || normRoomId, persistedRoom });
+  }
+
+  const roomProbeResults = await Promise.all(
+    candidateRooms.map(async (c) => ({ ...c, probed: await probeDirOnce(c.rawDir) })),
+  );
+  if (!isStillCurrentEpoch()) return { mergedSnap: stagedSnapshot, prunedTributeSessionIds: [] };
+
+  for (const { normRoomId, rawDir, persistedRoom, probed } of roomProbeResults) {
     let verified = false;
-    const probed = await probeDirOnce(rawDir);
-    if (!isStillCurrentEpoch()) return { mergedSnap: stagedSnapshot, prunedTributeSessionIds: [] };
     if (probed !== null) {
       verified = probed;
     } else if (isLocalDaemonEndpoint(daemonUrl)) {
@@ -152,6 +164,7 @@ export async function reconcilePersistedSnapshotWithDaemon(
 
   const filteredBaseTribute: Record<string, SessionTributeRecord> = {};
   const prunedTributeSessionIds: string[] = [];
+  const tributeProbeCandidates: Array<{ sid: string; rec: SessionTributeRecord; recDir: string }> = [];
   for (const [sid, rec] of Object.entries(persistedSnapshot?.tributeLedger ?? {})) {
     if (!rec?.sessionId) continue;
     const recDir = rec.roomId || rec.locationDirectory || "";
@@ -162,12 +175,22 @@ export async function reconcilePersistedSnapshotWithDaemon(
     if (isLiveChar || (!isPrunedRoom && belongsToValid)) {
       filteredBaseTribute[sid] = rec;
     } else if (!isPrunedRoom && validRoomIds.size === 0 && prunedForeignRoomIds.size === 0) {
-      const probed = recDir ? await probeDirOnce(recDir) : null;
-      if (!isStillCurrentEpoch()) return { mergedSnap: stagedSnapshot, prunedTributeSessionIds: [] };
-      if (probed === false) prunedTributeSessionIds.push(sid);
-      else filteredBaseTribute[sid] = rec;
+      tributeProbeCandidates.push({ sid, rec, recDir });
     } else {
       prunedTributeSessionIds.push(sid);
+    }
+  }
+  if (tributeProbeCandidates.length > 0) {
+    const probedTributes = await Promise.all(
+      tributeProbeCandidates.map(async (item) => ({
+        ...item,
+        probed: item.recDir ? await probeDirOnce(item.recDir) : null,
+      })),
+    );
+    if (!isStillCurrentEpoch()) return { mergedSnap: stagedSnapshot, prunedTributeSessionIds: [] };
+    for (const { sid, rec, probed } of probedTributes) {
+      if (probed === false) prunedTributeSessionIds.push(sid);
+      else filteredBaseTribute[sid] = rec;
     }
   }
 

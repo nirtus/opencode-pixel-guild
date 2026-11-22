@@ -109,7 +109,11 @@ export interface OpenCodeDaemonClientPort {
     }>
   >;
   getLocations(): Promise<Array<{ directory: string; projectId?: string }>>;
-  getLocationState(directory: string): Promise<OpenCodeDaemonLocationPayload>;
+  getLocationState(
+    directory: string,
+    options?: { hydrationMode?: "fast" | "full" },
+  ): Promise<OpenCodeDaemonLocationPayload>;
+  abortAll?(): void;
   deleteSession?(sessionId: string, directory?: string): Promise<boolean>;
   deleteRoomResources?(
     input: DeleteRoomResourcesInput,
@@ -134,6 +138,7 @@ export interface OpenCodeDaemonClientPort {
   ): Promise<import("./daemon-workspace-ops.ts").DaemonWorkspaceListResult>;
   probeDirectory?(
     directory: string,
+    options?: { checkGit?: boolean },
   ): Promise<{ exists: boolean; isGitRepo: boolean; resolvedDirectory?: string }>;
   subscribeEvents?(
     onEvent: (event: TelemetryEvent) => void,

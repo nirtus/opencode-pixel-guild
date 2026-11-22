@@ -19,12 +19,7 @@ export function buildDockerHostFallbackUrl(rawUrl: string): string | null {
     if (
       dockerHost &&
       h !== dockerHost.toLowerCase() &&
-      (h === "127.0.0.1" ||
-        h === "localhost" ||
-        h === "0.0.0.0" ||
-        h.startsWith("172.") ||
-        h.startsWith("192.168.") ||
-        h.startsWith("10."))
+      (h === "127.0.0.1" || h === "localhost" || h === "0.0.0.0")
     ) {
       parsed.hostname = dockerHost;
       if (!parsed.port && rawUrl.includes("/auth/connect/")) {

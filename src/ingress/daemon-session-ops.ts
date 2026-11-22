@@ -268,7 +268,11 @@ export async function executeDaemonShellCommand(
   directory: string,
   command: string,
   fetchImpl?: typeof fetch,
+  signal?: AbortSignal,
 ): Promise<{ ok: boolean; output: string }> {
+  if (signal?.aborted) {
+    return { ok: false, output: "Aborted" };
+  }
   const daemonDir = toDaemonDirectoryPath(directory.trim());
   const query = `?location[directory]=${encodeURIComponent(daemonDir)}`;
   const locHeaders: Record<string, string> = {
@@ -276,8 +280,18 @@ export async function executeDaemonShellCommand(
     ...headers,
     ...(daemonDir ? { "x-opencode-directory": daemonDir } : {}),
   };
-  const doFetch = (url: string, init?: RequestInit) =>
-    fetchWithDockerHostFallback(url, init, fetchImpl, 15_000);
+  const doFetch = (url: string, init?: RequestInit) => {
+    const combinedSignal =
+      signal && typeof AbortSignal.any === "function" && typeof AbortSignal.timeout === "function"
+        ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
+        : signal;
+    return fetchWithDockerHostFallback(
+      url,
+      combinedSignal ? { ...init, signal: combinedSignal } : init,
+      fetchImpl,
+      combinedSignal ? undefined : 15_000,
+    );
+  };
   try {
     const startRes = await doFetch(`${rootUrl}/api/shell${query}`, {
       method: "POST",
@@ -296,8 +310,18 @@ export async function executeDaemonShellCommand(
     let exitCode: number | undefined = startBody?.data?.exit ?? startBody?.data?.exitCode;
     let status = startBody?.data?.status ?? "running";
     const deadline = Date.now() + 90_000;
-    while (status === "running" && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 150));
+    const pollIntervalsMs = [40, 80, 150];
+    let pollAttempt = 0;
+    while (status === "running" && Date.now() < deadline && !signal?.aborted) {
+      const waitMs = pollIntervalsMs[Math.min(pollAttempt, pollIntervalsMs.length - 1)]!;
+      pollAttempt += 1;
+      await new Promise<void>((r) => {
+        if (signal?.aborted) { r(); return; }
+        const onAbort = () => { clearTimeout(t); r(); };
+        const t = setTimeout(() => { signal?.removeEventListener("abort", onAbort); r(); }, waitMs);
+        signal?.addEventListener("abort", onAbort, { once: true });
+      });
+      if (signal?.aborted) break;
       const pollRes = await doFetch(`${rootUrl}/api/shell/${encodeURIComponent(shellId)}${query}`, {
         headers: locHeaders,
       }).catch(() => null);
@@ -310,20 +334,24 @@ export async function executeDaemonShellCommand(
       }
     }
     let output = "";
-    const outRes = await doFetch(
-      `${rootUrl}/api/shell/${encodeURIComponent(shellId)}/output${query}`,
-      { headers: locHeaders },
-    ).catch(() => null);
-    if (outRes?.ok) {
-      const outBody = (await outRes.json()) as { data?: { output?: string; text?: string; chunk?: string } | string };
-      const rawOut = typeof outBody?.data === "string" ? outBody.data : (outBody?.data?.output ?? outBody?.data?.text ?? outBody?.data?.chunk ?? "");
-      output = String(rawOut).trim();
+    if (!signal?.aborted) {
+      const outRes = await doFetch(
+        `${rootUrl}/api/shell/${encodeURIComponent(shellId)}/output${query}`,
+        { headers: locHeaders },
+      ).catch(() => null);
+      if (outRes?.ok) {
+        const outBody = (await outRes.json()) as { data?: { output?: string; text?: string; chunk?: string } | string };
+        const rawOut = typeof outBody?.data === "string" ? outBody.data : (outBody?.data?.output ?? outBody?.data?.text ?? outBody?.data?.chunk ?? "");
+        output = String(rawOut).trim();
+      }
     }
-    await doFetch(`${rootUrl}/api/shell/${encodeURIComponent(shellId)}${query}`, {
-      method: "DELETE",
-      headers: locHeaders,
-    }).catch(() => {});
-    return { ok: status !== "running" && (exitCode === 0 || exitCode === undefined), output };
+    void fetchWithDockerHostFallback(
+      `${rootUrl}/api/shell/${encodeURIComponent(shellId)}${query}`,
+      { method: "DELETE", headers: locHeaders },
+      fetchImpl,
+      5_000,
+    ).catch(() => {});
+    return { ok: !signal?.aborted && status !== "running" && (exitCode === 0 || exitCode === undefined), output };
   } catch (err) {
     return { ok: false, output: err instanceof Error ? err.message : "Failed to run daemon shell command" };
   }

@@ -49,28 +49,21 @@ export function registerRemoteDirectoryRunner(
       daemonUrl: daemonUrl.trim(),
       runShellCommand,
     });
-    if (
-      !prev ||
-      prev.daemonUrl !== daemonUrl.trim() ||
-      prev.runShellCommand !== runShellCommand
-    ) {
-      invalidateGitStatusCache(rawDirectory);
+    if (prev && normalizeDaemonEndpointUrl(prev.daemonUrl) !== normalizeDaemonEndpointUrl(daemonUrl)) {
+      invalidateGitStatusCache(rawDirectory, prev.daemonUrl);
       invalidateTaskProgressCache(rawDirectory);
     }
   } else if (daemonUrl && isLocalDaemonEndpoint(daemonUrl)) {
     if (remoteRunnersByNormDir.delete(norm)) {
-      invalidateGitStatusCache(rawDirectory);
+      invalidateGitStatusCache(rawDirectory, "local");
       invalidateTaskProgressCache(rawDirectory);
     }
   }
 }
 
-export function getRemoteDirectoryRunner(
-  directory: string,
-): RemoteGitDirectoryRunner | null {
+export function getRemoteDirectoryRunner(directory: string): RemoteGitDirectoryRunner | null {
   if (!directory || !directory.trim()) return null;
-  const norm = normalizeLocationDirectory(directory).toLowerCase();
-  return remoteRunnersByNormDir.get(norm) ?? null;
+  return remoteRunnersByNormDir.get(normalizeLocationDirectory(directory).toLowerCase()) ?? null;
 }
 
 export function clearRemoteDirectoryRunners(daemonUrl?: string | null): void {
@@ -85,8 +78,6 @@ export function clearRemoteDirectoryRunners(daemonUrl?: string | null): void {
   for (const [norm, runner] of remoteRunnersByNormDir.entries()) {
     if (normalizeDaemonEndpointUrl(runner.daemonUrl) === target) {
       remoteRunnersByNormDir.delete(norm);
-      invalidateGitStatusCache(runner.rawDirectory);
-      invalidateTaskProgressCache(runner.rawDirectory);
     }
   }
   clearRemoteDirectoryScopes(daemonUrl);
@@ -99,6 +90,88 @@ function quoteGitArg(arg: string): string {
 
 function buildGitCommand(args: readonly string[]): string {
   return `git ${args.map(quoteGitArg).join(" ")}`;
+}
+
+function buildCompoundGitStatusCommand(): string {
+  const statusCmd = buildGitCommand([...BASE_STATUS_ARGS, "-u"]);
+  const headCmd = buildGitCommand(["--no-optional-locks", "log", "-1", "--format=%h%x09%s"]);
+  const unstagedCmd = buildGitCommand(UNSTAGED_DIFF_ARGS);
+  const stagedCmd = buildGitCommand(STAGED_DIFF_ARGS);
+  return [
+    "printf '__PG_STATUS__\\n'",
+    `&& (${statusCmd} || ${buildGitCommand(BASE_STATUS_ARGS)})`,
+    "&& printf '\\n__PG_HEAD__\\n'",
+    `&& (${headCmd} 2>/dev/null || true)`,
+    "&& printf '\\n__PG_UNSTAGED__\\n'",
+    `&& (${unstagedCmd} 2>/dev/null || true)`,
+    "&& printf '\\n__PG_STAGED__\\n'",
+    `&& (${stagedCmd} 2>/dev/null || true)`,
+    "&& printf '\\n__PG_END__\\n'",
+  ].join(" ");
+}
+
+function finalizeRemoteGitStatus(
+  rawEntries: Array<{ path: string; indexStatus: string; worktreeStatus: string; staged: boolean }>,
+  branch: string | null,
+  upstream: string | null,
+  ahead: number,
+  behind: number,
+  headRaw: string,
+  unstagedRaw: string | null,
+  stagedRaw: string | null,
+): ScannedGitStatus {
+  let headCommit: { hash: string; subject: string } | null = null;
+  if (headRaw.trim()) {
+    const [hash, subject] = headRaw.trim().split(/\r?\n/)[0]!.trim().split("\t");
+    if (hash) headCommit = { hash, subject: subject || "" };
+  }
+  const numstatByPath = new Map<string, { additions: number; deletions: number }>();
+  let unstagedDiffOk = false;
+  if (unstagedRaw !== null) {
+    accumulateNumstat(unstagedRaw, numstatByPath);
+    unstagedDiffOk = true;
+  }
+  if (stagedRaw !== null) accumulateNumstat(stagedRaw, numstatByPath);
+  return {
+    isGitRepo: true,
+    branch,
+    upstream,
+    ahead,
+    behind,
+    headCommit,
+    files: buildFilesFromNumstat(rawEntries, numstatByPath, unstagedDiffOk),
+  };
+}
+
+function parseCompoundGitStatusOutput(raw: string): ScannedGitStatus | null {
+  const statusIdx = raw.indexOf("__PG_STATUS__");
+  if (statusIdx < 0) return null;
+  const headIdx = raw.indexOf("__PG_HEAD__", statusIdx);
+  const unstagedIdx = raw.indexOf("__PG_UNSTAGED__", headIdx >= 0 ? headIdx : statusIdx);
+  const stagedIdx = raw.indexOf("__PG_STAGED__", unstagedIdx >= 0 ? unstagedIdx : statusIdx);
+  const endIdx = raw.indexOf("__PG_END__", stagedIdx >= 0 ? stagedIdx : statusIdx);
+  const sliceBetween = (start: number, markerLen: number, end: number): string =>
+    start < 0 ? "" : raw.slice(start + markerLen, end >= 0 ? end : raw.length).trim();
+
+  const statusText = sliceBetween(statusIdx, "__PG_STATUS__".length, headIdx >= 0 ? headIdx : raw.length);
+  if (!statusText || /fatal:\s+not a git repository/i.test(statusText) || !statusText.startsWith("## ")) {
+    return null;
+  }
+  const { branch, upstream, ahead, behind, rawEntries, hasUnstagedTracked, hasStaged } =
+    parsePorcelainStatus(statusText);
+  const headText = headIdx >= 0 ? sliceBetween(headIdx, "__PG_HEAD__".length, unstagedIdx >= 0 ? unstagedIdx : raw.length) : "";
+  const unstagedText = unstagedIdx >= 0 ? sliceBetween(unstagedIdx, "__PG_UNSTAGED__".length, stagedIdx >= 0 ? stagedIdx : raw.length) : null;
+  const stagedText = stagedIdx >= 0 ? sliceBetween(stagedIdx, "__PG_STAGED__".length, endIdx >= 0 ? endIdx : raw.length) : null;
+  return finalizeRemoteGitStatus(
+    rawEntries,
+    branch,
+    upstream,
+    ahead,
+    behind,
+    headText,
+    unstagedText !== null && (hasUnstagedTracked || unstagedText.length > 0) ? unstagedText : null,
+    stagedText !== null && (hasStaged || stagedText.length > 0) ? stagedText : null,
+  );
 }
 
 export async function computeRemoteGitStatusAsync(
@@ -114,10 +187,18 @@ export async function computeRemoteGitStatusAsync(
     files: [],
   };
   try {
+    const isWindowsPath = /^[A-Za-z]:[\\/]/.test(runner.rawDirectory);
     let statusRes = await runner.runShellCommand(
       runner.rawDirectory,
-      buildGitCommand([...BASE_STATUS_ARGS, "-u"]),
+      isWindowsPath ? buildGitCommand([...BASE_STATUS_ARGS, "-u"]) : buildCompoundGitStatusCommand(),
     );
+    if (/fatal:\s+not a git repository/i.test(statusRes.output)) {
+      return empty;
+    }
+    const compoundParsed = parseCompoundGitStatusOutput(statusRes.output);
+    if (compoundParsed) {
+      return compoundParsed;
+    }
     if (!statusRes.ok && !statusRes.output.startsWith("## ")) {
       statusRes = await runner.runShellCommand(
         runner.rawDirectory,
@@ -128,7 +209,7 @@ export async function computeRemoteGitStatusAsync(
       (!statusRes.ok && !statusRes.output.startsWith("## ")) ||
       /fatal:\s+not a git repository/i.test(statusRes.output)
     ) {
-      return empty;
+      return /fatal:\s+not a git repository/i.test(statusRes.output) ? empty : { ...empty, transientError: true };
     }
 
     const {
@@ -171,31 +252,16 @@ export async function computeRemoteGitStatusAsync(
         : Promise.resolve(null),
     ]);
 
-    let headCommit: { hash: string; subject: string } | null = null;
-    if (headRes?.ok && headRes.output) {
-      const [hash, subject] = headRes.output.trim().split("\t");
-      if (hash) headCommit = { hash, subject: subject || "" };
-    }
-
-    const numstatByPath = new Map<string, { additions: number; deletions: number }>();
-    let unstagedDiffOk = false;
-    if (unstagedRes?.ok) {
-      accumulateNumstat(unstagedRes.output, numstatByPath);
-      unstagedDiffOk = true;
-    }
-    if (stagedRes?.ok) {
-      accumulateNumstat(stagedRes.output, numstatByPath);
-    }
-
-    return {
-      isGitRepo: true,
+    return finalizeRemoteGitStatus(
+      rawEntries,
       branch,
       upstream,
       ahead,
       behind,
-      headCommit,
-      files: buildFilesFromNumstat(rawEntries, numstatByPath, unstagedDiffOk),
-    };
+      headRes?.ok ? headRes.output : "",
+      unstagedRes?.ok ? unstagedRes.output : null,
+      stagedRes?.ok ? stagedRes.output : null,
+    );
   } catch {
     return empty;
   }
@@ -223,35 +289,14 @@ export async function remoteGitGetFileDiff(
   const unstaged = await runner
     .runShellCommand(
       runner.rawDirectory,
-      buildGitCommand([
-        "--no-optional-locks",
-        "-c",
-        "core.checkStat=minimal",
-        "-c",
-        "core.autocrlf=true",
-        "diff",
-        "--ignore-cr-at-eol",
-        "--",
-        rel,
-      ]),
+      buildGitCommand(["--no-optional-locks", "-c", "core.checkStat=minimal", "-c", "core.autocrlf=true", "diff", "--ignore-cr-at-eol", "--", rel]),
     )
     .catch(() => ({ ok: false, output: "" }));
   if (unstaged.output.trim()) return unstaged.output.slice(0, 4000);
   const staged = await runner
     .runShellCommand(
       runner.rawDirectory,
-      buildGitCommand([
-        "--no-optional-locks",
-        "-c",
-        "core.checkStat=minimal",
-        "-c",
-        "core.autocrlf=true",
-        "diff",
-        "--cached",
-        "--ignore-cr-at-eol",
-        "--",
-        rel,
-      ]),
+      buildGitCommand(["--no-optional-locks", "-c", "core.checkStat=minimal", "-c", "core.autocrlf=true", "diff", "--cached", "--ignore-cr-at-eol", "--", rel]),
     )
     .catch(() => ({ ok: false, output: "" }));
   return staged.output.slice(0, 4000);

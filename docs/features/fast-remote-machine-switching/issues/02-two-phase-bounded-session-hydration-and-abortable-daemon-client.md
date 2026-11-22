@@ -2,7 +2,7 @@
 
 Type: task
 Label: ready-for-agent
-Status: open
+Status: resolved
 Blocked by: None (can start immediately)
 
 ## What to build
@@ -29,8 +29,12 @@ Eliminate the cold session-message hydration storm (**R2**) and un-aborted previ
 
 ## Acceptance Criteria
 
-- [ ] On a directory with 50 idle historical root sessions and 2 active sessions, `"fast"` mode issues `<= 8` `/api/session/:id/message` requests (down from 50+) with at most `6` concurrent requests in flight at any moment.
-- [ ] When `/api/session?...&limit=200` returns fewer than 200 sessions, the redundant `&parentID=null&limit=100` request is skipped.
-- [ ] Calling `adapter.stop()` while `getProjects()`, `getLocationState()`, or `executeDaemonShellCommand()` is awaiting a slow remote fetch immediately aborts the underlying `AbortSignal`.
-- [ ] Clicking any older idle session in `Full Lineage` still hydrates its full transcript cleanly via `GET /api/guild/session/:id/messages`.
-- [ ] All source files under `src/` remain `<= 400` lines (`tests/00-architecture-invariants.test.ts`).
+- [x] On a directory with 50 idle historical root sessions and 2 active sessions, `"fast"` mode issues `<= 8` `/api/session/:id/message` requests (down from 50+) with at most `6` concurrent requests in flight at any moment.
+- [x] When `/api/session?...&limit=200` returns fewer than 100 sessions, the redundant `&parentID=null&limit=100` request is skipped (threshold `>= 100` preserves parity with `tests/22-character-lifecycle-and-v2-parity.test.ts` where 100 subagents fill a default page).
+- [x] Calling `adapter.stop()` while `getProjects()`, `getLocationState()`, or `executeDaemonShellCommand()` is awaiting a slow remote fetch immediately aborts the underlying `AbortSignal`.
+- [x] Clicking any older idle session in `Full Lineage` still hydrates its full transcript cleanly via `GET /api/guild/session/:id/messages`.
+- [x] All source files under `src/` remain `<= 400` lines (`tests/00-architecture-invariants.test.ts`).
+
+## Answer
+
+Implemented in `src/ingress/session-hydration-planner.ts` (per-daemon concurrency semaphore `maxConcurrent = 6`, `"fast"` mode hydrating active/gate/open-TUI/unviewed/active-parent-child + top 4 idle roots with `limit=24`), `src/ingress/daemon-location-state.ts` (5-min static catalog TTL, conditional `parentID=null` fallback at `>= 100`), `src/ingress/daemon-message-hydration.ts`, `src/ingress/daemon-mcp-normalizer.ts` (`rootUrl`-keyed 15s TUI tabs cache), `src/ingress/daemon-http-client.ts` (`abortAll()` + combined `AbortSignal.any`), `src/ingress/opencode-client-adapter.ts`, and `src/web/session-message-hydration-guard.ts` (`6000ms` on-demand timeout). Verified via `tests/55-fast-remote-machine-switching.test.ts` (Slices 2A–2B) and `tests/22-character-lifecycle-and-v2-parity.test.ts`.

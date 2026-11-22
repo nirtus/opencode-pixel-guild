@@ -2,7 +2,7 @@
 
 Type: task
 Label: ready-for-agent
-Status: open
+Status: resolved
 Blocked by: 01, 02, 03
 
 ## What to build
@@ -28,8 +28,12 @@ Eliminate redundant client-server round-trips, unnecessary SSE teardown/reconnec
 
 ## Acceptance Criteria
 
-- [ ] `PATCH /api/guild/users/me/machines/:id` (`{ activate: true }`) returns HTTP 200 with both the updated operator profile and `snapshot` matching `GET /api/guild/snapshot`.
-- [ ] In `dispatchOperatorModalAction("activate-machine", ...)`, `onStateChanged()` is invoked synchronously before the `PATCH` fetch resolves so `⏳ Switching...` renders immediately, and zero extra `GET /api/guild/snapshot` fetch is made when `payload.snapshot` is present.
-- [ ] Switching machines for the same authenticated operator keeps the existing `EventSource` open instead of closing and re-opening `/api/guild/events`, while login/logout still re-opens `EventSource`.
-- [ ] `chronicleStore.loadSnapshot(machineScopeKey)` loads messages for all characters in 1 SQL query instead of N queries and preserves identical message reconciliation output.
-- [ ] All source files under `src/` remain `<= 400` lines (`tests/00-architecture-invariants.test.ts`).
+- [x] `PATCH /api/guild/users/me/machines/:id` (`{ activate: true }`) returns HTTP 200 with both the updated operator profile and `snapshot` matching `GET /api/guild/snapshot`.
+- [x] In `dispatchOperatorModalAction("activate-machine", ...)`, `onStateChanged()` is invoked synchronously before the `PATCH` fetch resolves so `⏳ Switching...` renders immediately, and zero extra `GET /api/guild/snapshot` fetch is made when `payload.snapshot` is present.
+- [x] Switching machines for the same authenticated operator keeps the existing `EventSource` open instead of closing and re-opening `/api/guild/events`, while login/logout still re-opens `EventSource`.
+- [x] `chronicleStore.loadSnapshot(machineScopeKey)` loads messages for all characters in 1 SQL query instead of N queries and preserves identical message reconciliation output.
+- [x] All source files under `src/` remain `<= 400` lines (`tests/00-architecture-invariants.test.ts`).
+
+## Answer
+
+Implemented in `src/server/operator-registry.ts`, `src/web/operator-pairing-controller.ts`, `src/web/app-main.ts`, and `src/server/chronicle-sqlite-store.ts`. Verified via `tests/55-fast-remote-machine-switching.test.ts` (Slice 4A).
