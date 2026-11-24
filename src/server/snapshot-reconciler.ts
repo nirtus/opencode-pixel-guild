@@ -6,10 +6,12 @@ import {
   normalizeLocationDirectory,
   resolveLocalProjectDir,
 } from "../state/index.ts";
-import type {
-  GuildSnapshot,
-  SessionChatMessage,
-  SessionTributeRecord,
+import {
+  type CharacterState,
+  type GuildSnapshot,
+  LIFECYCLE_TIMERS_MS,
+  type SessionChatMessage,
+  type SessionTributeRecord,
 } from "../types/domain.ts";
 
 export interface ReconcilePersistedSnapshotInput {
@@ -205,5 +207,66 @@ export async function reconcilePersistedSnapshotWithDaemon(
       deletedRoomIds: [...mergedDeletedRooms],
     },
     prunedTributeSessionIds,
+  };
+}
+
+export function sanitizeOfflinePersistedSnapshot(
+  persistedSnapshot: Partial<GuildSnapshot> | null | undefined,
+  nowMs = Date.now(),
+): Partial<GuildSnapshot> | null {
+  if (!persistedSnapshot) return null;
+  const characters: Record<string, CharacterState> = {};
+  for (const [sid, rawChar] of Object.entries(persistedSnapshot.characters ?? {})) {
+    if (!rawChar) continue;
+    const ch = structuredClone(rawChar);
+    const isSubagent = Boolean(ch.parentId || ch.parentSessionId || ch.role === "Squad Subagent");
+    const lastRelevantMs = Math.max(ch.lastActivityAtMs || 0, ch.viewedAtMs || 0, ch.stateEnteredAtMs || 0);
+    const isStale = nowMs - lastRelevantMs >= LIFECYCLE_TIMERS_MS.HISTORICAL_ARCHIVE_IDLE_MS;
+
+    ch.activeCapability = null;
+    ch.activeWorkstation = null;
+    ch.activePluginNamespace = null;
+    ch.secondaryAlcoveTargets = [];
+    ch.activeResourceCargo = null;
+    ch.equippingAtArmory = false;
+    ch.dwellUntilMs = null;
+    ch.deferredLifecycleState = null;
+    if (Array.isArray(ch.recentTools)) {
+      for (const rec of ch.recentTools) {
+        if (rec && rec.status === "running") rec.status = "completed";
+      }
+    }
+
+    if (isSubagent) {
+      ch.isOpenInOpenCode = false;
+      ch.lifecycleState = "Archived";
+      if (ch.reportScroll && ch.reportScroll.deliveredAtMs === null) {
+        ch.reportScroll.deliveredAtMs = nowMs;
+      }
+    } else {
+      if (isStale && !ch.hasUnviewedResult && !ch.questGate) {
+        ch.isOpenInOpenCode = false;
+      }
+      if (
+        ch.lifecycleState === "WorkingAtStation" ||
+        ch.lifecycleState === "Thinking" ||
+        ch.lifecycleState === "Entering" ||
+        ch.lifecycleState === "DistillingContextMana"
+      ) {
+        ch.lifecycleState = ch.questGate
+          ? "BlockedAtQuestGate"
+          : ch.isOpenInOpenCode || ch.hasUnviewedResult
+            ? "RestingInLounge"
+            : "Archived";
+      } else if (ch.lifecycleState === "RestingInLounge" && !ch.isOpenInOpenCode && !ch.hasUnviewedResult && isStale) {
+        ch.lifecycleState = "Archived";
+      }
+    }
+    characters[sid] = ch;
+  }
+
+  return {
+    ...persistedSnapshot,
+    characters,
   };
 }

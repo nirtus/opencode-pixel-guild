@@ -48,9 +48,14 @@ function renderOpenCodePairingSectionHtml(machines: ClientMachineRecord[]): stri
               ? `<button type="button" class="btn btn-compact-action" data-operator-action="activate-machine" data-machine-activate="${esc(m.machineId)}"${rowDis}>${isSwitching ? "⏳ Reconnecting..." : "🔄 Reconnect"}</button>`
               : `<button type="button" class="btn btn-summon-cta btn-compact-action" data-operator-action="activate-machine" data-machine-activate="${esc(m.machineId)}"${rowDis}>${isSwitching ? "⏳ Switching..." : "⚡ Switch to Machine"}</button>`;
             const delBtn = `<button type="button" class="btn btn-compact-action" data-operator-action="delete-machine" data-machine-delete="${esc(m.machineId)}"${rowDis}>${isDeleting ? "⏳ Removing..." : "🗑 Remove"}</button>`;
+            const statusIcon = m.reachable
+              ? "🟢 "
+              : m.isActive
+                ? "🟠 "
+                : "⚪ ";
             return `<div class="tool-log-entry ${m.isActive ? "commit-file-row active" : ""}">
               <div class="tool-log-header">
-                <strong class="tool-log-name">${m.isActive ? "🟢 [ACTIVE] " : "⚪ "}${esc(m.label)} (${m.reachable ? "Connected" : "Offline"})</strong>
+                <strong class="tool-log-name">${statusIcon}${m.isActive ? "[ACTIVE] " : ""}${esc(m.label)} (${m.reachable ? "Connected" : "Offline"})</strong>
                 <span class="tool-log-station">${esc(formatPublicSafeEndpoint(m.daemonUrl))}</span>
               </div>
               <div class="gate-actions-row">${actBtn}${delBtn}</div>

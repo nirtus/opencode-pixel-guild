@@ -150,8 +150,9 @@ export function buildTopBarViewModel(
   const machineTabs = Object.freeze(
     isAuthenticated && Array.isArray(operatorProfile?.pairedMachines)
       ? operatorProfile.pairedMachines.map((m) => {
-          const mReachable = m.reachable !== false;
+          const mReachable = m.reachable === true;
           const mDot = mReachable ? "🟢" : "🟠";
+          const mStatusLabel = mReachable ? "Connected" : "Offline";
           const mLabel = m.label?.trim() || formatPublicSafeEndpoint(m.daemonUrl);
           const mSafeUrl = formatPublicSafeEndpoint(m.daemonUrl);
           const mActive = Boolean(m.isActive);
@@ -160,8 +161,8 @@ export function buildTopBarViewModel(
             label: mLabel,
             buttonText: `${mDot} 🖥️ ${mLabel}`,
             tooltip: mActive
-              ? `Active Machine: ${mLabel} (${mSafeUrl}) — Click to reconnect or refresh`
-              : `Click to switch active OpenCode Machine to ${mLabel} (${mSafeUrl})`,
+              ? `Active Machine: ${mLabel} (${mSafeUrl} · ${mStatusLabel}) — Click to reconnect or refresh`
+              : `Click to switch active OpenCode Machine to ${mLabel} (${mSafeUrl} · ${mStatusLabel})`,
             isActive: mActive,
             reachable: mReachable,
             status: (mReachable ? "connected" : "unreachable") as "connected" | "unreachable",

@@ -7,7 +7,7 @@ import type { GuildStateEmission, WorldStateReducer } from "../types/domain.ts";
 import type { GuildApiRouterContext } from "./api-router.ts";
 import { handleOperatorHttpRoutes, type OperatorWorkspaceRegistryPort } from "./operator-routes.ts";
 import { createGuildChronicleStore, type GuildChronicleStorePort } from "./chronicle-sqlite-store.ts";
-import { createRuntimePairingController, getMachineScopeKey } from "./machine-switch-reconciler.ts";
+import { createRuntimePairingController, getMachineScopeKey, probePairedMachineAvailability } from "./machine-switch-reconciler.ts";
 import { buildFallbackOperatorResponse, createInitialOperatorProfile, type GuildOperatorPreferences, type GuildOperatorProfile, hashOperatorPassword, type PairedOpenCodeMachine, stripPrivateOperatorFields, syncProfileActiveMachineState, verifyOperatorPassword } from "./operator-store.ts";
 import { createSseBroadcaster } from "./sse-broadcaster.ts";
 
@@ -16,7 +16,7 @@ export type { GuildOperatorPreferences, GuildOperatorProfile, PairedOpenCodeMach
 export interface OperatorWorkspaceRuntime {
   profile: GuildOperatorProfile; daemonPassword?: string; reducer: WorldStateReducer; sseClients: Set<ServerResponse>;
   clientAdapter?: OpenCodeClientAdapter; daemonClient?: Pick<OpenCodeDaemonClientPort, "deleteSession" | "deleteRoomResources" | "executeCommand"> | OpenCodeDaemonClientPort;
-  unsubscribeReducer: () => void; toRouterContext(): GuildApiRouterContext; pairDaemon(daemonUrl: string, daemonPassword?: string): Promise<boolean>; resetDisconnected(): void; close(): void;
+  unsubscribeReducer: () => void; toRouterContext(): GuildApiRouterContext; pairDaemon(daemonUrl: string, daemonPassword?: string): Promise<boolean>; refreshAvailability(forceSweepActive?: boolean): Promise<void>; resetDisconnected(): void; close(): void;
 }
 
 export interface CreateOperatorRegistryOptions {
@@ -78,8 +78,9 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
     };
     const pairingController = createRuntimePairingController({
       operatorId, profile, reducer, chronicleStore,
-      discoverService: options.discoverService, createDaemonClient: options.createDaemonClient,
+      discoverService: options.discoverService, createDaemonClient: options.createDaemonClient, fetchImpl: options.fetchImpl,
       onAdapterChanged: (ca, dc) => {
+        if (!ca) sseBroadcaster.reset();
         runtime.clientAdapter = ca;
         if (dc !== undefined) runtime.daemonClient = dc;
       },
@@ -119,6 +120,7 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
     const runtime: OperatorWorkspaceRuntime = {
       profile, daemonPassword: input.daemonPassword, reducer, sseClients, unsubscribeReducer,
       pairDaemon: (targetUrl, password) => pairingController.pairDaemon(targetUrl, password),
+      refreshAvailability: (forceSweepActive) => pairingController.refreshPairedMachinesAvailability({ forceSweepActive }),
       resetDisconnected: () => {
         if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
         lastKnownDaemonUrl = null;
@@ -143,11 +145,26 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
           },
           clientAdapter: runtime.clientAdapter,
           daemonClient: runtime.daemonClient,
+          onDaemonCommandResult: (result) => {
+            if (runtime.profile.adapterMode !== "opencode-client") return;
+            if (result.ok) {
+              if (!runtime.profile.reachable || runtime.profile.errorMessage) {
+                const nowMs = Date.now();
+                runtime.profile.reachable = true; runtime.profile.errorMessage = null; runtime.profile.lastSyncedAtMs = nowMs;
+                for (const m of runtime.profile.pairedMachines) if (m.isActive) { m.reachable = true; m.errorMessage = null; m.lastSyncedAtMs = nowMs; }
+                persistAll();
+              }
+            } else if (result.error && !/\bHTTP [234]\d\d\b/i.test(result.error)) {
+              runtime.profile.reachable = false; runtime.profile.errorMessage = result.error;
+              for (const m of runtime.profile.pairedMachines) if (m.isActive) { m.reachable = false; m.errorMessage = result.error; }
+              persistAll();
+            }
+          },
           onRefresh: async () => {
             const currentUrl = runtime.profile.daemonUrl ?? runtime.reducer.getSnapshot().daemonUrl;
             const isLocalPairing = !currentUrl || isLocalDaemonEndpoint(currentUrl);
-            if (runtime.clientAdapter) {
-              await runtime.clientAdapter.sweepAllLocations(false);
+            if (runtime.clientAdapter || runtime.profile.daemonUrl) {
+              await pairingController.refreshPairedMachinesAvailability({ forceSweepActive: true });
               const snapAfter = runtime.reducer.getSnapshot();
               if (
                 isLocalPairing &&
@@ -158,8 +175,6 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
               ) {
                 try { const svc = await options.discoverService(); await runtime.pairDaemon(svc.url, svc.password); } catch { /* ignore */ }
               }
-            } else if (runtime.profile.daemonUrl) {
-              await runtime.pairDaemon(runtime.profile.daemonUrl, runtime.daemonPassword);
             } else if (options.discoverService) {
               try { const svc = await options.discoverService(); await runtime.pairDaemon(svc.url, svc.password); } catch { /* ignore */ }
             }
@@ -197,13 +212,16 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
             }
           } catch { /* ignore */ }
         }
+        await rt.refreshAvailability(false);
       });
+    } else if (saved.pairedMachines?.length) {
+      void rt.refreshAvailability(false).catch(() => {});
     }
   }
   if (chronicleStore && savedProfiles.length > 0) chronicleStore.saveOperators(savedProfiles);
   const tickTimer = setInterval(() => { const nowMs = Date.now(); for (const runtime of operators.values()) runtime.reducer.dispatch({ type: "timer.tick", timestampMs: nowMs }); }, 1_000);
   tickTimer.unref?.();
-  const sweepTimer = setInterval(() => { for (const runtime of operators.values()) if (runtime.clientAdapter && runtime.profile.adapterMode === "opencode-client") void runtime.clientAdapter.sweepAllLocations(false).catch(() => {}); }, 15_000);
+  const sweepTimer = setInterval(() => { for (const runtime of operators.values()) if (runtime.profile.adapterMode === "opencode-client") void runtime.refreshAvailability(false).catch(() => {}); }, 15_000);
   sweepTimer.unref?.();
 
   async function registerOperator(input: { username?: string; password?: string; label?: string; pairingLink?: string; daemonUrl?: string; daemonPassword?: string; machineLabel?: string; preferences?: Partial<GuildOperatorPreferences>; isExplicitRegister?: boolean }) {
@@ -263,7 +281,18 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
     };
     runtime.profile.pairedMachines.push(newMachine);
     const active = syncProfileActiveMachineState(runtime.profile, shouldActivate ? newMachine.machineId : null);
-    if (shouldActivate && active) await runtime.pairDaemon(active.daemonUrl, active.daemonPassword);
+    if (shouldActivate && active) {
+      await runtime.pairDaemon(active.daemonUrl, active.daemonPassword);
+    } else {
+      const probe = await probePairedMachineAvailability(newMachine, {
+        discoverService: options.discoverService,
+        createDaemonClient: options.createDaemonClient,
+        fetchImpl: options.fetchImpl,
+      });
+      newMachine.reachable = probe.reachable;
+      newMachine.errorMessage = probe.errorMessage;
+      if (probe.reachable) newMachine.lastSyncedAtMs = Date.now();
+    }
     persistAll(); return { ...stripPrivateOperatorFields(runtime.profile), snapshot: runtime.reducer.getSnapshot() };
   }
 
@@ -283,6 +312,19 @@ export function createOperatorWorkspaceRegistry(options: CreateOperatorRegistryO
     if (patch.activate === true) {
       const active = syncProfileActiveMachineState(runtime.profile, machineId);
       if (active) await runtime.pairDaemon(active.daemonUrl, active.daemonPassword);
+    } else if (patch.daemonUrl?.trim() || patch.daemonPassword !== undefined) {
+      if (target.isActive) {
+        await runtime.pairDaemon(target.daemonUrl, target.daemonPassword);
+      } else {
+        const probe = await probePairedMachineAvailability(target, {
+          discoverService: options.discoverService,
+          createDaemonClient: options.createDaemonClient,
+          fetchImpl: options.fetchImpl,
+        });
+        target.reachable = probe.reachable;
+        target.errorMessage = probe.errorMessage;
+        if (probe.reachable) target.lastSyncedAtMs = Date.now();
+      }
     }
     persistAll();
     return { ...stripPrivateOperatorFields(runtime.profile), snapshot: runtime.reducer.getSnapshot() };

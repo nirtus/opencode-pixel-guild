@@ -115,7 +115,6 @@ export function createHttpOpenCodeDaemonClient(
 
   async function fetchProjects() {
     if (!options?.fetchImpl && cachedProjects && Date.now() - cachedProjectsAtMs < 30000) {
-      anySuccessResponse = true;
       return cachedProjects;
     }
     if (inFlightProjectsPromise) return inFlightProjectsPromise;
@@ -300,18 +299,22 @@ export function createHttpOpenCodeDaemonClient(
 
     async subscribeEvents(onEvent: (event: TelemetryEvent) => void, onReconnect?: () => void) {
       const controller = new AbortController();
+      const onClientAbort = () => controller.abort();
+      if (clientAbortController.signal.aborted) controller.abort();
+      else clientAbortController.signal.addEventListener("abort", onClientAbort, { once: true });
       const idleWatchdogMs = options?.timeoutMs !== undefined ? Math.max(120, options.timeoutMs * 2) : 45_000;
       let streamAttempt = 0;
       const readLoop = (async () => {
-        while (!controller.signal.aborted) {
+        while (!controller.signal.aborted && !clientAbortController.signal.aborted) {
           streamAttempt += 1;
           const streamCtrl = new AbortController();
           const combinedSignal =
             typeof AbortSignal.any === "function"
-              ? AbortSignal.any([controller.signal, streamCtrl.signal])
+              ? AbortSignal.any([clientAbortController.signal, controller.signal, streamCtrl.signal])
               : streamCtrl.signal;
           const onOuterAbort = () => streamCtrl.abort();
           controller.signal.addEventListener("abort", onOuterAbort, { once: true });
+          clientAbortController.signal.addEventListener("abort", onOuterAbort, { once: true });
           let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
           const resetWatchdog = () => {
             if (watchdogTimer) clearTimeout(watchdogTimer);
@@ -320,59 +323,62 @@ export function createHttpOpenCodeDaemonClient(
           };
           try {
             resetWatchdog();
-            const response = await fetchFn(`${rootUrl}/api/event`, {
-              headers: { Accept: "text/event-stream", ...headers },
-              signal: combinedSignal,
-            });
-            if (response.ok && response.body) {
-              if (streamAttempt > 1) {
-                cachedSessionsByPath.clear();
-                cachedLocations = null;
-                onReconnect?.();
-              }
+            const response = await fetchFn(`${rootUrl}/api/event`, { headers: { Accept: "text/event-stream", ...headers }, signal: combinedSignal });
+            if (response.ok && response.body && !combinedSignal.aborted) {
+              if (streamAttempt > 1) { cachedSessionsByPath.clear(); cachedLocations = null; onReconnect?.(); }
               const reader = response.body.getReader();
               const decoder = new TextDecoder();
               let buffer = "";
-              while (!streamCtrl.signal.aborted) {
-                resetWatchdog();
-                const { value, done } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const blocks = buffer.split(/\r?\n\r?\n/);
-                buffer = blocks.pop() ?? "";
-                for (const block of blocks) {
-                  const jsonText = block.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("\n");
-                  if (!jsonText || jsonText === "[DONE]") continue;
-                  try {
-                    for (const ev of mapOpenCodeSseFrameToTelemetryEvents(JSON.parse(jsonText))) {
-                      if ("sessionId" in ev && typeof ev.sessionId === "string") {
-                        cachedSessionsByPath.clear();
-                        evictIdleMessageHydrationCache(ev.sessionId);
+              try {
+                while (!combinedSignal.aborted) {
+                  resetWatchdog();
+                  const { value, done } = await reader.read();
+                  if (combinedSignal.aborted) { buffer = ""; try { void reader.cancel().catch(() => {}); } catch { /* ignore */ } break; }
+                  if (done) break;
+                  buffer += decoder.decode(value, { stream: true });
+                  const blocks = buffer.split(/\r?\n\r?\n/);
+                  buffer = blocks.pop() ?? "";
+                  for (const block of blocks) {
+                    if (combinedSignal.aborted) break;
+                    const jsonText = block.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("\n");
+                    if (!jsonText || jsonText === "[DONE]") continue;
+                    try {
+                      for (const ev of mapOpenCodeSseFrameToTelemetryEvents(JSON.parse(jsonText))) {
+                        if (combinedSignal.aborted) break;
+                        if ("sessionId" in ev && typeof ev.sessionId === "string") {
+                          cachedSessionsByPath.clear(); evictIdleMessageHydrationCache(ev.sessionId);
+                        }
+                        onEvent(ev);
                       }
-                      onEvent(ev);
-                    }
-                  } catch { /* Ignore malformed SSE JSON frame */ }
+                    } catch { /* Ignore malformed SSE JSON frame */ }
+                  }
                 }
+              } finally {
+                buffer = "";
+                if (combinedSignal.aborted) { try { void reader.cancel().catch(() => {}); } catch { /* ignore */ } }
               }
             }
           } catch { /* Ignore stream abort or connection error */ } finally {
             if (watchdogTimer) clearTimeout(watchdogTimer);
+            controller.signal.removeEventListener("abort", onOuterAbort);
+            clientAbortController.signal.removeEventListener("abort", onOuterAbort);
           }
-          if (controller.signal.aborted) break;
+          if (controller.signal.aborted || clientAbortController.signal.aborted) break;
           await new Promise<void>((r) => {
             const onRetryAbort = () => { clearTimeout(t); r(); };
             const t = setTimeout(() => {
               controller.signal.removeEventListener("abort", onRetryAbort);
-              controller.signal.removeEventListener("abort", onOuterAbort);
+              clientAbortController.signal.removeEventListener("abort", onRetryAbort);
               r();
             }, sseRetryDelayMs);
             t.unref?.();
             controller.signal.addEventListener("abort", onRetryAbort, { once: true });
+            clientAbortController.signal.addEventListener("abort", onRetryAbort, { once: true });
           });
         }
       })();
       await Promise.race([readLoop, new Promise<void>((resolve) => setTimeout(resolve, 15))]);
-      return () => controller.abort();
+      return () => { clientAbortController.signal.removeEventListener("abort", onClientAbort); controller.abort(); };
     },
   };
 }

@@ -10,7 +10,7 @@ import { getEffectiveViewportWidth, initPointerAndCameraControls, shouldRenderCa
 import { reconcileSidePanel, reconcileTicker } from "./side-panel-reconciler.ts";
 import { initTopBarControls, reconcileTopBar } from "./top-bar-reconciler.ts";
 import { initSummonAdventurerControls, syncSummonModalDom } from "./summon-adventurer-controller.ts";
-import { getOperatorHeaders, syncOperatorAuthGate, withOperatorQuery } from "./operator-pairing-controller.ts";
+import { getOperatorHeaders, refreshCachedOperatorProfile, syncOperatorAuthGate, withOperatorQuery } from "./operator-pairing-controller.ts";
 import { clearCachedGitState, getCachedRoomGitState, invalidateRoomGitCache, refreshRoomGitState, wasRoomGitMutatedRecently } from "./commit-ledger-controller.ts";
 import { initIntroDemoDirector, isIntroDemoModeActive, paintIntroDemoOverlay, renderFallbackDemoSimulatorHeroes, stepIntroDemoDirector } from "./intro-demo-director.ts";
 import { applyAuthoritativeSnapshot } from "./snapshot-gate.ts";
@@ -224,6 +224,9 @@ function openLiveEventStream(): void {
     fallbackPollTimer = setInterval(() => {
       if (!activeEventSource || activeEventSource.readyState === EventSource.CLOSED) {
         openLiveEventStream();
+      }
+      if (clientState.isAuthenticated) {
+        void refreshCachedOperatorProfile().then(() => scheduleHudSync());
       }
       if (Date.now() - lastSseMessageAtMs >= 20_000) {
         void fetch("/api/guild/snapshot", { headers: getOperatorHeaders() })

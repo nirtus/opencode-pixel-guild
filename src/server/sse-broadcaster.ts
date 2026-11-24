@@ -1,4 +1,5 @@
 import type { ServerResponse } from "node:http";
+import { normalizeDaemonEndpointUrl } from "../state/index.ts";
 import type { CharacterState, GuildStateEmission } from "../types/domain.ts";
 
 export const DEFAULT_SSE_STREAM_COALESCE_MS = 70;
@@ -11,6 +12,7 @@ export interface SseBroadcasterOptions {
 export interface SseBroadcaster {
   broadcast(emission: GuildStateEmission): void;
   flush(): void;
+  reset(): void;
   close(): void;
 }
 
@@ -27,6 +29,7 @@ export function createSseBroadcaster(
   const lastSentCharMeta = new Map<string, string>();
   let pendingTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingEmission: GuildStateEmission | null = null;
+  let activeDaemonUrl: string | null = null;
   let lastBroadcastAtMs = 0;
   let isClosed = false;
 
@@ -38,7 +41,7 @@ export function createSseBroadcaster(
       }
       return;
     }
-    if (kind === "snapshot.hydrated" || kind === "stream.reconnected") {
+    if (kind === "snapshot.hydrated" || kind === "stream.reconnected" || kind === "adapter.switched") {
       lastSentCharMeta.clear();
       for (const char of Object.values(emission.snapshot.characters)) {
         if (char) lastSentCharMeta.set(char.sessionId, buildCharMetaKey(char));
@@ -88,8 +91,26 @@ export function createSseBroadcaster(
     pendingEmission = null;
   }
 
+  function reset(): void {
+    clearPending();
+    lastSentCharMeta.clear();
+    activeDaemonUrl = null;
+    lastBroadcastAtMs = 0;
+  }
+
   function broadcast(emission: GuildStateEmission): void {
     if (isClosed) return;
+    const incomingDaemonUrl = normalizeDaemonEndpointUrl(emission.snapshot.daemonUrl) || null;
+    const isHostSwitch =
+      emission.delta.kind === "adapter.switched" ||
+      (activeDaemonUrl !== null && incomingDaemonUrl !== activeDaemonUrl);
+    if (isHostSwitch) {
+      clearPending();
+      lastSentCharMeta.clear();
+      lastBroadcastAtMs = 0;
+    }
+    activeDaemonUrl = incomingDaemonUrl;
+
     if (sseClients.size === 0) {
       clearPending();
       recordCharMeta(emission);
@@ -111,12 +132,19 @@ export function createSseBroadcaster(
 
     pendingEmission = emission;
     if (!pendingTimer) {
+      const expectedDaemonUrl = activeDaemonUrl;
       const delayMs = Math.max(1, coalesceMs - elapsedMs);
       pendingTimer = setTimeout(() => {
         pendingTimer = null;
         const next = pendingEmission;
         pendingEmission = null;
-        if (!isClosed && next && sseClients.size > 0) {
+        if (
+          !isClosed &&
+          next &&
+          sseClients.size > 0 &&
+          (normalizeDaemonEndpointUrl(next.snapshot.daemonUrl) || null) === activeDaemonUrl &&
+          activeDaemonUrl === expectedDaemonUrl
+        ) {
           writeNow(next);
         }
       }, delayMs);
@@ -128,16 +156,19 @@ export function createSseBroadcaster(
     if (isClosed) return;
     const next = pendingEmission;
     clearPending();
-    if (next && sseClients.size > 0) {
+    if (
+      next &&
+      sseClients.size > 0 &&
+      (normalizeDaemonEndpointUrl(next.snapshot.daemonUrl) || null) === activeDaemonUrl
+    ) {
       writeNow(next);
     }
   }
 
   function close(): void {
     isClosed = true;
-    clearPending();
-    lastSentCharMeta.clear();
+    reset();
   }
 
-  return { broadcast, flush, close };
+  return { broadcast, flush, reset, close };
 }

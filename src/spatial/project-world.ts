@@ -293,8 +293,7 @@ export function countProjectSessions(
   if (rosterMode === "full-lineage") {
     return matching.length;
   }
-  const activeCount = matching.filter(isCharacterActivelyOpen).length;
-  return activeCount > 0 ? activeCount : Math.min(1, matching.length);
+  return matching.filter(isCharacterActivelyOpen).length;
 }
 
 export function layoutProjectWorld(

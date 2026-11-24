@@ -31,6 +31,9 @@ export type GuildCommandRequest =
       readonly skills?: readonly string[];
       readonly agentClass?: string;
       readonly modelId?: string;
+      readonly gateId?: string;
+      readonly kind?: "permission" | "question";
+      readonly source?: QuestGateSource;
     }
   | {
       readonly command: "turn.interrupt";

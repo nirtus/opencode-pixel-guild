@@ -4,7 +4,7 @@ import {
   clientState, hasCharacterUnviewedResult, promoteDrawerExpandedOnMobileFocus, reconcileMobileDrawerSelection,
 } from "./client-state.ts";
 import { escapeHtml } from "./ledger-panel-reconciler.ts";
-import { getOperatorHeaders } from "./operator-pairing-controller.ts";
+import { getOperatorHeaders, refreshCachedOperatorProfile } from "./operator-pairing-controller.ts";
 import {
   bindQuestGateCardControls, isClientGateResolved, markClientGateResolved, renderQuestGateCardHtml,
 } from "./quest-gate-card.ts";
@@ -14,6 +14,7 @@ import {
 import { applyAuthoritativeSnapshot, clearClientDeletedRoom } from "./snapshot-gate.ts";
 
 let lastSummonedSessionId: string | null = null;
+let lastCommandDispatchError: string | null = null;
 const clientViewedAtBySession = new Map<string, number>();
 const dispatchedViewIdleAtBySession = new Map<string, number>();
 const acknowledgedIdleAtBySession = new Map<string, number>();
@@ -107,15 +108,17 @@ export async function dispatchGuildCommandFromWeb(
 ): Promise<boolean> {
   const invokeFetch: typeof fetch = !fetchImpl || fetchImpl === globalThis.fetch ? (input, init) => globalThis.fetch(input, init) : fetchImpl;
   if (cmd.command === "gate.resolve") markClientGateResolved(cmd.gateId, true);
+  lastCommandDispatchError = null;
   try {
     const res = await invokeFetch("/api/guild/command", {
       method: "POST", headers: getOperatorHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(cmd),
     });
+    const payload = await res.json().catch(() => null);
     if (!res.ok) {
+      lastCommandDispatchError = typeof payload?.error === "string" && payload.error.trim() ? payload.error.trim() : `HTTP ${res.status}`;
       if (cmd.command === "gate.resolve") markClientGateResolved(cmd.gateId, false);
       return false;
     }
-    const payload = await res.json();
     if (cmd.command === "adventurer.summon" && cmd.directory) clearClientDeletedRoom(cmd.directory);
     if (payload?.snapshot) applyAuthoritativeSnapshot(payload.snapshot);
     if (cmd.command === "adventurer.summon" && typeof payload?.sessionId === "string") {
@@ -125,10 +128,17 @@ export async function dispatchGuildCommandFromWeb(
       reconcileMobileDrawerSelection(payload.sessionId, clientState.selectedSessionId);
     }
     const ok = Boolean(payload?.ok ?? true);
-    if (!ok && cmd.command === "gate.resolve") markClientGateResolved(cmd.gateId, false);
+    if (!ok) {
+      lastCommandDispatchError = typeof payload?.error === "string" && payload.error.trim() ? payload.error.trim() : null;
+      if (cmd.command === "gate.resolve") markClientGateResolved(cmd.gateId, false);
+      if (lastCommandDispatchError && !/\bHTTP [234]\d\d\b/i.test(lastCommandDispatchError)) {
+        void refreshCachedOperatorProfile(fetchImpl).then(() => onStateChanged()).catch(() => {});
+      }
+    }
     onStateChanged();
     return ok;
-  } catch {
+  } catch (err) {
+    lastCommandDispatchError = err instanceof Error && err.message ? err.message : null;
     if (cmd.command === "gate.resolve") markClientGateResolved(cmd.gateId, false);
     return false;
   }
@@ -198,30 +208,18 @@ export function reconcileInteractiveCommandSlot(
   const preserveSlotScroll = hasGate && prevInteractiveKey === interactiveKey;
   slotEl.setAttribute("data-interactive-key", interactiveKey);
   slotEl.setAttribute("data-interactive-sig", gateSig);
-  const delivery =
-    clientState.draftDeliveryBySession.get(sheet.sessionId) ??
-    sheet.commandScroll.defaultDelivery;
-  const draftPrompt =
-    clientState.draftPromptsBySession.get(sheet.sessionId) ?? "";
-  const selectedAgent =
-    draftAgentModeBySession.get(sheet.sessionId) ||
-    sheet.commandScroll.selectedAgentClass ||
-    rawChar.agentClass ||
-    "build";
+  const delivery = clientState.draftDeliveryBySession.get(sheet.sessionId) ?? sheet.commandScroll.defaultDelivery;
+  const draftPrompt = clientState.draftPromptsBySession.get(sheet.sessionId) ?? "";
+  const selectedAgent = draftAgentModeBySession.get(sheet.sessionId) || sheet.commandScroll.selectedAgentClass || rawChar.agentClass || "build";
   draftAgentModeBySession.set(sheet.sessionId, selectedAgent);
   const modeOptionsHtml = sheet.commandScroll.canSwitchAgentMode
     ? `<select id="command-scroll-agent-select" class="command-scroll-agent-select" aria-label="OpenCode Agent Mode" title="OpenCode Agent Mode">${sheet.commandScroll.availableAgentModes
-        .map(
-          (m) =>
-            `<option value="${escapeHtml(m.id)}" ${m.id === selectedAgent ? "selected" : ""}>${escapeHtml(formatCompactModeLabel(m.id))}</option>`,
-        )
+        .map((m) => `<option value="${escapeHtml(m.id)}" ${m.id === selectedAgent ? "selected" : ""}>${escapeHtml(formatCompactModeLabel(m.id))}</option>`)
         .join("")}</select>`
     : "";
   const skillScopeId = `scroll:${sheet.sessionId}`;
   const skillBrowserHtml = renderSkillBrowserRowHtml({
-    scopeId: skillScopeId,
-    skills: sheet.commandScroll.availableSkillIds,
-    currentInputText: draftPrompt,
+    scopeId: skillScopeId, skills: sheet.commandScroll.availableSkillIds, currentInputText: draftPrompt,
   });
 
   const cardStateClass = isExpanded ? "is-expanded" : "is-collapsed";
@@ -325,6 +323,7 @@ export function reconcileInteractiveCommandSlot(
           promptText,
           delivery: mode,
           ...(sheet.commandScroll.canSwitchAgentMode && chosenAgent ? { agentClass: chosenAgent } : {}),
+          ...(activeGate ? { gateId: activeGate.gateId, kind: activeGate.kind, source: activeGate.source } : {}),
         },
         onStateChanged,
       );
@@ -343,7 +342,10 @@ export function reconcileInteractiveCommandSlot(
         setFeedback("✓ Scroll Dispatched!", false);
         onStateChanged();
       } else {
-        setFeedback("⚠️ Send failed", true);
+        setFeedback(
+          lastCommandDispatchError ? `⚠️ Send failed: ${lastCommandDispatchError}` : "⚠️ Send failed",
+          true,
+        );
       }
     } finally {
       isSending = false;

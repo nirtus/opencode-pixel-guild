@@ -16,12 +16,11 @@ import { clearCachedGitState, refreshRoomGitState } from "./commit-ledger-contro
 import {
   dispatchOperatorModalAction,
   getCachedOperatorProfile,
-  getOperatorHeaders,
   openOperatorPairingModal,
-  refreshCachedOperatorProfile,
+  refreshLiveGuildAndOperatorProfile,
   syncOperatorPreferences,
 } from "./operator-pairing-controller.ts";
-import { applyAuthoritativeSnapshot, getPendingOperatorAction } from "./snapshot-gate.ts";
+import { getPendingOperatorAction } from "./snapshot-gate.ts";
 
 let controlsInitialized = false;
 
@@ -65,27 +64,11 @@ export function initTopBarControls(onStateChanged: () => void): void {
     btnRefresh.addEventListener("click", async () => {
       updateTextIfChanged(btnRefresh, "⏳");
       try {
-        const [res] = await Promise.all([
-          fetch("/api/guild/refresh", {
-            method: "POST",
-            headers: getOperatorHeaders(),
-            signal:
-              typeof AbortSignal?.timeout === "function"
-                ? AbortSignal.timeout(8000)
-                : undefined,
-          }),
-          refreshCachedOperatorProfile(),
-        ]);
-        if (res.ok) {
-          const payload = await res.json();
-          if (payload?.snapshot) {
-            applyAuthoritativeSnapshot(payload.snapshot);
-          }
-          clearCachedGitState();
-          const room = getSelectedProjectRoom();
-          if (room?.roomId) {
-            await refreshRoomGitState(room.roomId, onStateChanged);
-          }
+        await refreshLiveGuildAndOperatorProfile(onStateChanged);
+        clearCachedGitState();
+        const room = getSelectedProjectRoom();
+        if (room?.roomId) {
+          await refreshRoomGitState(room.roomId, onStateChanged);
         }
       } catch {
         // Ignore transient network errors

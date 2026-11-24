@@ -24,6 +24,9 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
   const canonicalByWorktreeMap = new Map<string, string>();
   const knownRoomMeta = new Map<string, { rawDirectory: string; projectId?: string; projectName?: string; isWorktree: boolean }>();
   const sweepDigests = createSweepDigestTracker();
+  function clearConnectionState(): void {
+    sweepDigests.clear(); sessionCursors.clear(); sessionDirectoryBySessionId.clear(); knownRoomMeta.clear(); canonicalByWorktreeMap.clear();
+  }
 
   function evictDeletedSessions(ids: Iterable<string>): void {
     for (const id of ids) {
@@ -358,7 +361,7 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
       return result;
     },
     async start(sinkOrReducer) {
-      runEpoch += 1; isStopped = false; sweepDigests.clear();
+      runEpoch += 1; isStopped = false; clearConnectionState();
       const epoch = runEpoch;
       const sink: (event: TelemetryEvent) => void = typeof sinkOrReducer === "function" ? sinkOrReducer : (event) => sinkOrReducer.dispatch(event);
       const batchCandidate = (sinkOrReducer as { dispatchBatch?: (events: ReadonlyArray<TelemetryEvent>) => unknown }).dispatchBatch;
@@ -377,7 +380,7 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
       await startLiveSubscription();
     },
     stop() {
-      isStopped = true; runEpoch += 1; sweepDigests.clear();
+      isStopped = true; runEpoch += 1; clearConnectionState();
       options.client.abortAll?.();
       if (unsubscribeEvents) { unsubscribeEvents(); unsubscribeEvents = null; }
       activeSink = null; activeBatchSink = null; activeSnapshotGetter = null;

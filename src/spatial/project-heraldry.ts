@@ -373,23 +373,14 @@ export function selectVisibleHostCharacters(
   }
 
   const activeCombined: CharacterState[] = [];
-  const idleProjectLeads: CharacterState[] = [];
   for (const groupChars of byProjectRoot.values()) {
     groupChars.sort(sortByActivity);
     const openInProject = groupChars.filter(isCharacterActivelyOpen);
     if (openInProject.length > 0) {
       activeCombined.push(...openInProject);
-    } else {
-      const mostRecentRoot = groupChars.find((c) => !c.parentId);
-      if (mostRecentRoot) idleProjectLeads.push(mostRecentRoot);
     }
   }
 
-  idleProjectLeads.sort(sortByActivity);
-  const combined = [...activeCombined, ...idleProjectLeads].sort(sortByActivity);
-  if (combined.length > 0) return combined.slice(0, Math.max(16, activeCombined.length + idleProjectLeads.length));
-
-  const fallbackSorted = [...scopedChars].sort(sortByActivity);
-  const mostRecentRoot = fallbackSorted.find((c) => !c.parentId);
-  return mostRecentRoot ? [mostRecentRoot] : fallbackSorted.slice(0, 1);
+  const combined = activeCombined.sort(sortByActivity);
+  return combined.slice(0, Math.max(16, combined.length));
 }

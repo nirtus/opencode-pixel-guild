@@ -15,6 +15,7 @@ import {
 export { evictIdleMessageHydrationCache };
 
 const TEN_MINUTES_MS = 600_000;
+const TUI_TAB_FRESHNESS_WINDOW_MS = 14_400_000;
 const ONE_DAY_MS = 86_400_000;
 const STATIC_CATALOG_TTL_MS = 300_000;
 
@@ -153,21 +154,12 @@ export async function fetchDaemonLocationState(
   const rawActiveIds: string[] = [];
   if (Array.isArray(activeSessions)) {
     for (const entry of activeSessions) {
-      if (typeof entry === "string") {
-        rawActiveIds.push(entry);
-      } else if (entry && typeof (entry.sessionId ?? entry.id) === "string") {
-        rawActiveIds.push((entry.sessionId ?? entry.id)!);
-      }
+      if (typeof entry === "string") rawActiveIds.push(entry);
+      else if (entry && typeof (entry.sessionId ?? entry.id) === "string") rawActiveIds.push((entry.sessionId ?? entry.id)!);
     }
   } else if (activeSessions && typeof activeSessions === "object") {
     for (const [sessionId, info] of Object.entries(activeSessions)) {
-      if (
-        info &&
-        (info.type === "running" ||
-          info.status === "running" ||
-          info.type === "busy" ||
-          info.status === "busy")
-      ) {
+      if (info && (info.type === "running" || info.status === "running" || info.type === "busy" || info.status === "busy")) {
         rawActiveIds.push(sessionId);
       }
     }
@@ -261,6 +253,27 @@ export async function fetchDaemonLocationState(
     .sort((a, b) => (resolveSessionActivityMs(b) ?? 0) - (resolveSessionActivityMs(a) ?? 0));
 
   const mostRecentRootSessionId = sortedRootSessions[0]?.sessionId ?? sortedRootSessions[0]?.id ?? null;
+  const isTuiTabFreshForLocation =
+    Boolean(mostRecentRootSessionId && openTuiSessionIds.has(mostRecentRootSessionId)) ||
+    sortedRootSessions.some((rs) => {
+      const rsid = rs.sessionId ?? rs.id;
+      if (!rsid || !openTuiSessionIds.has(rsid)) return false;
+      const actMs = resolveSessionActivityMs(rs) ?? 0;
+      const viewedMs = rs.time?.viewed ?? 0;
+      return cacheNowMs - Math.max(actMs, viewedMs) <= TUI_TAB_FRESHNESS_WINDOW_MS;
+    });
+  const effectiveOpenTuiSessionIds = isTuiTabFreshForLocation
+    ? new Set<string>(
+        [...openTuiSessionIds].filter((sid) => {
+          if (sid === mostRecentRootSessionId) return true;
+          const item = mergedRawSessionsMap.get(sid);
+          if (!item) return false;
+          const actMs = resolveSessionActivityMs(item) ?? 0;
+          const viewedMs = item.time?.viewed ?? 0;
+          return cacheNowMs - Math.max(actMs, viewedMs) <= ONE_DAY_MS;
+        }),
+      )
+    : new Set<string>();
   const hydrateSessionIds = selectSessionsForHydration({
     mode: hydrationMode,
     isWorktreeOrRoot,
@@ -268,7 +281,7 @@ export async function fetchDaemonLocationState(
     filteredRawSessions,
     activeIdSet,
     pendingGateSessionIds,
-    openTuiSessionIds,
+    openTuiSessionIds: effectiveOpenTuiSessionIds,
     cacheNowMs,
     recentChildWindowMs: TEN_MINUTES_MS,
     getId: (s) => s.sessionId ?? s.id,
@@ -297,20 +310,6 @@ export async function fetchDaemonLocationState(
   });
 
   const nowMs = Date.now();
-  const hasAnyRecentlyOpenRoot = sortedRootSessions.some((rs) => {
-    const rsid = rs.sessionId ?? rs.id;
-    if (!rsid || rs.archived || rs.time?.archived) return false;
-    const rUpdated = resolveSessionActivityMs(rs);
-    const rViewed = rs.time?.viewed;
-    return (
-      openTuiSessionIds.has(rsid) ||
-      activeIdSet.has(rsid) ||
-      pendingGateSessionIds.has(rsid) ||
-      isUnviewedRootSession(rs, activeIdSet) ||
-      (typeof rUpdated === "number" && nowMs - rUpdated <= TEN_MINUTES_MS) ||
-      (typeof rViewed === "number" && nowMs - rViewed <= TEN_MINUTES_MS)
-    );
-  });
   const sessions: NonNullable<OpenCodeDaemonLocationPayload["sessions"]> = [];
   for (const s of filteredRawSessions) {
     const sessionId = s.sessionId ?? s.id;
@@ -364,10 +363,10 @@ export async function fetchDaemonLocationState(
     const mappedTokens = mapDaemonSessionTokens(s, shortModelId, catalogLimit, msgHydration?.latestContextTokens);
 
     const isChild = Boolean(s.parentId ?? s.parentID);
-    const isOpenInTui = !isArchived && openTuiSessionIds.has(sessionId);
+    const isOpenInTui = !isArchived && effectiveOpenTuiSessionIds.has(sessionId);
     const isOpenInOpenCode = isChild
       ? activeIdSet.has(sessionId) || pendingGateSessionIds.has(sessionId)
-      : isOpenInTui || activeIdSet.has(sessionId) || pendingGateSessionIds.has(sessionId) || hasUnviewedResult || isRecentlyActive || (!hasAnyRecentlyOpenRoot && sessionId === mostRecentRootSessionId);
+      : isOpenInTui || activeIdSet.has(sessionId) || pendingGateSessionIds.has(sessionId) || hasUnviewedResult || isRecentlyActive;
 
     sessions.push({
       sessionId, parentId: s.parentId ?? s.parentID ?? null, title: s.title,

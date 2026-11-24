@@ -2,6 +2,7 @@ import {
   clearRemoteDirectoryRunners,
   createHttpOpenCodeDaemonClient,
   createOpenCodeClientAdapter,
+  fetchWithDockerHostFallback,
   setActiveGitCacheScope,
   type DiscoveredOpenCodeService,
   type OpenCodeClientAdapter,
@@ -10,8 +11,8 @@ import {
 import { createWorldStateReducer, normalizeDaemonEndpointUrl } from "../state/index.ts";
 import type { GuildStateEmission, WorldStateReducer } from "../types/domain.ts";
 import type { GuildChronicleStorePort, MachineScopeKey } from "./chronicle-sqlite-store.ts";
-import type { GuildOperatorProfile } from "./operator-store.ts";
-import { reconcilePersistedSnapshotWithDaemon } from "./snapshot-reconciler.ts";
+import type { GuildOperatorProfile, PairedOpenCodeMachine } from "./operator-store.ts";
+import { reconcilePersistedSnapshotWithDaemon, sanitizeOfflinePersistedSnapshot } from "./snapshot-reconciler.ts";
 
 export function getMachineScopeKey(opId: string, url?: string | null): MachineScopeKey {
   const clean = normalizeDaemonEndpointUrl(url);
@@ -82,6 +83,53 @@ export async function resolveEffectiveDaemonEndpoint(
   return { effectiveUrl, effectiveHeaders };
 }
 
+export async function probePairedMachineAvailability(
+  machine: PairedOpenCodeMachine,
+  options: {
+    discoverService?: () => Promise<DiscoveredOpenCodeService>;
+    createDaemonClient?: (url: string, headers: Record<string, string>) => OpenCodeDaemonClientPort;
+    fetchImpl?: typeof fetch;
+  },
+): Promise<{ reachable: boolean; errorMessage: string | null }> {
+  const cleanUrl = (machine.daemonUrl || "").trim();
+  if (!cleanUrl) return { reachable: false, errorMessage: "Missing daemonUrl" };
+  try {
+    const { effectiveUrl, effectiveHeaders } = await resolveEffectiveDaemonEndpoint(cleanUrl, machine.daemonPassword, {
+      discoverService: options.discoverService,
+      hasCustomDaemonClient: Boolean(options.createDaemonClient),
+    });
+    if (options.createDaemonClient) {
+      const dc = options.createDaemonClient(effectiveUrl, effectiveHeaders);
+      dc.clearCaches?.();
+      try {
+        await dc.getLocations();
+        return { reachable: true, errorMessage: null };
+      } finally {
+        dc.abortAll?.();
+      }
+    }
+    const rootUrl = effectiveUrl.replace(/\/+$/, "");
+    for (const probePath of ["/api/info", "/api/project"]) {
+      const res = await fetchWithDockerHostFallback(
+        `${rootUrl}${probePath}`,
+        { headers: { Accept: "application/json", ...effectiveHeaders } },
+        options.fetchImpl,
+        2500,
+      );
+      if (res.ok) return { reachable: true, errorMessage: null };
+      if (res.status !== 404) {
+        return { reachable: false, errorMessage: `OpenCode daemon returned HTTP ${res.status} on ${probePath}` };
+      }
+    }
+    return { reachable: false, errorMessage: "OpenCode daemon returned HTTP 404" };
+  } catch (err) {
+    return {
+      reachable: false,
+      errorMessage: err instanceof Error ? err.message : "Failed to reach OpenCode daemon",
+    };
+  }
+}
+
 export interface CreateRuntimePairingControllerOptions {
   readonly operatorId: string;
   readonly profile: GuildOperatorProfile;
@@ -89,6 +137,7 @@ export interface CreateRuntimePairingControllerOptions {
   readonly chronicleStore: GuildChronicleStorePort;
   readonly discoverService?: () => Promise<DiscoveredOpenCodeService>;
   readonly createDaemonClient?: (url: string, headers: Record<string, string>) => OpenCodeDaemonClientPort;
+  readonly fetchImpl?: typeof fetch;
   readonly onAdapterChanged: (adapter: OpenCodeClientAdapter | undefined, client?: OpenCodeDaemonClientPort) => void;
   readonly onPasswordChanged: (password?: string) => void;
   readonly flushPendingSave: (scopeUrl: string | null) => void;
@@ -99,6 +148,7 @@ export interface RuntimePairingController {
   isPairingInFlight(): boolean;
   getLastStableDaemonUrl(): string | null;
   pairDaemon(targetUrl: string, password?: string): Promise<boolean>;
+  refreshPairedMachinesAvailability(options?: { forceSweepActive?: boolean }): Promise<void>;
   resetDisconnected(): void;
   cancelForDemo(): void;
   close(): void;
@@ -112,6 +162,7 @@ export function createRuntimePairingController(
   let initialSyncCompleted = false;
   let lastStableDaemonUrl: string | null = opts.profile.daemonUrl;
   let activeAdapter: OpenCodeClientAdapter | undefined;
+  let activeDaemonClient: OpenCodeDaemonClientPort | undefined;
   let pendingAdapter: OpenCodeClientAdapter | null = null;
 
   const stopAdapters = () => {
@@ -120,6 +171,24 @@ export function createRuntimePairingController(
     activeAdapter?.stop();
     activeAdapter = undefined;
     opts.onAdapterChanged(undefined);
+  };
+
+  const applyActiveReachability = (reachable: boolean, errorMessage: string | null) => {
+    const nowMs = Date.now();
+    let changed = opts.profile.reachable !== reachable || opts.profile.errorMessage !== errorMessage;
+    opts.profile.reachable = reachable;
+    opts.profile.errorMessage = errorMessage;
+    if (reachable) opts.profile.lastSyncedAtMs = nowMs;
+    const normActive = normalizeDaemonEndpointUrl(opts.profile.daemonUrl);
+    for (const m of opts.profile.pairedMachines) {
+      if (m.isActive || (normActive && normalizeDaemonEndpointUrl(m.daemonUrl) === normActive)) {
+        if (m.reachable !== reachable || m.errorMessage !== errorMessage) changed = true;
+        m.reachable = reachable;
+        m.errorMessage = errorMessage;
+        if (reachable) m.lastSyncedAtMs = nowMs;
+      }
+    }
+    return changed;
   };
 
   return {
@@ -154,15 +223,11 @@ export function createRuntimePairingController(
       const prevSnap = opts.reducer.getSnapshot();
       const wasInFlight = pairingInFlight;
       const prevStableUrl = lastStableDaemonUrl;
-      const isDifferentMachine =
-        wasInFlight ||
-        normalizeDaemonEndpointUrl(prevSnap.daemonUrl) !== normalizeDaemonEndpointUrl(cleanUrl);
+  const isDifferentMachine = wasInFlight || normalizeDaemonEndpointUrl(prevSnap.daemonUrl) !== normalizeDaemonEndpointUrl(cleanUrl);
       const shouldAuthoritativeReconcile = isDifferentMachine || !initialSyncCompleted;
-
       if (!wasInFlight) opts.flushPendingSave(prevStableUrl ?? prevSnap.daemonUrl);
       pairingInFlight = true;
       stopAdapters();
-
       opts.onPasswordChanged(password);
       opts.profile.daemonUrl = cleanUrl;
       opts.profile.paired = true;
@@ -171,21 +236,14 @@ export function createRuntimePairingController(
       if (isDifferentMachine || prevSnap.activeAdapter === "demo-simulator") {
         if (isDifferentMachine) {
           if (prevStableUrl) clearRemoteDirectoryRunners(prevStableUrl);
-          if (prevSnap.daemonUrl && prevSnap.daemonUrl !== prevStableUrl) {
-            clearRemoteDirectoryRunners(prevSnap.daemonUrl);
-          }
+          if (prevSnap.daemonUrl && prevSnap.daemonUrl !== prevStableUrl) clearRemoteDirectoryRunners(prevSnap.daemonUrl);
           if (!prevStableUrl && !prevSnap.daemonUrl) clearRemoteDirectoryRunners();
           setActiveGitCacheScope(cleanUrl);
         }
         opts.reducer.reset?.({ adapter: "opencode-client", daemonUrl: cleanUrl });
       } else {
         setActiveGitCacheScope(cleanUrl);
-        opts.reducer.dispatch({
-          type: "adapter.switched",
-          timestampMs: Date.now(),
-          adapter: "opencode-client",
-          daemonUrl: cleanUrl,
-        });
+        opts.reducer.dispatch({ type: "adapter.switched", timestampMs: Date.now(), adapter: "opencode-client", daemonUrl: cleanUrl });
       }
 
       const { effectiveUrl, effectiveHeaders } = await resolveEffectiveDaemonEndpoint(cleanUrl, password, {
@@ -266,20 +324,12 @@ export function createRuntimePairingController(
         }
         targetReducer = opts.reducer;
         activeAdapter = ca;
+        activeDaemonClient = dc;
         pendingAdapter = null;
         opts.onAdapterChanged(ca, dc);
         await ca.startLiveSubscription?.();
         if (currentEpoch !== pairingEpoch) { ca.stop(); return false; }
-        opts.profile.reachable = true;
-        opts.profile.lastSyncedAtMs = Date.now();
-        opts.profile.errorMessage = null;
-        for (const m of opts.profile.pairedMachines) {
-          if (m.daemonUrl === cleanUrl) {
-            m.reachable = true;
-            m.lastSyncedAtMs = opts.profile.lastSyncedAtMs;
-            m.errorMessage = null;
-          }
-        }
+        applyActiveReachability(true, null);
         lastStableDaemonUrl = cleanUrl;
         initialSyncCompleted = true;
         pairingInFlight = false;
@@ -293,24 +343,51 @@ export function createRuntimePairingController(
         ca.stop();
         if (pendingAdapter === ca) pendingAdapter = null;
         if (currentEpoch !== pairingEpoch) return false;
-        if (isDifferentMachine) {
+        if (shouldAuthoritativeReconcile) {
           opts.reducer.reset?.({ adapter: "opencode-client", daemonUrl: cleanUrl });
-          if (baseSnap) opts.reducer.hydrateFromSnapshot?.(baseSnap);
+          const safeOfflineSnap = sanitizeOfflinePersistedSnapshot(baseSnap);
+          if (safeOfflineSnap) opts.reducer.hydrateFromSnapshot?.(safeOfflineSnap);
         }
+        activeDaemonClient = dc;
         opts.onAdapterChanged(undefined, dc);
-        opts.profile.reachable = false;
-        opts.profile.errorMessage = err instanceof Error ? err.message : "Failed to reach OpenCode daemon";
-        for (const m of opts.profile.pairedMachines) {
-          if (m.daemonUrl === cleanUrl) {
-            m.reachable = false;
-            m.errorMessage = opts.profile.errorMessage;
-          }
-        }
+        applyActiveReachability(false, err instanceof Error ? err.message : "Failed to reach OpenCode daemon");
         lastStableDaemonUrl = cleanUrl;
         pairingInFlight = false;
         opts.persistAll();
         return false;
       }
+    },
+    async refreshPairedMachinesAvailability(options) {
+      if (pairingInFlight || opts.profile.adapterMode !== "opencode-client") return;
+      let changed = false;
+      const nonActive = opts.profile.pairedMachines.filter((m) => !m.isActive);
+      const nonActiveTask = Promise.all(
+        nonActive.map(async (m) => {
+          const res = await probePairedMachineAvailability(m, {
+            discoverService: opts.discoverService,
+            createDaemonClient: opts.createDaemonClient,
+            fetchImpl: opts.fetchImpl,
+          });
+          if (m.reachable !== res.reachable || m.errorMessage !== res.errorMessage) changed = true;
+          m.reachable = res.reachable;
+          m.errorMessage = res.errorMessage;
+          if (res.reachable) m.lastSyncedAtMs = Date.now();
+        }),
+      );
+      if (activeAdapter) {
+        if (options?.forceSweepActive) activeDaemonClient?.clearCaches?.();
+        try {
+          await activeAdapter.sweepAllLocations(false);
+          if (applyActiveReachability(true, null)) changed = true;
+        } catch (err) {
+          if (applyActiveReachability(false, err instanceof Error ? err.message : "Failed to reach OpenCode daemon")) changed = true;
+        }
+      } else if (opts.profile.daemonUrl) {
+        const activeMachine = opts.profile.pairedMachines.find((m) => m.isActive);
+        await this.pairDaemon(opts.profile.daemonUrl, activeMachine?.daemonPassword);
+      }
+      await nonActiveTask;
+      if (changed) opts.persistAll();
     },
   };
 }

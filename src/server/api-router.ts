@@ -36,6 +36,7 @@ export interface GuildApiRouterContext {
     | OpenCodeDaemonClientPort;
   readonly getStoredSessionMessages?: (sessionId: string) => SessionChatMessage[];
   readonly onRefresh?: () => Promise<unknown> | void;
+  readonly onDaemonCommandResult?: (result: { ok: boolean; error?: string }) => void;
 }
 
 export function sendJson(res: ServerResponse, status: number, payload: unknown): void {

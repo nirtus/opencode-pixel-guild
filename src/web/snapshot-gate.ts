@@ -154,30 +154,55 @@ export function applyAuthoritativeSnapshot(
   options: ApplyAuthoritativeSnapshotOptions = {},
 ): boolean {
   if (!nextSnap || typeof nextSnap !== "object") return false;
+  const incomingUrl = normalizeDaemonEndpointUrl(nextSnap.daemonUrl) || null;
+  const curSnap = clientState.currentSnapshot;
+  const curUrl = normalizeDaemonEndpointUrl(curSnap?.daemonUrl) || null;
+  const isMachineSwitchAction =
+    Boolean(pendingOperatorAction) &&
+    (pendingOperatorAction!.startsWith("activate-machine:") ||
+      pendingOperatorAction === "pair-machine" ||
+      pendingOperatorAction === "pair-local-machine");
+
   if (options.allowVersionReset) {
+    if (isMachineSwitchAction && expectedMachineDaemonUrl && incomingUrl && incomingUrl !== expectedMachineDaemonUrl) {
+      return false;
+    }
     clientDeletedSessionIds.clear();
     clientDeletedRoomIds.clear();
-    if (nextSnap.daemonUrl) {
-      expectedMachineDaemonUrl = normalizeDaemonEndpointUrl(nextSnap.daemonUrl);
+    if (incomingUrl) {
+      expectedMachineDaemonUrl = incomingUrl;
+    } else if (nextSnap.daemonUrl === null && !isMachineSwitchAction) {
+      expectedMachineDaemonUrl = null;
     }
   } else {
-    const isMachineSwitchAction =
-      Boolean(pendingOperatorAction) &&
-      (pendingOperatorAction!.startsWith("activate-machine:") ||
-        pendingOperatorAction === "pair-machine" ||
-        pendingOperatorAction === "pair-local-machine");
     if (isMachineSwitchAction) {
-      const incomingUrl = normalizeDaemonEndpointUrl(nextSnap.daemonUrl);
       if (!expectedMachineDaemonUrl || incomingUrl !== expectedMachineDaemonUrl) {
         return false;
       }
+    } else if (expectedMachineDaemonUrl && incomingUrl && incomingUrl !== expectedMachineDaemonUrl) {
+      return false;
+    }
+    if (!expectedMachineDaemonUrl && incomingUrl) {
+      expectedMachineDaemonUrl = incomingUrl;
     }
   }
-  const curSnap = clientState.currentSnapshot;
+
+  const isHostOwnershipTransition = Boolean(
+    incomingUrl &&
+      curUrl &&
+      incomingUrl !== curUrl &&
+      (!expectedMachineDaemonUrl || incomingUrl === expectedMachineDaemonUrl),
+  );
+  if (isHostOwnershipTransition) {
+    clientDeletedSessionIds.clear();
+    clientDeletedRoomIds.clear();
+    expectedMachineDaemonUrl = incomingUrl;
+  }
+
   const curVer = typeof curSnap?.version === "number" ? curSnap.version : 0;
   const nextVer = typeof nextSnap.version === "number" ? nextSnap.version : 0;
 
-  if (!options.allowVersionReset && curVer > 0 && nextVer > 0 && nextVer < curVer) {
+  if (!options.allowVersionReset && !isHostOwnershipTransition && curVer > 0 && nextVer > 0 && nextVer < curVer) {
     if (options.roomIdHint && curSnap?.rooms?.[options.roomIdHint] && nextSnap.rooms?.[options.roomIdHint]) {
       curSnap.rooms[options.roomIdHint] = {
         ...curSnap.rooms[options.roomIdHint]!,

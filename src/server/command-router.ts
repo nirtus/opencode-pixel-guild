@@ -189,6 +189,13 @@ export async function handleGuildCommandRoute(
   const cmd = {
     ...rawBody,
     ...(resolvedDirectory ? { directory: resolvedDirectory } : {}),
+    ...(command === "scroll.send" && charBefore?.questGate
+      ? {
+          gateId: (typeof rawBody.gateId === "string" && rawBody.gateId.trim()) ? rawBody.gateId.trim() : charBefore.questGate.gateId,
+          kind: rawBody.kind ?? charBefore.questGate.kind,
+          source: rawBody.source ?? charBefore.questGate.source,
+        }
+      : {}),
     ...(command === "session.view" && typeof rawBody.idleAtMs !== "number" && typeof charBefore?.idleAtMs === "number"
       ? { idleAtMs: charBefore.idleAtMs }
       : {}),
@@ -216,6 +223,7 @@ export async function handleGuildCommandRoute(
     activeAdapter === "opencode-client"
   ) {
     daemonRes = await ctx.daemonClient.executeCommand(cmd);
+    ctx.onDaemonCommandResult?.(daemonRes);
   }
 
   if (

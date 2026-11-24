@@ -323,45 +323,50 @@ export async function refreshCachedOperatorProfile(fetchImpl?: typeof fetch): Pr
   return cachedProfile;
 }
 
+export async function refreshLiveGuildAndOperatorProfile(
+  onStateChanged: () => void, fetchImpl?: typeof fetch,
+): Promise<{ snapshot?: unknown; profile: ClientOperatorProfile | null }> {
+  const fn = fetchImpl ?? (typeof fetch === "function" ? fetch : undefined);
+  if (!fn) return { profile: cachedProfile };
+  let snapshot: unknown;
+  try {
+    const signal = typeof AbortSignal?.timeout === "function" ? AbortSignal.timeout(8000) : undefined;
+    const res = await fn("/api/guild/refresh", { method: "POST", headers: getOperatorHeaders(), signal });
+    if (res.ok) {
+      const payload = (await res.json()) as { snapshot?: unknown };
+      if (payload?.snapshot) { snapshot = payload.snapshot; applyAuthoritativeSnapshot(payload.snapshot as typeof clientState.currentSnapshot); }
+    }
+  } catch { /* ignore */ }
+  const profile = await refreshCachedOperatorProfile(fn);
+  onStateChanged();
+  return { snapshot, profile };
+}
+
 export async function syncOperatorAuthGate(onStateChanged: () => void): Promise<boolean> {
-  if (typeof document === "undefined" || typeof fetch !== "function") {
-    clientState.authBootCompleted = true;
-    return true;
-  }
+  if (typeof document === "undefined" || typeof fetch !== "function") { clientState.authBootCompleted = true; return true; }
   const requestedModal = typeof window !== "undefined" ? new URLSearchParams(window.location?.search || "").get("modal") : null;
   try {
     const profile = await refreshCachedOperatorProfile();
     if (profile) {
       if (profile.authenticated === false) {
-        isAuthLocked = true;
-        resetClientWorldViewState(false);
-        clientState.authBootCompleted = true;
+        isAuthLocked = true; resetClientWorldViewState(false); clientState.authBootCompleted = true;
         activeModalTab = requestedModal === "register" ? "register" : "login";
-        const modal = ensureOperatorPairingModal(onStateChanged);
-        modal.classList.add("is-open");
-        mountModalInnerDom(modal, onStateChanged);
-        onStateChanged();
-        return false;
+        const modal = ensureOperatorPairingModal(onStateChanged); modal.classList.add("is-open"); mountModalInnerDom(modal, onStateChanged);
+        onStateChanged(); return false;
       }
-      isAuthLocked = false;
-      if (profile.operatorId) setSavedOperatorId(profile.operatorId);
+      isAuthLocked = false; if (profile.operatorId) setSavedOperatorId(profile.operatorId);
       const localSaved = readSavedUiWindowState() ?? {};
       const mergedPrefs = { ...(profile.preferences ?? {}), ...localSaved };
       if (clientState.selectedSessionId) mergedPrefs.selectedSessionId = clientState.selectedSessionId;
       applyOperatorPreferencesToClientState(mergedPrefs);
-      clientState.authBootCompleted = true;
-      syncAuthLockDom();
-      onStateChanged();
+      clientState.authBootCompleted = true; syncAuthLockDom(); onStateChanged();
       if (requestedModal === "profile" || requestedModal === "machines" || (profile.pairedMachines?.length ?? 0) === 0) {
         activeModalTab = requestedModal === "machines" ? "machines" : "profile";
-        const modal = ensureOperatorPairingModal(onStateChanged);
-        modal.classList.add("is-open");
-        mountModalInnerDom(modal, onStateChanged);
+        const modal = ensureOperatorPairingModal(onStateChanged); modal.classList.add("is-open"); mountModalInnerDom(modal, onStateChanged);
       }
     }
   } catch { /* ignore */ }
-  clientState.authBootCompleted = true;
-  return true;
+  clientState.authBootCompleted = true; return true;
 }
 
 export async function openOperatorPairingModal(onStateChanged: () => void, initialTab: OperatorModalTab = "profile"): Promise<void> {

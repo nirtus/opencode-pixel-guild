@@ -41,7 +41,7 @@
 - **Outdoor Debugging Hunts & Monster Combat**: Debugging sessions venture into the **Dungeon Wilds**, cast **Lantern Flares** during searches to clear **Fog of War**, and fight their bound **Bug Monster** until tests pass.
 - **Interactive Command & Git Control**: Prompt idle heroes, steer or stop active turns, switch **OpenCode Agent Modes** live, attach `@skill` grimoires, answer permission/question **Quest Gates**, and stage or commit Git changes in the **Assembly Commit Ledger**.
 - **Inline Mermaid Diagram Graphics**: Fenced ` ```mermaid ` blocks inside assistant/user responses in the **Character Sheet** (`Chat` tab) and **Quest Gate** cards render locally as crisp, XSS-safe inline SVG graphics (`flowchart`/`graph`, `sequenceDiagram`, `stateDiagram-v2`, `classDiagram`, `erDiagram`, and `pie`) with zero external dependencies, a collapsible `Source` viewer, and graceful streaming fallback.
-- **Long-Session 30 FPS Runtime Stability**: Coalesced streaming SSE broadcasts, delta-only Activity Ticker logs, lazy per-turn memoized Markdown rendering, `WeakMap`-cached heraldry & underfoot nameplate rendering, bounded `Toil Queue` tool caches, automatic client cache pruning, and pre-persistence `Archived` payload compaction (with on-demand SQLite transcript re-hydration) keep frame pacing and memory flat across multi-hour, multi-project sessions.
+- **Long-Session 30 FPS Runtime Stability**: Host-scoped coalesced streaming SSE broadcasts (with mid-chunk stream reader cancellation and connection-ownership snapshot gating across paired host switches), delta-only Activity Ticker logs, lazy per-turn memoized Markdown rendering, `WeakMap`-cached heraldry & underfoot nameplate rendering, bounded `Toil Queue` tool caches, automatic client cache pruning, and pre-persistence `Archived` payload compaction (with on-demand SQLite transcript re-hydration) keep frame pacing and memory flat across multi-hour, multi-project sessions.
 
 ---
 
@@ -73,7 +73,7 @@
 | **Debugging & Failing Tests** | **Dungeon Wilds**, **Lantern Flares** & **Bug Monsters** | Searches pulse **Lantern Flares** through **Fog of War**; fixes and test runs send heroes to fight their bound **Bug Monster**. |
 | **Context Window & Compaction** | **Context Mana** & **Compaction Exhalation** | Context usage bar; compaction plays an in-place **Compaction Exhalation** (`Compacting...`) vapor cloud above the hero. |
 | **Permissions & Questions** | **Quest Gate** (`!` Lock / `?` Question) | Overhead alert marker that pauses the hero across consecutive structured (`/api/question`, `/api/form`, `question` tool) and conversational turns, synchronizes two-way when answered in OpenCode TUI/CLI/web, and renders collapsible (`Collapse ▾`), bypassable (`Bypass ✕`) approval or question choices in the **Character Sheet**. |
-| **Completed Session Output** | **Unread Session Result** (`✓ Result Ready`) | Finished sessions rest in the **Break Lounge** with a `✓ Result Ready` badge until viewed, and remain resting (never archived) for as long as their session tab stays open in the OpenCode TUI. |
+| **Completed Session Output** | **Unread Session Result** (`✓ Result Ready`) | Finished sessions rest in the **Break Lounge** with a `✓ Result Ready` badge until viewed, remain resting while their session tab is fresh in the OpenCode TUI (`tabs.json` / `session.json`), and automatically archive once closed or superseded by newer non-tabbed sessions so `Active Squads` counts and sprites stay strictly in sync with live OpenCode sessions. |
 | **User Prompt Dispatch** | **Command Scroll** | Always-accessible prompt composer (`/` shortcut, available even beneath an active **Quest Gate**) for waking idle heroes, steering busy turns, bypassing a gate, attaching `@skill` grimoires, or stopping execution. |
 | **Working-Tree Git Changes** | **Assembly Commit Ledger** | Built-in Git panel for inspecting diffs, staging or discarding files, syncing remotes, and sealing commits. |
 
@@ -187,7 +187,11 @@ To install, configure, and verify **`graphify`** (knowledge graph CLI, git hooks
 
 - Run `opencode pair --remote` (or `opencode pair --url http://<LAN-IP>:4096`) on your OpenCode host.
 - In the **OpenCode Machines** tab (`+ Pair`), paste the pairing link/QR text, scan the QR code with your camera, or upload/paste a QR screenshot, then click **Redeem & Pair Machine**.
-- Click any paired machine pill in the top header bar to switch your active **Workshop Room** to that host—immediately displaying `⏳ Switching...`, aborting in-flight requests to the previous host, running parallel discovery + two-phase bounded session hydration + non-blocking compound single-shell remote Git enrichment over your existing live SSE stream with machine-scoped warm caches, and atomically isolating and reconciling all **Workshop Rooms**, `0`-session registered worlds, **Guild Characters**, **OpenCode Agent Modes**, **Lifetime Tribute**, and **Goal Assembly Site** / **Assembly Commit Ledger** state without cross-machine leakage—or click **Detect & Pair Local OpenCode** for local auto-discovery.
+- Click any paired machine pill in the top header bar to switch your active **Workshop Room** to that host—immediately displaying `⏳ Switching...`, aborting in-flight HTTP and mid-chunk SSE stream reads to the previous host (discarding partial event buffers, old connection cursors, and pending coalesced broadcasts while enforcing connection ownership separately from snapshot version numbers so a newly switched host starting at a lower version renders immediately), running parallel discovery + two-phase bounded session hydration + non-blocking compound single-shell remote Git enrichment over your existing live SSE stream with machine-scoped warm caches, continuously reflecting live availability (`🟢` `Connected` vs. `🟠` `Offline`) across all paired machines in the top header strip and **OpenCode Machines** modal, and atomically isolating and reconciling all **Workshop Rooms**, `0`-session registered worlds, **Guild Characters**, **OpenCode Agent Modes**, **Lifetime Tribute**, and **Goal Assembly Site** / **Assembly Commit Ledger** state without cross-machine leakage—or click **Detect & Pair Local OpenCode** for local auto-discovery.
+
+![Coalesced SSE Connection Ownership & Mid-Stream Paired Host Switch Verification](./docs/images/coalesced-sse-host-switch-ownership.png)
+
+![Paired OpenCode Servers Live Availability](./docs/images/paired-servers-availability.png)
 
 ---
 
@@ -212,7 +216,9 @@ Clicking empty floor space (or pressing `Escape`) opens the **Guild Master Ledge
 
 - **Completed Session Results (Unread)**: Displays finished sessions waiting with `✓ Result Ready`; clicking any entry opens **Hero Chat** and marks the result as read.
 - **Telemetry, Lifetime Tribute & Demolition**: Shows active hero count, world count, cumulative **Lifetime Tribute** (`🪙 Tokens` and `💰 Cost`), and—when a single world is focused—the **Demolish** button.
-- **Goal Assembly & Active Room Roster**: Summarizes assembly progress with an inline **🔄 Sync Git** action, lists active **Bug Monsters**, and provides a quick-jump roster with a `show subagents` toggle.
+- **Goal Assembly & Active Room Roster**: Summarizes assembly progress with an inline **🔄 Sync Git** action, lists active **Bug Monsters**, and provides a quick-jump roster with a `show subagents` toggle, keeping `Active Squads` world session counters and visible characters strictly synchronized with live OpenCode sessions.
+
+![Live OpenCode Sessions Sync & Active Squads Roster](./docs/images/opencode-sessions-sync.png)
 
 ![Active Room Roster Show Subagents Toggle](./docs/images/active-roster-show-subagents.png)
 
@@ -242,7 +248,9 @@ Click any hero on the canvas or in the roster to open their **Character Sheet** 
 | :---: | :---: |
 | ![Character Sheet Scrolls & Gear](./docs/images/verified-desktop-06-hero-scrolls-gear.png) | ![Character Sheet Tool Log](./docs/images/verified-desktop-07-hero-tool-log.png) |
 
-- **`Chat`**: Review the **Adventurer Dispatch Log** (collapsed into one-liners by default; click any row or `Expand All ▾` for full Markdown—including zero-dependency inline SVG **Mermaid diagrams** for `flowchart`, `sequenceDiagram`, `stateDiagram-v2`, `classDiagram`, `erDiagram`, and `pie` blocks with a collapsible `Source` viewer), resolve, collapse (`Collapse ▾`), or quietly bypass (`Bypass ✕`) `!` Permission and `?` Question **Quest Gates** with clickable option pills (or answer them directly in OpenCode TUI/CLI/web with automatic two-way sync), and use the always-accessible bottom **Command Scroll** composer (`/` shortcut) to attach `@skill` badges, switch **OpenCode Agent Modes**, and steer, bypass a gate, or stop the hero.
+- **`Chat`**: Review the **Adventurer Dispatch Log** (collapsed into one-liners by default; click any row or `Expand All ▾` for full Markdown—including zero-dependency inline SVG **Mermaid diagrams** for `flowchart`, `sequenceDiagram`, `stateDiagram-v2`, `classDiagram`, `erDiagram`, and `pie` blocks with a collapsible `Source` viewer), resolve, collapse (`Collapse ▾`), or quietly bypass (`Bypass ✕`) `!` Permission and `?` Question **Quest Gates** with clickable option pills (or answer them directly in OpenCode TUI/CLI/web with automatic two-way sync), and use the always-accessible bottom **Command Scroll** composer (`/` shortcut) to attach `@skill` badges, switch **OpenCode Agent Modes**, and steer, bypass a gate (automatically dismissing pending daemon forms/permissions), or stop the hero with truthful daemon response verification and error feedback.
+
+![Command Scroll Send Reliability & Error Surfacing](./docs/images/command-scroll-send-reliability.png)
 
 ![Mermaid Diagram Graphics in Character Sheet Dispatch Log](./docs/images/mermaid-chat-diagrams.png)
 - **`Details`**: Inspect session ID, model, **Context Mana** utilization (`used / limit` tokens), **Lifetime Tribute** cost, **Workflow Intent**, target station, and subagent lineage.

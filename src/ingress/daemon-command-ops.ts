@@ -8,17 +8,11 @@ export function extractMergedSkills(
 ): string[] {
   const skills = new Set<string>();
   if (Array.isArray(explicitSkills)) {
-    for (const sk of explicitSkills) {
-      if (typeof sk === "string" && sk.trim()) {
-        skills.add(sk.trim());
-      }
-    }
+    for (const sk of explicitSkills) if (typeof sk === "string" && sk.trim()) skills.add(sk.trim());
   }
   if (typeof promptText === "string" && promptText) {
-    for (const match of promptText.matchAll(/@([a-zA-Z0-9_-]+)/g)) {
-      if (match[1]) {
-        skills.add(match[1]);
-      }
+    for (const match of promptText.matchAll(/(?:^|\s)@([a-zA-Z0-9_-]+)(?=\s|$|[.,!?;:)\]}])/g)) {
+      if (match[1]) skills.add(match[1]);
     }
   }
   return [...skills];
@@ -31,21 +25,15 @@ export function formatAnswersAsText(
   const lines: string[] = [];
   for (const [key, val] of Object.entries(answers)) {
     const joined = Array.isArray(val) ? val.join(", ") : String(val ?? "");
-    if (joined.trim()) {
-      lines.push(`${key}: ${joined.trim()}`);
-    }
+    if (joined.trim()) lines.push(`${key}: ${joined.trim()}`);
   }
   return lines.join("\n");
 }
 
-export function parseModelSpec(
-  modelId?: string,
-): { providerID: string; id: string } | undefined {
+export function parseModelSpec(modelId?: string): { providerID: string; id: string } | undefined {
   if (typeof modelId !== "string") return undefined;
   const trimmed = modelId.trim();
-  if (!trimmed || trimmed === "default" || trimmed === "unknown-model") {
-    return undefined;
-  }
+  if (!trimmed || trimmed === "default" || trimmed === "unknown-model") return undefined;
   const slashIdx = trimmed.indexOf("/");
   if (slashIdx <= 0 || slashIdx >= trimmed.length - 1) return undefined;
   const providerID = trimmed.slice(0, slashIdx).trim();
@@ -86,8 +74,21 @@ export async function executeDaemonCommand(
     Accept: "application/json",
     "Content-Type": "application/json",
     ...headers,
-    ...(daemonDir ? { "x-opencode-directory": daemonDir } : {}),
+    ...(daemonDir
+      ? {
+          "x-opencode-directory": /^[\x00-\x7F]*$/.test(daemonDir)
+            ? daemonDir
+            : encodeURIComponent(daemonDir),
+        }
+      : {}),
   };
+
+  function formatResponseError(res: { status: number; raw: Record<string, any> | null }): string {
+    const rawMsg = res.raw?.message ?? res.raw?.error?.message ?? res.raw?.error;
+    return typeof rawMsg === "string" && rawMsg.trim()
+      ? `${rawMsg.trim()} (HTTP ${res.status})`
+      : `HTTP ${res.status}`;
+  }
 
   async function postJson(
     path: string,
@@ -128,22 +129,11 @@ export async function executeDaemonCommand(
     sessionId: string,
     body: Record<string, unknown>,
     fallbackBody?: Record<string, unknown>,
-  ): Promise<{ ok: boolean; status: number }> {
+  ): Promise<{ ok: boolean; status: number; raw: Record<string, any> | null }> {
     const promptPath = `/api/session/${encodeURIComponent(sessionId)}/prompt${query}`;
-    const runPrompt = async () => {
-      let r = await postJson(promptPath, body);
-      if (!r.ok && fallbackBody) r = await postJson(promptPath, fallbackBody);
-      return r;
-    };
-    const p = runPrompt().catch(() => ({ ok: false, status: 500, raw: null }));
-    if (fetchImpl !== fetch && fetchImpl !== globalThis.fetch) return p;
-    return Promise.race([
-      p,
-      new Promise<{ ok: boolean; status: number }>((resolve) => {
-        const t = setTimeout(() => resolve({ ok: true, status: 202 }), 350);
-        t.unref?.();
-      }),
-    ]);
+    let r = await postJson(promptPath, body);
+    if (!r.ok && fallbackBody) r = await postJson(promptPath, fallbackBody);
+    return r;
   }
 
   async function lookupSessionGate(
@@ -206,8 +196,37 @@ export async function executeDaemonCommand(
     return out;
   }
 
+  async function dismissPendingDaemonGate(
+    sessionId: string,
+    gateId: string,
+    kind?: "permission" | "question",
+    source?: string,
+  ): Promise<void> {
+    const encSid = encodeURIComponent(sessionId);
+    const encGid = encodeURIComponent(gateId);
+    if (kind === "permission" || source === "permission") {
+      await postJson(`/api/session/${encSid}/permission/${encGid}/reply${query}`, { decision: "reject" }).catch(() => null);
+    } else if (source === "form" || gateId.startsWith("frm_") || gateId.startsWith("form_") || gateId.startsWith("que_")) {
+      if (gateId.startsWith("que_")) {
+        await postJson(`/api/question/${encGid}/reject${query}`, {}).catch(() => null);
+      } else {
+        const delRes = await fetchWithDockerHostFallback(
+          `${rootUrl}/api/session/${encSid}/form/${encGid}${query}`,
+          { method: "DELETE", headers: reqHeaders },
+          fetchImpl,
+        ).catch(() => null);
+        if (!delRes || (!delRes.ok && delRes.status !== 409)) {
+          await postJson(`/api/session/${encSid}/form/${encGid}/reject${query}`, {}).catch(() => null);
+        }
+      }
+    }
+  }
+
   try {
     if (cmd.command === "scroll.send") {
+      if (cmd.gateId?.trim()) {
+        await dismissPendingDaemonGate(cmd.sessionId, cmd.gateId.trim(), cmd.kind, cmd.source);
+      }
       if (cmd.agentClass?.trim()) {
         await postJson(
           `/api/session/${encodeURIComponent(cmd.sessionId)}/agent${query}`,
@@ -224,7 +243,7 @@ export async function executeDaemonCommand(
         },
         mergedSkills.length > 0 ? { text: cmd.promptText, delivery: cmd.delivery ?? "steer" } : undefined,
       );
-      return { ok: res.ok, sessionId: cmd.sessionId, ...(res.ok ? {} : { error: `HTTP ${res.status}` }) };
+      return { ok: res.ok, sessionId: cmd.sessionId, ...(res.ok ? {} : { error: formatResponseError(res) }) };
     }
 
     if (cmd.command === "turn.interrupt" || cmd.command === "agent.switch") {
@@ -238,7 +257,7 @@ export async function executeDaemonCommand(
       return {
         ok: res.ok,
         sessionId: cmd.sessionId,
-        ...(res.ok ? {} : { error: `HTTP ${res.status}` }),
+        ...(res.ok ? {} : { error: formatResponseError(res) }),
       };
     }
 
@@ -280,13 +299,8 @@ export async function executeDaemonCommand(
         });
       }
       const raw = res.raw;
-      const data =
-        raw && typeof raw.data === "object" && raw.data
-          ? (raw.data as Record<string, any>)
-          : null;
-      const newSessionId = String(
-        data?.id ?? data?.sessionId ?? raw?.id ?? raw?.sessionId ?? "",
-      );
+      const data = raw && typeof raw.data === "object" && raw.data ? (raw.data as Record<string, any>) : null;
+      const newSessionId = String(data?.id ?? data?.sessionId ?? raw?.id ?? raw?.sessionId ?? "");
       if (!res.ok || !newSessionId) {
         return { ok: false, error: !res.ok ? `HTTP ${res.status}` : "Daemon did not return a session ID" };
       }
@@ -313,14 +327,7 @@ export async function executeDaemonCommand(
     if (cmd.command === "gate.resolve") {
       const encSid = encodeURIComponent(cmd.sessionId);
       if (cmd.decision === "dismiss") {
-        if (cmd.kind === "permission" || cmd.source === "permission") {
-          await postJson(`/api/session/${encSid}/permission/${encodeURIComponent(cmd.gateId)}/reply${query}`, { decision: "reject" }).catch(() => null);
-        } else if (cmd.source === "form") {
-          const rejectPath = cmd.gateId.startsWith("que_")
-            ? `/api/question/${encodeURIComponent(cmd.gateId)}/reject${query}`
-            : `/api/session/${encSid}/form/${encodeURIComponent(cmd.gateId)}/reject${query}`;
-          await postJson(rejectPath, {}).catch(() => null);
-        }
+        await dismissPendingDaemonGate(cmd.sessionId, cmd.gateId, cmd.kind, cmd.source);
         return { ok: true, sessionId: cmd.sessionId };
       }
       if (cmd.kind === "permission" || cmd.source === "permission") {
