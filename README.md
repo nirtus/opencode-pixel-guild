@@ -1,13 +1,8 @@
-# OpenCode Pixel Guild Visualizer
+# OpenCode Pixel Guild Visualizer [![v0.2.1](https://img.shields.io/badge/v0.2.1-0969da)](https://github.com/nirtus/opencode-pixel-guild/releases/tag/v0.2.1)
 
 **OpenCode Pixel Guild Visualizer** (`opencode-pixel-guild-visualizer`) is a real-time 2D RPG and workshop companion for **OpenCode V2**. It turns live OpenCode hosts, projects, worktrees, root sessions, subagents, tool calls, skills, and debugging turns into an interactive **Guild Floorplan** where heroes craft features inside a shared **Workshop Room** and battle **Bug Monsters** in the **Dungeon Wilds**.
 
 ![OpenCode Pixel Guild Visualizer — 4-Scene Intro Sizzle Preview](./docs/images/opencode-pixel-guild-intro-preview.gif)
-
-> **🎬 [Watch Full 1080p Introduction Video (`docs/video/opencode-pixel-guild-intro.mp4`)](./docs/video/opencode-pixel-guild-intro.mp4)**
- **✨ [Replay Interactive Tour Live (`/?demo=intro-tour`)](http://127.0.0.1:4310/?demo=intro-tour)**
-
-![Unified Host Workshop Room & Guild Master Ledger](./docs/images/unviewed-session-result-overview.png)
 
 ---
 
