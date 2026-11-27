@@ -30,6 +30,8 @@ function updateSlotMetadataInPlace(target: ResolvedCharacterSlot, candidate: Res
   }
 }
 
+const MAX_ACTIVE_SLOT_QUEUE_LEN = 6;
+
 export function enqueueCharacterActions(
   c: CharacterState,
   walker: WalkerState,
@@ -112,6 +114,7 @@ export function enqueueCharacterActions(
   }> = [];
 
   const isIdleCharacter = c.lifecycleState === "RestingInLounge" || c.lifecycleState === "Archived";
+  const isBlockedAtGate = Boolean(slot.questMarker) || c.lifecycleState === "BlockedAtQuestGate";
   const isInitialHistoricalDump = seenCalls.size === 0 && recent.length > 4;
   for (let i = recent.length - 1; i >= 0; i--) {
     const rec = recent[i];
@@ -121,8 +124,7 @@ export function enqueueCharacterActions(
     const { timestampMs: recTs, hasExplicitTimestamp } = resolveToolRecordTimestampMs(rec, actionNowMs);
     if (
       rec.status === "completed" &&
-      hasExplicitTimestamp &&
-      ((isIdleCharacter && recTs <= (c.idleAtMs || c.stateEnteredAtMs || actionNowMs)) || (isInitialHistoricalDump && i > 0))
+      (isIdleCharacter || isBlockedAtGate || (hasExplicitTimestamp && isInitialHistoricalDump && i > 0))
     ) {
       continue;
     }
@@ -132,6 +134,29 @@ export function enqueueCharacterActions(
     });
   }
   pruneWalkerSeenToolCallIds(seenCalls, recent);
+
+  if (isBlockedAtGate && slot.isActing) {
+    queue.length = 0;
+    walker.dwellUntilMs = 0;
+    if (walker.resolvedSlot?.station === slot.station && walker.resolvedSlot.isActing) {
+      updateSlotMetadataInPlace(walker.resolvedSlot, slot, c, false);
+    } else {
+      queue.push(stampCharacterActionSlot(walker, { ...slot }, actionNowMs));
+    }
+    walker.lastActionSyncKey = buildCharacterActionSyncKey(c, walker, slot, hasActiveRoomBug, snapVer, snapTs) ?? undefined;
+    return;
+  }
+
+  if (isIdleCharacter && isIdleDestinationSlot(slot) && (c.hasUnviewedResult || queue.length > 3)) {
+    for (let q = queue.length - 1; q >= 0; q--) {
+      if (!isIdleDestinationSlot(queue[q])) queue.splice(q, 1);
+    }
+    walker.dwellUntilMs = 0;
+    enqueueStationJob({ ...slot });
+    sortCharacterActionQueue(queue, walker, actionNowMs);
+    walker.lastActionSyncKey = buildCharacterActionSyncKey(c, walker, slot, hasActiveRoomBug, snapVer, snapTs) ?? undefined;
+    return;
+  }
 
   unseenTools.sort((a, b) => {
     if (a.hasExplicitTs && b.hasExplicitTs && a.ts !== b.ts) return a.ts - b.ts;
@@ -199,6 +224,9 @@ export function enqueueCharacterActions(
   }
 
   sortCharacterActionQueue(queue, walker, actionNowMs);
+  if (queue.length > MAX_ACTIVE_SLOT_QUEUE_LEN) {
+    queue.splice(0, queue.length - MAX_ACTIVE_SLOT_QUEUE_LEN);
+  }
   walker.lastActionSyncKey = buildCharacterActionSyncKey(c, walker, slot, hasActiveRoomBug, snapVer, snapTs) ?? undefined;
 }
 

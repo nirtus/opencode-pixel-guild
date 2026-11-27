@@ -1,5 +1,6 @@
 import {
   normalizeQuestGateFields,
+  parseModelRef,
   type TelemetryEvent,
 } from "../types/domain.ts";
 import { extractToolOutputPreview } from "./daemon-message-hydration.ts";
@@ -13,16 +14,6 @@ function rememberToolCallName(callId: string, toolName: string): void {
     if (oldest) toolNameByCallId.delete(oldest);
   }
   toolNameByCallId.set(callId, toolName);
-}
-
-function extractModelId(rawModel: unknown, fallbackObj?: Record<string, any>): string | undefined {
-  if (typeof rawModel === "object" && rawModel !== null) {
-    const m = rawModel as Record<string, any>;
-    const id = m.id ?? m.model ?? m.modelID;
-    return m.providerID ? `${m.providerID}/${id ?? "unknown-model"}` : (id ?? undefined);
-  }
-  if (typeof rawModel === "string" && rawModel.trim()) return rawModel.trim();
-  return fallbackObj?.modelID ?? fallbackObj?.modelId ?? undefined;
 }
 
 function sliceAssistantTextTail(text: string, maxChars = 64000): string {
@@ -67,12 +58,13 @@ export function mapOpenCodeSseFrameToTelemetryEvents(rawPayload: unknown): Telem
     if (!sessionId) return [];
     const locationDirectory =
       info.location?.directory ?? inner.location?.directory ?? rootObj.location?.directory ?? info.directory ?? props.locationDirectory ?? rootObj.directory ?? "/";
-    const modelId = extractModelId(info.model, info);
+    const parsedModel = parseModelRef(info.model, info);
+    const modelId = parsedModel?.modelId;
     const rawAgent = info.agent ?? info.agentClass;
     const isCompactionInfo = rawAgent === "compaction" || info.mode === "compaction" || info.summary === true;
     const isPassiveUpdate = type === "session.updated" || isCompactionInfo;
     const events: TelemetryEvent[] = [
-      { type: "session.upserted", timestampMs, sessionId, parentId: info.parentID ?? info.parentId ?? null, locationDirectory, title: info.title, agentClass: isCompactionInfo ? undefined : rawAgent, modelId, tokens: info.tokens, ...(isPassiveUpdate ? { preserveActivityTimestamp: true } : {}) } as TelemetryEvent,
+      { type: "session.upserted", timestampMs, sessionId, parentId: info.parentID ?? info.parentId ?? null, locationDirectory, title: info.title, agentClass: isCompactionInfo ? undefined : rawAgent, modelId, ...(parsedModel ? { modelVariant: parsedModel.variant ?? null } : {}), tokens: info.tokens, ...(isPassiveUpdate ? { preserveActivityTimestamp: true } : {}) } as TelemetryEvent,
     ];
     if (info.archived || info.time?.archived) events.push({ type: "session.archived", timestampMs, sessionId });
     return events;
@@ -83,10 +75,11 @@ export function mapOpenCodeSseFrameToTelemetryEvents(rawPayload: unknown): Telem
     if (!sessionId) return [];
     const locationDirectory = props.location?.directory ?? inner.location?.directory ?? rootObj.location?.directory ?? "/";
     const agentClass = type === "session.agent.selected" && typeof props.agent === "string" ? props.agent.trim() : undefined;
-    const modelId = type === "session.model.selected" ? extractModelId(props.model, props) : undefined;
+    const parsedModel = type === "session.model.selected" ? parseModelRef(props.model, props) : null;
+    const modelId = parsedModel?.modelId;
     const title = type === "session.renamed" && typeof props.title === "string" ? props.title.trim() : undefined;
     if (!agentClass && !modelId && !title) return [];
-    return [{ type: "session.upserted", timestampMs, sessionId, locationDirectory, agentClass, modelId, title, preserveActivityTimestamp: true } as TelemetryEvent];
+    return [{ type: "session.upserted", timestampMs, sessionId, locationDirectory, agentClass, modelId, ...(parsedModel ? { modelVariant: parsedModel.variant ?? null } : {}), title, preserveActivityTimestamp: true } as TelemetryEvent];
   }
 
   if (type === "session.moved") {
@@ -138,9 +131,10 @@ export function mapOpenCodeSseFrameToTelemetryEvents(rawPayload: unknown): Telem
     if (props.agent === "compaction" || props.mode === "compaction") return [{ type: "session.compacting", timestampMs, sessionId }];
     const events: TelemetryEvent[] = [];
     if (type === "session.step.started" && (props.agent || props.model)) {
+      const parsedStepModel = parseModelRef(props.model, props);
       events.push({
         type: "session.upserted", timestampMs, sessionId, locationDirectory: props.location?.directory ?? "/",
-        agentClass: typeof props.agent === "string" ? props.agent : undefined, modelId: extractModelId(props.model, props), preserveActivityTimestamp: true,
+        agentClass: typeof props.agent === "string" ? props.agent : undefined, modelId: parsedStepModel?.modelId, ...(parsedStepModel ? { modelVariant: parsedStepModel.variant ?? null } : {}), preserveActivityTimestamp: true,
       } as TelemetryEvent);
     }
     events.push({ type: "session.status", timestampMs, sessionId, status: "thinking" });

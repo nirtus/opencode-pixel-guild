@@ -14,13 +14,20 @@ import {
 } from "./client-state.ts";
 import { clearCachedGitState, refreshRoomGitState } from "./commit-ledger-controller.ts";
 import {
-  dispatchOperatorModalAction,
-  getCachedOperatorProfile,
   openOperatorPairingModal,
   refreshLiveGuildAndOperatorProfile,
-  syncOperatorPreferences,
 } from "./operator-pairing-controller.ts";
-import { getPendingOperatorAction } from "./snapshot-gate.ts";
+import {
+  getCachedOperatorProfile,
+  syncOperatorPreferences,
+} from "./operator-session-store.ts";
+import {
+  initMachineStripOverflowControls,
+  reconcileHeaderMachineStrip,
+  syncMachineStripOverflowControls,
+} from "./machine-strip-controller.ts";
+
+export { syncMachineStripOverflowControls };
 
 let controlsInitialized = false;
 
@@ -102,6 +109,7 @@ export function initTopBarControls(onStateChanged: () => void): void {
       onStateChanged();
     });
   }
+  initMachineStripOverflowControls();
 }
 
 export function reconcileTopBar(onStateChanged: () => void): void {
@@ -133,48 +141,7 @@ export function reconcileTopBar(onStateChanged: () => void): void {
     vm.statusSummaryText,
   );
 
-  const machineStrip = document.getElementById("header-machine-strip");
-  if (machineStrip) {
-    const desiredMachineIds = new Set<string>();
-    const existingMachineBtns = new Map<string, HTMLButtonElement>();
-    for (const btn of machineStrip.querySelectorAll<HTMLButtonElement>(
-      "button[data-machine-switch-id]",
-    )) {
-      const mid = btn.getAttribute("data-machine-switch-id");
-      if (mid) existingMachineBtns.set(mid, btn);
-    }
-
-    for (const mTab of vm.machineTabs) {
-      desiredMachineIds.add(mTab.machineId);
-      let mBtn = existingMachineBtns.get(mTab.machineId);
-      if (!mBtn) {
-        mBtn = document.createElement("button");
-        mBtn.type = "button";
-        mBtn.className = "btn machine-switch-btn";
-        mBtn.setAttribute("data-machine-switch-id", mTab.machineId);
-        mBtn.addEventListener("click", () => {
-          void dispatchOperatorModalAction(
-            "activate-machine",
-            { machineId: mTab.machineId },
-            onStateChanged,
-            null,
-          );
-        });
-        machineStrip.appendChild(mBtn);
-      }
-      const isSwitchingMachine = getPendingOperatorAction() === `activate-machine:${mTab.machineId}`;
-      mBtn.disabled = isSwitchingMachine;
-      mBtn.classList.toggle("active", mTab.isActive);
-      updateTextIfChanged(mBtn, isSwitchingMachine ? "⏳ Switching..." : mTab.buttonText);
-      mBtn.title = mTab.tooltip;
-    }
-
-    for (const [mid, btn] of existingMachineBtns.entries()) {
-      if (!desiredMachineIds.has(mid)) {
-        btn.remove();
-      }
-    }
-  }
+  reconcileHeaderMachineStrip(vm.machineTabs, onStateChanged);
 
   const pairBtn = document.getElementById("btn-open-pairing-modal");
   if (pairBtn) {

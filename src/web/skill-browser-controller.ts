@@ -2,6 +2,7 @@ import { DEFAULT_GUILD_SKILL_IDS } from "../hud/spectator-hud.ts";
 import type { GuildSnapshot } from "../types/domain.ts";
 import { clientState } from "./client-state.ts";
 import { escapeHtml } from "./ledger-panel-reconciler.ts";
+import { orderedSkillsFrom, SKILL_BADGE_GAP_PX, trimRenderedBadgesToFit } from "./skill-browser-fit.ts";
 
 const skillOffsetByScope = new Map<string, number>();
 const skillFilterByScope = new Map<string, string>();
@@ -147,7 +148,7 @@ export function computeVisibleSkillWindow(
   }
   const normalizedOffset = ((offset % total) + total) % total;
   const effectiveBudget = Math.max(14, charBudget);
-  const maxBadges = Math.min(total, 5);
+  const maxBadges = total;
   const visible: string[] = [];
   let usedChars = 0;
 
@@ -240,17 +241,6 @@ export function bindSkillBrowserControls(
   const resolveFilteredSkills = () =>
     filterSkillIdsByQuery(allSkills, getSkillBrowserFilter(scopeId));
 
-  const resolveEffectiveCharBudget = (): number => {
-    const trackEl = containerEl.querySelector?.(
-      `[data-skill-track="${scopeId}"]`,
-    ) as HTMLElement | null;
-    const widthPx = trackEl?.clientWidth ?? 0;
-    if (widthPx > 100) {
-      return Math.max(18, Math.floor((widthPx - 42) / 5.8));
-    }
-    return options.charBudget ?? 38;
-  };
-
   const bindBadgeClicks = () => {
     const scopedBadges = containerEl.querySelectorAll<HTMLButtonElement>(
       `button[data-skill-chip][data-skill-browser-scope="${scopeId}"]`,
@@ -279,11 +269,7 @@ export function bindSkillBrowserControls(
   const refreshWindowDom = (newOffset: number) => {
     const skills = resolveFilteredSkills();
     const total = skills.length;
-    const { visibleSkills, normalizedOffset } = computeVisibleSkillWindow(
-      skills,
-      newOffset,
-      resolveEffectiveCharBudget(),
-    );
+    const normalizedOffset = total > 0 ? (((newOffset % total) + total) % total) : 0;
     skillOffsetByScope.set(scopeId, normalizedOffset);
     const inputVal = getTargetInput()?.value ?? "";
     const mentioned = extractMentionedSkillSet(inputVal);
@@ -292,11 +278,14 @@ export function bindSkillBrowserControls(
       `[data-skill-badges="${scopeId}"]`,
     ) as HTMLElement | null;
     if (badgesWrap) {
+      // Render every ordered candidate, then drop trailing badges that would
+      // overflow so only badges that fully fit the row remain visible.
       badgesWrap.innerHTML = renderSkillBadgesInnerHtml(
         scopeId,
-        visibleSkills,
+        orderedSkillsFrom(skills, normalizedOffset),
         mentioned,
       );
+      trimRenderedBadgesToFit(badgesWrap, SKILL_BADGE_GAP_PX);
     }
     const countEl = containerEl.querySelector?.(
       `[data-skill-count="${scopeId}"]`,
@@ -346,5 +335,6 @@ export function bindSkillBrowserControls(
     });
   }
 
-  bindBadgeClicks();
+  // Re-fit once on mount so the initial render is measured against real width.
+  refreshWindowDom(getSkillBrowserOffset(scopeId));
 }

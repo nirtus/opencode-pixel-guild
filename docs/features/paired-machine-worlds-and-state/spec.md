@@ -3,8 +3,6 @@
 Label: ready-for-agent
 Status: resolved
 
-![Paired Machine Worlds & State Verification](../../images/paired-machine-worlds-and-state.png)
-
 ## Problem Statement
 
 1. **`World Folder Registration` Scans the Visualizer Host's Local Disk Instead of the Active `OpenCode Machine Pairing` (`src/server/workspace-folder-routes.ts`)**:

@@ -14,8 +14,9 @@ import {
 } from "./commit-ledger-controller.ts";
 import { openDemolitionModal } from "./demolition-modal-controller.ts";
 import { syncDesktopSplitRatioDom } from "./layout-resizer.ts";
+import { isOfflineDemoModeActive } from "./offline-demo-flag.ts";
+import { isRosterSubagent, renderCharacterRosterRowsHtml } from "./roster-rows-view.ts";
 import { isRoomDemolishing } from "./snapshot-gate.ts";
-import { resolveCharacterDisplayBadge } from "./station-and-workflow-routing.ts";
 import { openSummonAdventurerModal } from "./summon-adventurer-controller.ts";
 import { hasActiveTextSelection } from "./text-selection-guard.ts";
 
@@ -36,35 +37,6 @@ function renderLedgerSubtabBarHtml(activeSubtab: LedgerCategorySubtab, resolvedT
   return `<div class="subtab-deck-bar" role="tablist" aria-label="Guild Master Ledger Categories">${tabs
     .map((t) => `<button type="button" class="btn subtab-btn ${effectiveSubtab === t.id ? "active" : ""}" data-ledger-subtab="${t.id}">${t.label}</button>`)
     .join("")}</div>`;
-}
-
-function renderCharacterRosterRowsHtml(
-  chars: ReturnType<typeof getScopedGameMasterCharacters>,
-  hasBugs: boolean,
-): string {
-  if (chars.length === 0) {
-    return `<div class="muted-empty-text">No active sessions in this room.</div>`;
-  }
-  return chars
-    .map((ch) => {
-      const heraldry = resolveProjectHeraldry(ch, clientState.currentSnapshot);
-      const badge = resolveCharacterDisplayBadge(ch, hasBugs);
-      const wfClass =
-        badge.workflowIntent === "debugging-hunt"
-          ? "val-red"
-          : badge.workflowIntent === "information-gathering"
-            ? "val-sky"
-            : "val-gold";
-      const wfBadge = `<span class="${wfClass}">${badge.workflowShortLabel}</span>`;
-      const gateTag = isCharacterWaitingAtGate(ch)
-        ? `<span class="roster-gate-tag">[${escapeHtml(ch.questGate?.marker || "?")}] </span>`
-        : hasCharacterUnviewedResult(ch)
-          ? `<span class="roster-gate-tag">[${ch.turnOutcome === "failed" || ch.errorState ? "⚠️" : ch.turnOutcome === "interrupted" ? "⏹" : "✓"}] </span>`
-          : "";
-      const projTag = `<span class="roster-project-pill" data-herald-party="${escapeHtml(heraldry.partyKey)}">[${escapeHtml(heraldry.crestIcon)} ${escapeHtml(heraldry.shortTag)}]</span>`;
-      return `<button type="button" class="btn roster-row-btn" data-select-session="${escapeHtml(ch.sessionId)}"><span class="roster-row-title">${projTag} ⚔️ ${gateTag}${escapeHtml(ch.title || ch.sessionId)}</span><span class="roster-row-meta">${wfBadge} · ${escapeHtml(badge.overheadVerb)}</span></button>`;
-    })
-    .join("");
 }
 
 export function renderGuildMasterLedgerPanel(
@@ -130,7 +102,7 @@ export function renderGuildMasterLedgerPanel(
     } else {
       const roomId = activeRoom.roomId;
       const gitState = getCachedRoomGitState(roomId);
-      if (!gitState && typeof window !== "undefined") {
+      if (!gitState && typeof window !== "undefined" && !isOfflineDemoModeActive()) {
         void refreshRoomGitState(roomId, () => { onResetSig(); onStateChanged(); });
       }
       const slug = taskProg?.featureSlug;
@@ -144,7 +116,7 @@ export function renderGuildMasterLedgerPanel(
     }
   } else {
     const activeGitState = activeRoom?.roomId ? getCachedRoomGitState(activeRoom.roomId) : null;
-    if (activeRoom?.roomId && !activeGitState && typeof window !== "undefined") {
+    if (activeRoom?.roomId && !activeGitState && typeof window !== "undefined" && !isOfflineDemoModeActive()) {
       void refreshRoomGitState(activeRoom.roomId, () => { onResetSig(); onStateChanged(); });
     }
     const ovAhead = activeGitState?.ahead ?? 0;
@@ -156,9 +128,9 @@ export function renderGuildMasterLedgerPanel(
       ? null
       : (activeRoom ?? (clientState.selectedProjectId ? { roomId: clientState.selectedProjectId } : null));
     const focusedCharsCount = visibleChars.length;
-    const rosterChars = clientState.showSubagentsInRoster
-      ? visibleChars
-      : visibleChars.filter((c) => !(c.parentId || c.parentSessionId || c.role === "Squad Subagent"));
+    const rosterAgents = visibleChars.filter((c) => !isRosterSubagent(c));
+    const rosterSubagents = visibleChars.filter(isRosterSubagent);
+    const rosterChars = clientState.showSubagentsInRoster ? visibleChars : rosterAgents;
     const gateAlertRowsHtml = waitingGateChars
       .map((ch) => {
         const heraldry = resolveProjectHeraldry(ch, clientState.currentSnapshot);
@@ -202,8 +174,8 @@ export function renderGuildMasterLedgerPanel(
           : ""
       }
       <div class="sheet-card sheet-card-flex-fill">
-        <div class="sheet-card-title"><span>🧙‍♂️ Active Room Roster &amp; Quick Jump</span><span class="roster-header-controls"><label class="roster-subagent-toggle" for="roster-show-subagents-checkbox"><input type="checkbox" id="roster-show-subagents-checkbox"${clientState.showSubagentsInRoster ? " checked" : ""} /><span>show subagents</span></label><span>${rosterChars.length}</span></span></div>
-        <div class="sheet-scroll-list">${renderCharacterRosterRowsHtml(rosterChars, bugs.length > 0)}</div>
+        <div class="sheet-card-title"><span>🧙‍♂️ Active Room Roster &amp; Quick Jump</span><span class="roster-header-controls"><span class="roster-agent-count">agents ${rosterAgents.length}</span><span class="roster-header-sep">|</span><label class="roster-subagent-toggle" for="roster-show-subagents-checkbox"><input type="checkbox" id="roster-show-subagents-checkbox"${clientState.showSubagentsInRoster ? " checked" : ""} /><span>show subagents</span></label><span class="roster-subagent-count">${rosterSubagents.length}</span></span></div>
+        <div class="sheet-scroll-list">${renderCharacterRosterRowsHtml(rosterChars, bugs.length > 0, clientState.currentSnapshot)}</div>
       </div>
     `;
     interactiveSlot.classList.add("is-hidden");

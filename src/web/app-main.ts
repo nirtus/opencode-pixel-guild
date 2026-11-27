@@ -9,10 +9,14 @@ import { clientState, getSelectedProjectRoom, getVisibleProjectCharacters, persi
 import { getEffectiveViewportWidth, initPointerAndCameraControls, shouldRenderCanvasFrameAtTimestamp, syncViewportCameraFit } from "./pointer-and-camera.ts";
 import { reconcileSidePanel, reconcileTicker } from "./side-panel-reconciler.ts";
 import { initTopBarControls, reconcileTopBar } from "./top-bar-reconciler.ts";
+import { initDemolitionModalControls } from "./demolition-modal-controller.ts";
 import { initSummonAdventurerControls, syncSummonModalDom } from "./summon-adventurer-controller.ts";
-import { getOperatorHeaders, refreshCachedOperatorProfile, syncOperatorAuthGate, withOperatorQuery } from "./operator-pairing-controller.ts";
+import { syncOperatorAuthGate } from "./operator-pairing-controller.ts";
+import { getOperatorHeaders } from "./operator-session-store.ts";
 import { clearCachedGitState, getCachedRoomGitState, invalidateRoomGitCache, refreshRoomGitState, wasRoomGitMutatedRecently } from "./commit-ledger-controller.ts";
 import { initIntroDemoDirector, isIntroDemoModeActive, paintIntroDemoOverlay, renderFallbackDemoSimulatorHeroes, stepIntroDemoDirector } from "./intro-demo-director.ts";
+import { initDocsShowcaseDirector, isDocsShowcaseModeActive, isOfflineDemoModeActive } from "./docs-showcase-director.ts";
+import { createLiveStreamController } from "./live-stream-controller.ts";
 import { applyAuthoritativeSnapshot } from "./snapshot-gate.ts";
 import { recordSseTickerEmission } from "./activity-ticker-cache.ts";
 import { resolveSseGitRefreshAction } from "./sse-git-refresh-guard.ts";
@@ -70,7 +74,8 @@ function renderCanvasFrame(timestampMs: number): void {
   lastRenderedFrameTs = timestampMs;
 
   const isDemoTour = isIntroDemoModeActive();
-  const effectiveTs = isDemoTour
+  const isDocsShowcase = isDocsShowcaseModeActive();
+  const effectiveTs = isDemoTour || isDocsShowcase
     ? timestampMs
     : isHeadlessBrowser
       ? (headlessFramesRendered < 8 ? (headlessSimTimeMs += 250) : headlessSimTimeMs)
@@ -82,7 +87,7 @@ function renderCanvasFrame(timestampMs: number): void {
   // Phase 1: Pure pre-render choreography, particle, flare & hitbox step
   if (isDemoTour) {
     stepIntroDemoDirector(effectiveTs);
-  } else {
+  } else if (!isDocsShowcase) {
     stepClientChoreography(dtMs / 1000, effectiveTs);
   }
   syncViewportCameraFit(canvas);
@@ -203,76 +208,34 @@ let headlessFramesRendered = 0;
 let headlessSimTimeMs = Date.now();
 let headlessSpriteRepaintPending = false;
 
-let activeEventSource: EventSource | null = null;
-let lastSseMessageAtMs = Date.now();
-let fallbackPollTimer: ReturnType<typeof setInterval> | null = null;
+const liveStreamController = createLiveStreamController({
+  onHudSync: scheduleHudSync,
+  isDisabled: () => isHeadlessBrowser || isOfflineDemoModeActive(),
+  onEmissionApplied: (emission, prevSnapshot) => {
+    recordSseTickerEmission(clientState.tickerLog, emission);
+    const room = getSelectedProjectRoom();
+    const gitAction = resolveSseGitRefreshAction({
+      delta: emission.delta,
+      prevSnapshot,
+      nextSnapshot: clientState.currentSnapshot,
+      selectedRoomId: room?.roomId ?? null,
+      hasCachedGitState: Boolean(room?.roomId && getCachedRoomGitState(room.roomId)),
+      wasRoomMutatedRecently: (rid) => wasRoomGitMutatedRecently(rid, 1500),
+    });
+    if (gitAction.action === "refresh") {
+      void refreshRoomGitState(gitAction.roomId, scheduleHudSync);
+    } else if (gitAction.action === "invalidate") {
+      invalidateRoomGitCache(gitAction.roomId);
+    }
+  },
+});
 
 function openLiveEventStream(): void {
-  if (isHeadlessBrowser || typeof EventSource === "undefined") return;
-  activeEventSource?.close();
-  const es = new EventSource(withOperatorQuery("/api/guild/events"));
-  activeEventSource = es;
-  lastSseMessageAtMs = Date.now();
-  es.addEventListener("error", () => {
-    if (es.readyState === EventSource.CLOSED) {
-      setTimeout(() => {
-        if (activeEventSource === es) openLiveEventStream();
-      }, 2000);
-    }
-  });
-  if (!fallbackPollTimer) {
-    fallbackPollTimer = setInterval(() => {
-      if (!activeEventSource || activeEventSource.readyState === EventSource.CLOSED) {
-        openLiveEventStream();
-      }
-      if (clientState.isAuthenticated) {
-        void refreshCachedOperatorProfile().then(() => scheduleHudSync());
-      }
-      if (Date.now() - lastSseMessageAtMs >= 20_000) {
-        void fetch("/api/guild/snapshot", { headers: getOperatorHeaders() })
-          .then((r) => (r.ok ? r.json() : null))
-          .then((snap) => {
-            if (snap && snap.rooms && applyAuthoritativeSnapshot(snap)) {
-              lastSseMessageAtMs = Date.now();
-              scheduleHudSync();
-            }
-          })
-          .catch(() => {});
-      }
-    }, 10_000);
-  }
-  es.addEventListener("message", (ev) => {
-    lastSseMessageAtMs = Date.now();
-    try {
-      const emission = JSON.parse(ev.data);
-      if (emission && emission.snapshot) {
-        const prevSnapshot = clientState.currentSnapshot;
-        applyAuthoritativeSnapshot(emission.snapshot);
-        recordSseTickerEmission(clientState.tickerLog, emission);
-        const room = getSelectedProjectRoom();
-        const gitAction = resolveSseGitRefreshAction({
-          delta: emission.delta,
-          prevSnapshot,
-          nextSnapshot: clientState.currentSnapshot,
-          selectedRoomId: room?.roomId ?? null,
-          hasCachedGitState: Boolean(room?.roomId && getCachedRoomGitState(room.roomId)),
-          wasRoomMutatedRecently: (rid) => wasRoomGitMutatedRecently(rid, 1500),
-        });
-        if (gitAction.action === "refresh") {
-          void refreshRoomGitState(gitAction.roomId, scheduleHudSync);
-        } else if (gitAction.action === "invalidate") {
-          invalidateRoomGitCache(gitAction.roomId);
-        }
-        scheduleHudSync();
-      }
-    } catch {
-      // Ignore SSE parse errors
-    }
-  });
+  liveStreamController.open();
 }
 
 async function connectCompanionBackend(): Promise<void> {
-  if (initIntroDemoDirector(renderCanvasFrame)) {
+  if (initIntroDemoDirector(renderCanvasFrame) || initDocsShowcaseDirector(renderCanvasFrame, scheduleHudSync)) {
     syncViewportCameraFit(canvas, true);
     reconcileTopBar(scheduleHudSync);
     reconcileSidePanel(scheduleHudSync);
@@ -318,9 +281,8 @@ async function connectCompanionBackend(): Promise<void> {
 }
 
 const syncAfterMachineOrOperatorSwitch = (reopenStream: boolean): void => {
-  if (reopenStream || !activeEventSource || activeEventSource.readyState === EventSource.CLOSED) {
-    openLiveEventStream();
-  }
+  if (isOfflineDemoModeActive()) return;
+  liveStreamController.ensureConnected(reopenStream);
   syncViewportCameraFit(canvas, true);
   reconcileTopBar(scheduleHudSync);
   reconcileSidePanel(scheduleHudSync);
@@ -335,6 +297,7 @@ window.addEventListener("guild-operator-changed", () => syncAfterMachineOrOperat
 window.addEventListener("guild-machine-changed", () => syncAfterMachineOrOperatorSwitch(false));
 
 initTopBarControls(scheduleHudSync);
+initDemolitionModalControls(scheduleHudSync);
 initSummonAdventurerControls(scheduleHudSync);
 initPointerAndCameraControls(canvas, scheduleHudSync);
 scheduleHudSync();

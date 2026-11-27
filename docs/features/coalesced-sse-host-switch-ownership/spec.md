@@ -3,8 +3,6 @@
 Label: ready-for-agent
 Status: resolved
 
-![Coalesced SSE Connection Ownership & Mid-Stream Paired Host Switch Verification](../../images/coalesced-sse-host-switch-ownership.png)
-
 ## 1. Problem Statement & Motivation
 
 In `opencode-pixel-guild`, live telemetry flows across three streaming and reconciliation boundaries:

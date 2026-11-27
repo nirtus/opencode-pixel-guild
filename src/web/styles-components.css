@@ -1,97 +1,7 @@
-/* Component Styles: Modals, Command Scroll Composer, Quest Gates, Dispatch Log, Ledger & Tooltips */
+/* Component Styles: Command Scroll Composer, Quest Gates, Dispatch Log, Ledger & Tooltips (Modals in styles-modals.css) */
 
 .btn-summon-cta { background: #b45309; border-color: #fbbf24; color: #fef3c7; font-weight: 700; }
 .btn-danger-cta { background: #dc2626; border-color: #f87171; color: #fef2f2; font-weight: 700; }
-
-@media (min-width: 961px) {
-  #operator-pairing-modal .modal-dialog {
-    max-width: min(760px, calc(100vw - 32px));
-  }
-  .operator-profile-desktop-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
-    gap: 10px;
-    align-items: start;
-  }
-}
-
-/* Viewport-Level Contained Modals */
-.modal-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  max-width: 100vw;
-  background: rgba(6, 9, 17, 0.84);
-  z-index: 100;
-  grid-template-columns: minmax(0, 1fr);
-  place-items: center;
-  padding: 10px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  box-sizing: border-box;
-}
-
-.modal-overlay.is-open { display: grid; }
-body[data-auth-locked="true"] .main-stage,
-body[data-auth-locked="true"] .scenario-buttons { visibility: hidden; pointer-events: none; }
-.modal-close-btn.is-hidden,
-input.is-hidden { display: none !important; }
-.modal-dialog {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  width: 100%;
-  min-width: 0;
-  max-width: min(460px, calc(100vw - 24px));
-  max-height: 90dvh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 14px;
-  border-radius: 10px;
-  font-family: var(--font-mono);
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.88);
-  box-sizing: border-box;
-}
-
-.modal-dialog-summon { background: #1c1512; border: 2px solid #f59e0b; }
-.modal-dialog-danger { background: #111827; border: 2px solid #ef4444; }
-.modal-header-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-.modal-title-summon { color: #fef08a; font-size: 13.5px; font-weight: 700; min-width: 0; }
-.modal-title-danger { color: #fecaca; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
-.modal-body-danger { color: #fca5a5; font-size: 11px; line-height: 1.45; margin-bottom: 10px; word-break: break-word; }
-.modal-close-btn { padding: 4px 8px; flex-shrink: 0; }
-.modal-field-label { font-size: 10px; color: #fcd34d; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; display: block; }
-
-.modal-form-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
-  margin-bottom: 12px;
-  width: 100%;
-  min-width: 0;
-}
-
-.modal-input {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  background: #14100d;
-  border: 1px solid #4b3a2f;
-  border-radius: 5px;
-  color: #f8fafc;
-  padding: 7px 9px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  user-select: text;
-  -webkit-user-select: text;
-}
-
-.modal-select-agent { color: #fcd34d; }
-.modal-textarea { color: #fef3c7; resize: vertical; min-height: 60px; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 
 /* Command Scroll Composer */
 .command-scroll-card { border-color: #b45309; padding: 6px 8px; margin-bottom: 4px; }
@@ -116,31 +26,29 @@ input.is-hidden { display: none !important; }
 .skill-browser-track { gap: 6px; padding: 2px 6px; min-height: 26px; cursor: default; }
 .skill-browser-track:hover { border-color: var(--border-slate); background: var(--bg-card); }
 .skill-browser-badges { flex: 1 1 0; min-width: 0; display: flex; align-items: center; flex-wrap: nowrap; gap: 4px; overflow: hidden; }
-.skill-browser-badge { flex: 1 1 auto; min-width: 0; max-width: 100%; justify-content: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 20px; background: rgba(139, 92, 246, 0.14); }
+.skill-browser-badge { flex: 0 0 auto; width: fit-content; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 20px; background: rgba(139, 92, 246, 0.14); }
 .skill-browser-badge:hover { border-color: #c4b5fd; background: rgba(139, 92, 246, 0.28); color: #f5f3ff; }
 .skill-browser-badge.active { background: #5b21b6; border-color: #c4b5fd; color: #fef3c7; box-shadow: 0 0 6px rgba(139, 92, 246, 0.35); }
 .skill-browser-badge-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 #summon-skill-browser-slot { width: 100%; min-width: 0; }
-.command-scroll-compose-row { display: flex; align-items: stretch; gap: 6px; width: 100%; }
-.command-scroll-send-actions { display: flex; align-items: stretch; gap: 5px; flex: 0 0 auto; }
-.command-scroll-agent-select {
-  flex: 0 0 auto;
-  background: #1c1612;
-  border: 1px solid #d97706;
-  border-radius: 5px;
-  color: #fcd34d;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 700;
-  padding: 4px 6px;
-  cursor: pointer;
-  outline: none;
+.command-scroll-compose-row { display: flex; flex-direction: column; align-items: stretch; gap: 5px; width: 100%; }
+.command-scroll-send-actions { display: flex; align-items: center; gap: 5px; width: 100%; flex-wrap: wrap; }
+.command-scroll-target-controls { display: flex; align-items: center; gap: 5px; flex: 1 1 0; min-width: 0; }
+.command-scroll-agent-select,
+.command-scroll-model-select,
+.command-scroll-variant-select {
+  background: #1c1612; border: 1px solid #d97706; border-radius: 5px; color: #fcd34d;
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; padding: 4px 6px; cursor: pointer; outline: none;
 }
-.command-scroll-agent-select:focus { border-color: #fbbf24; box-shadow: 0 0 5px rgba(251, 191, 36, 0.35); }
+.command-scroll-agent-select, .command-scroll-variant-select { flex: 0 0 auto; }
+.command-scroll-model-select { flex: 1 1 120px; min-width: 0; max-width: 100%; border-color: #38bdf8; color: #bae6fd; overflow: hidden; text-overflow: ellipsis; }
+.command-scroll-variant-select { border-color: #a78bfa; color: #ddd6fe; }
+.command-scroll-agent-select:focus, .command-scroll-model-select:focus, .command-scroll-variant-select:focus { border-color: #fbbf24; box-shadow: 0 0 5px rgba(251, 191, 36, 0.35); }
 
 .command-scroll-input {
-  flex: 1 1 0;
+  flex: 0 0 auto;
   min-width: 0;
+  min-height: 44px;
   width: 100%;
   box-sizing: border-box;
   background: #14100d;
@@ -335,6 +243,87 @@ input.is-hidden { display: none !important; }
 .roster-subagent-toggle { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 400; color: #cbd5e1; text-transform: none; cursor: pointer; user-select: text; -webkit-user-select: text; }
 .roster-subagent-toggle input[type="checkbox"] { margin: 0; accent-color: #f59e0b; cursor: pointer; }
 
+/* Active Room Roster — Option A Tree-Bracket Subagent Hierarchy */
+.roster-tree-node { position: relative; min-width: 0; }
+.roster-tree-node .roster-row-btn { display: flex; }
+.roster-tree-children { position: relative; padding-left: 18px; min-width: 0; --roster-rail-color: #57463b; }
+@supports (color: color-mix(in srgb, red, blue)) {
+  .roster-tree-children { --roster-rail-color: color-mix(in srgb, currentColor 42%, #57463b); }
+}
+.roster-tree-node > .roster-tree-children { margin-bottom: 5px; }
+.roster-tree-branch { position: relative; min-width: 0; }
+.roster-tree-branch::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: -4px;
+  bottom: 0;
+  width: 1px;
+  background: var(--roster-rail-color, #57463b);
+  pointer-events: none;
+}
+.roster-tree-branch.is-last::before,
+.roster-tree-branch:last-child::before { display: none; }
+.roster-tree-row-wrap { position: relative; min-width: 0; margin-bottom: 3px; }
+.roster-tree-row-wrap > .roster-row-subagent { margin-bottom: 0; }
+.roster-tree-row-wrap::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 50%;
+  width: 9px;
+  height: 1px;
+  background: var(--roster-rail-color, #57463b);
+  pointer-events: none;
+}
+.roster-tree-branch.is-last > .roster-tree-row-wrap::after,
+.roster-tree-branch:last-child > .roster-tree-row-wrap::after {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: -4px;
+  width: 1px;
+  height: calc(50% + 5px);
+  background: var(--roster-rail-color, #57463b);
+  pointer-events: none;
+}
+[data-roster-depth="3"] > .roster-tree-children { padding-left: 0; }
+[data-roster-depth="3"] > .roster-tree-children .roster-tree-branch::before,
+[data-roster-depth="3"] > .roster-tree-children .roster-tree-row-wrap::after { display: none; }
+[data-roster-depth="3"] > .roster-tree-children .roster-tree-row-wrap::before {
+  left: 1px;
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  height: auto;
+  border-radius: 1px;
+  z-index: 1;
+}
+.roster-row-subagent {
+  background: rgba(20, 16, 13, 0.62);
+  border-color: #2f251f;
+  color: #e2d9d0;
+  padding: 4px 8px;
+  font-size: 10.5px;
+  min-height: 24px;
+  margin-bottom: 3px;
+}
+.roster-row-subagent:hover { border-color: var(--accent-amber); background: #2c221c; color: var(--text-main); }
+.roster-row-subagent.is-detached { border-style: dashed; margin-bottom: 4px; }
+.roster-subagent-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #93c5fd;
+  background: rgba(147, 197, 253, 0.1);
+  border: 1px solid rgba(147, 197, 253, 0.28);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-right: 2px;
+  line-height: 1.35;
+}
+
 /* Tooltips */
 .tooltip-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 3px; }
 .tooltip-subtitle { color: #cbd5e1; font-size: 10.5px; font-family: var(--font-mono); margin-bottom: 4px; }
@@ -374,3 +363,9 @@ input.is-hidden { display: none !important; }
 .add-world-folder-row { width: 100%; justify-content: space-between; text-align: left; padding: 6px 8px; gap: 8px; }
 .add-world-folder-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; font-weight: 600; }
 .add-world-folder-badges { display: inline-flex; gap: 4px; align-items: center; flex-shrink: 0; }
+
+/* Paired Machine Strip Wrapper & Overflow Scroll Controls */
+.header-machine-strip-wrap { display: inline-flex; align-items: center; gap: 3px; flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.header-machine-strip-wrap.is-hidden { display: none; }
+.machine-strip-nav-btn { min-width: 20px; padding: 3px 4px; font-size: 9px; line-height: 1; flex-shrink: 0; color: #f5d08a; border-color: #4b3a2f; }
+.machine-strip-nav-btn:disabled { opacity: 0.35; cursor: default; }

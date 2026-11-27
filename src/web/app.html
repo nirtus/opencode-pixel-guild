@@ -11,6 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="stylesheet" href="/src/web/styles.css" />
   <link rel="stylesheet" href="/src/web/styles-components.css" />
+  <link rel="stylesheet" href="/src/web/styles-modals.css" />
   <link rel="stylesheet" href="/src/web/styles-mermaid.css" />
   <link rel="stylesheet" href="/src/web/styles-responsive.css" />
 </head>
@@ -30,7 +31,11 @@
     <div class="adapter-controls">
       <span id="daemon-indicator" class="badge-pill live" title="Connected OpenCode V2 Daemon URL">Daemon: connecting...</span>
       <span id="summary-indicator" class="badge-pill">0 rooms · 0 adventurers</span>
-      <div id="header-machine-strip" class="header-machine-strip" role="group" aria-label="Registered OpenCode Machines"></div>
+      <div id="header-machine-strip-wrap" class="header-machine-strip-wrap is-hidden">
+        <button type="button" class="btn btn-icon-compact machine-strip-nav-btn is-hidden" id="btn-machine-strip-prev" aria-label="Scroll paired machines left" title="Scroll paired machines left">◀</button>
+        <div id="header-machine-strip" class="header-machine-strip" role="group" aria-label="Registered OpenCode Machines"></div>
+        <button type="button" class="btn btn-icon-compact machine-strip-nav-btn is-hidden" id="btn-machine-strip-next" aria-label="Scroll paired machines right" title="Scroll paired machines right">▶</button>
+      </div>
       <button type="button" class="btn" id="btn-open-pairing-modal" title="Pair &amp; Manage OpenCode Machines">🔗 Pair OpenCode</button>
       <button type="button" class="btn btn-icon-compact" id="btn-open-account-modal" title="Login, Register &amp; User Profile">👤</button>
       <button type="button" class="btn btn-summon-cta" id="btn-open-summon-modal" data-open-summon-modal="true" title="Summon a new Adventurer session in the active Workshop Room">✨ Summon</button>
@@ -92,39 +97,44 @@
     </aside>
   </main>
 
-  <div id="demolition-modal" class="modal-overlay">
+  <div id="demolition-modal" class="modal-overlay" data-modal-size="compact">
     <div class="modal-dialog modal-dialog-danger">
-      <div class="modal-title-danger" id="demolish-modal-title">💣 Demolish Workshop Room</div>
-      <div class="modal-body-danger" id="demolish-modal-body"></div>
-      <div class="modal-actions">
+      <div class="modal-header-row">
+        <div class="modal-title-danger" id="demolish-modal-title">💣 Demolish Workshop Room</div>
+        <button type="button" class="btn modal-close-btn" id="btn-close-demolition-modal" aria-label="Close Demolition Modal">✕</button>
+      </div>
+      <div class="modal-body"><div class="modal-body-danger" id="demolish-modal-body"></div></div>
+      <div class="modal-footer modal-actions">
         <button type="button" class="btn" id="btn-cancel-demolish-room">Cancel</button>
         <button type="button" class="btn btn-danger-cta" id="btn-confirm-demolish-room">💣 Confirm Demolish Room</button>
       </div>
     </div>
   </div>
 
-  <div id="summon-adventurer-modal" class="modal-overlay">
+  <div id="summon-adventurer-modal" class="modal-overlay" data-modal-size="compact">
     <div class="modal-dialog modal-dialog-summon">
       <div class="modal-header-row">
         <div class="modal-title-summon">✨ Summon New Guild Adventurer</div>
         <button type="button" class="btn modal-close-btn" id="btn-close-summon-modal" aria-label="Close Summon Modal">✕</button>
       </div>
-      <div class="modal-form-grid">
-        <label class="modal-field-label" for="summon-directory-select">Workshop Room Directory</label>
-        <select id="summon-directory-select" class="modal-input" aria-label="Workshop Room Directory"></select>
-        <label class="modal-field-label" for="summon-agent-class">Adventurer Class (Agent)</label>
-        <select id="summon-agent-class" class="modal-input modal-select-agent" aria-label="Adventurer Class (Agent)">
-          <option value="build">⚔️ build (Warrior / Feature Smith)</option>
-          <option value="plan">📐 plan (Scout / Strategist)</option>
-          <option value="document">📜 document (Mage / Lore &amp; Specs)</option>
-        </select>
-        <label class="modal-field-label" for="summon-title-input">Quest Title (Optional)</label>
-        <input id="summon-title-input" class="modal-input" aria-label="Quest Title (Optional)" type="text" placeholder="Optional quest title (e.g. Feature Builder)" />
-        <label class="modal-field-label" for="summon-prompt-input">Opening Command Scroll (Optional Prompt)</label>
-        <div id="summon-skill-browser-slot"></div>
-        <textarea id="summon-prompt-input" class="modal-input modal-textarea" aria-label="Opening Command Scroll (Optional Prompt)" rows="3" placeholder="Optional opening Command Scroll prompt (supports @skill)..."></textarea>
+      <div class="modal-body">
+        <div class="modal-form-grid">
+          <label class="modal-field-label" for="summon-directory-select">Workshop Room Directory</label>
+          <select id="summon-directory-select" class="modal-input" aria-label="Workshop Room Directory"></select>
+          <label class="modal-field-label" for="summon-agent-class">Adventurer Class (Agent)</label>
+          <select id="summon-agent-class" class="modal-input modal-select-agent" aria-label="Adventurer Class (Agent)">
+            <option value="build">⚔️ build (Warrior / Feature Smith)</option>
+            <option value="plan">📐 plan (Scout / Strategist)</option>
+            <option value="document">📜 document (Mage / Lore &amp; Specs)</option>
+          </select>
+          <label class="modal-field-label" for="summon-title-input">Quest Title (Optional)</label>
+          <input id="summon-title-input" class="modal-input" aria-label="Quest Title (Optional)" type="text" placeholder="Optional quest title (e.g. Feature Builder)" />
+          <label class="modal-field-label" for="summon-prompt-input">Opening Command Scroll (Optional Prompt)</label>
+          <div id="summon-skill-browser-slot"></div>
+          <textarea id="summon-prompt-input" class="modal-input modal-textarea" aria-label="Opening Command Scroll (Optional Prompt)" rows="3" placeholder="Optional opening Command Scroll prompt (supports @skill)..."></textarea>
+        </div>
       </div>
-      <div class="modal-actions">
+      <div class="modal-footer modal-actions">
         <button type="button" class="btn" id="btn-cancel-summon-adventurer">Cancel</button>
         <select id="summon-action-agent-select" class="command-scroll-agent-select summon-action-agent-select" aria-label="Summon OpenCode Agent Mode" title="Select OpenCode Agent Mode for summoned Adventurer"><option value="build">⚔️ build</option><option value="plan">📐 plan</option><option value="document">📜 document</option></select>
         <button type="button" class="btn btn-summon-cta" id="btn-confirm-summon-adventurer">✨ Summon Adventurer</button>

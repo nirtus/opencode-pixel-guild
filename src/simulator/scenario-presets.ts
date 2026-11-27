@@ -5,6 +5,8 @@ import type {
 } from "../types/domain.ts";
 import {
   COMPACTION_AND_QUEST_GATE_EVENTS,
+  DEMO_CATALOG_MODELS,
+  DEMO_DEFAULT_MODEL_ID,
   MCP_AUTH_AND_FAILURE_EVENTS,
   PLUGIN_ALCOVE_CODEMODE_EVENTS,
   PRIMARY_HALL_DIR,
@@ -67,6 +69,13 @@ export const DEMO_SCENARIO_PRESETS: Readonly<
         projectId: "proj-pixel-guild",
         projectName: "opencode-pixel-guild",
         isWorktree: false,
+      },
+      {
+        type: "catalog.hydrated",
+        timestampMs: 1_060,
+        locationDirectory: PRIMARY_HALL_DIR,
+        defaultModelId: DEMO_DEFAULT_MODEL_ID,
+        models: [...DEMO_CATALOG_MODELS],
       },
       {
         type: "session.upserted",
@@ -170,6 +179,8 @@ export const DEMO_SCENARIO_PRESETS: Readonly<
         type: "catalog.hydrated",
         timestampMs: 2_050,
         locationDirectory: PRIMARY_HALL_DIR,
+        defaultModelId: DEMO_DEFAULT_MODEL_ID,
+        models: [...DEMO_CATALOG_MODELS],
         skills: [
           { id: "tdd", name: "Test-Driven Development" },
           { id: "codebase-design", name: "Codebase Design" },

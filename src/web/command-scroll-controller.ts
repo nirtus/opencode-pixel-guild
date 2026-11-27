@@ -1,16 +1,25 @@
 import type { CharacterSheetViewModel } from "../hud/spectator-hud.ts";
 import type { CharacterState, GuildCommandRequest, GuildSnapshot } from "../types/domain.ts";
 import {
-  clientState, hasCharacterUnviewedResult, promoteDrawerExpandedOnMobileFocus, reconcileMobileDrawerSelection,
+  clientState, hasCharacterUnviewedResult, promoteDrawerExpandedOnMobileFocus, reconcileMobileDrawerSelection, resolvedClientPromptsBySession,
 } from "./client-state.ts";
 import { escapeHtml } from "./ledger-panel-reconciler.ts";
-import { getOperatorHeaders, refreshCachedOperatorProfile } from "./operator-pairing-controller.ts";
+import { getOperatorHeaders, refreshCachedOperatorProfile } from "./operator-session-store.ts";
 import {
   bindQuestGateCardControls, isClientGateResolved, markClientGateResolved, renderQuestGateCardHtml,
 } from "./quest-gate-card.ts";
 import {
   bindSkillBrowserControls, renderSkillBrowserRowHtml, syncSkillBrowserSelectionState,
 } from "./skill-browser-controller.ts";
+import {
+  bindTargetControls,
+  computeTargetControlsDigest,
+  pruneTargetControlSessionCaches,
+  readSelectedTargetsForSend,
+  reconcileTargetControlsInPlace,
+  renderTargetControlsInnerHtml,
+  type TargetControlsDeps,
+} from "./command-scroll-target-controls.ts";
 import { applyAuthoritativeSnapshot, clearClientDeletedRoom } from "./snapshot-gate.ts";
 
 let lastSummonedSessionId: string | null = null;
@@ -18,7 +27,6 @@ let lastCommandDispatchError: string | null = null;
 const clientViewedAtBySession = new Map<string, number>();
 const dispatchedViewIdleAtBySession = new Map<string, number>();
 const acknowledgedIdleAtBySession = new Map<string, number>();
-const draftAgentModeBySession = new Map<string, string>();
 
 export function formatCompactModeLabel(id: string): string {
   if (id === "build") return "⚔️ build";
@@ -32,7 +40,7 @@ export function getLastSummonedSessionId(): string | null {
 }
 
 export function pruneCommandScrollSessionCaches(hasSession: (sessionId: string) => boolean): void {
-  for (const sid of draftAgentModeBySession.keys()) if (!hasSession(sid)) draftAgentModeBySession.delete(sid);
+  pruneTargetControlSessionCaches(hasSession);
   for (const sid of clientViewedAtBySession.keys()) if (!hasSession(sid)) clientViewedAtBySession.delete(sid);
   for (const sid of dispatchedViewIdleAtBySession.keys()) if (!hasSession(sid)) dispatchedViewIdleAtBySession.delete(sid);
   for (const sid of acknowledgedIdleAtBySession.keys()) if (!hasSession(sid)) acknowledgedIdleAtBySession.delete(sid);
@@ -40,6 +48,14 @@ export function pruneCommandScrollSessionCaches(hasSession: (sessionId: string) 
 
 export function syncClientViewedSessionsToSnapshot(snapshot: GuildSnapshot | null | undefined): void {
   if (!snapshot?.characters) return;
+  if ((snapshot.version ?? 0) > 0) {
+    for (const sid of [...resolvedClientPromptsBySession.keys()]) {
+      const ch = snapshot.characters[sid];
+      if (ch && !ch.questGate && (ch.lifecycleState === "WorkingAtStation" || ch.lifecycleState === "Thinking" || ch.lifecycleState === "Entering")) {
+        resolvedClientPromptsBySession.delete(sid);
+      }
+    }
+  }
   for (const [sid, viewedTs] of clientViewedAtBySession.entries()) {
     const ch = snapshot.characters[sid];
     if (!ch) continue;
@@ -178,6 +194,20 @@ export function reconcileInteractiveCommandSlot(
     if (toggleLabelEl) toggleLabelEl.textContent = nowExpanded ? "Collapse ▾" : "Compose [/] ▴";
   };
 
+  const setSlotFeedback = (msg: string, isError: boolean) => {
+    const fb = slotEl.querySelector("#scroll-feedback-msg") as HTMLElement | null;
+    if (!fb) return;
+    fb.textContent = msg;
+    fb.className = isError ? "scroll-feedback-msg is-error" : "scroll-feedback-msg is-visible";
+  };
+  const targetDeps: TargetControlsDeps = {
+    formatCompactModeLabel,
+    dispatchCommand: dispatchGuildCommandFromWeb,
+    getLastDispatchError: () => lastCommandDispatchError,
+    setFeedback: setSlotFeedback,
+    onStateChanged,
+  };
+
   if (
     slotEl.getAttribute("data-interactive-key") === interactiveKey &&
     (slotEl.getAttribute("data-interactive-sig") ?? gateSig) === gateSig &&
@@ -195,11 +225,7 @@ export function reconcileInteractiveCommandSlot(
     const stopBtn = slotEl.querySelector("#btn-interrupt-turn") as HTMLElement | null;
     stopBtn?.classList?.toggle("is-hidden", !canInterrupt);
     if (stopBtn?.style) stopBtn.style.display = canInterrupt ? "inline-flex" : "none";
-    const existingModeSel = slotEl.querySelector("#command-scroll-agent-select") as HTMLSelectElement | null;
-    if (existingModeSel && sheet.commandScroll.selectedAgentClass) {
-      draftAgentModeBySession.set(sheet.sessionId, sheet.commandScroll.selectedAgentClass);
-      existingModeSel.value = sheet.commandScroll.selectedAgentClass;
-    }
+    reconcileTargetControlsInPlace(slotEl, sheet, rawChar, targetDeps);
     return;
   }
 
@@ -210,13 +236,8 @@ export function reconcileInteractiveCommandSlot(
   slotEl.setAttribute("data-interactive-sig", gateSig);
   const delivery = clientState.draftDeliveryBySession.get(sheet.sessionId) ?? sheet.commandScroll.defaultDelivery;
   const draftPrompt = clientState.draftPromptsBySession.get(sheet.sessionId) ?? "";
-  const selectedAgent = draftAgentModeBySession.get(sheet.sessionId) || sheet.commandScroll.selectedAgentClass || rawChar.agentClass || "build";
-  draftAgentModeBySession.set(sheet.sessionId, selectedAgent);
-  const modeOptionsHtml = sheet.commandScroll.canSwitchAgentMode
-    ? `<select id="command-scroll-agent-select" class="command-scroll-agent-select" aria-label="OpenCode Agent Mode" title="OpenCode Agent Mode">${sheet.commandScroll.availableAgentModes
-        .map((m) => `<option value="${escapeHtml(m.id)}" ${m.id === selectedAgent ? "selected" : ""}>${escapeHtml(formatCompactModeLabel(m.id))}</option>`)
-        .join("")}</select>`
-    : "";
+  const targetsSig = computeTargetControlsDigest(sheet);
+  const targetControlsHtml = renderTargetControlsInnerHtml(sheet, rawChar, formatCompactModeLabel);
   const skillScopeId = `scroll:${sheet.sessionId}`;
   const skillBrowserHtml = renderSkillBrowserRowHtml({
     scopeId: skillScopeId, skills: sheet.commandScroll.availableSkillIds, currentInputText: draftPrompt,
@@ -245,7 +266,7 @@ export function reconcileInteractiveCommandSlot(
         <div class="command-scroll-compose-row">
           <textarea id="command-scroll-input" class="command-scroll-input" rows="2" placeholder="Type prompt or @skill... (Enter to send)">${escapeHtml(draftPrompt)}</textarea>
           <div class="command-scroll-send-actions">
-            ${modeOptionsHtml}
+            <div id="command-scroll-target-controls" class="command-scroll-target-controls" data-targets-sig="${escapeHtml(targetsSig)}">${targetControlsHtml}</div>
             <button id="btn-send-command-scroll" type="button" class="btn btn-send-scroll">📜 Send Scroll ↵</button>
           </div>
         </div>
@@ -265,30 +286,8 @@ export function reconcileInteractiveCommandSlot(
 
   const textarea = slotEl.querySelector("#command-scroll-input") as HTMLTextAreaElement | null;
   const sendBtn = slotEl.querySelector("#btn-send-command-scroll") as HTMLButtonElement | null;
-  const agentSelect = slotEl.querySelector("#command-scroll-agent-select") as HTMLSelectElement | null;
-  const feedbackEl = slotEl.querySelector("#scroll-feedback-msg") as HTMLElement | null;
-
-  const setFeedback = (msg: string, isError: boolean) => {
-    if (!feedbackEl) return;
-    feedbackEl.textContent = msg;
-    feedbackEl.className = isError ? "scroll-feedback-msg is-error" : "scroll-feedback-msg is-visible";
-  };
-
-  agentSelect?.addEventListener("change", () => {
-    const nextAgent = (agentSelect.value || "").trim();
-    if (!nextAgent) return;
-    draftAgentModeBySession.set(sheet.sessionId, nextAgent);
-    rawChar.agentClass = nextAgent;
-    void dispatchGuildCommandFromWeb(
-      {
-        command: "agent.switch",
-        sessionId: sheet.sessionId,
-        directory: rawChar.locationDirectory,
-        agentClass: nextAgent,
-      },
-      onStateChanged,
-    );
-  });
+  const setFeedback = setSlotFeedback;
+  bindTargetControls(slotEl, sheet, rawChar, targetDeps);
 
   textarea?.addEventListener("focus", () => promoteDrawerExpandedOnMobileFocus());
 
@@ -308,12 +307,7 @@ export function reconcileInteractiveCommandSlot(
       sendBtn.textContent = "⏳ Sending...";
     }
     const mode = clientState.draftDeliveryBySession.get(sheet.sessionId) ?? "steer";
-    const chosenAgent = (
-      agentSelect?.value ||
-      draftAgentModeBySession.get(sheet.sessionId) ||
-      sheet.commandScroll.selectedAgentClass ||
-      ""
-    ).trim();
+    const selectedTargets = readSelectedTargetsForSend(slotEl, sheet);
     try {
       const ok = await dispatchGuildCommandFromWeb(
         {
@@ -322,7 +316,7 @@ export function reconcileInteractiveCommandSlot(
           directory: rawChar.locationDirectory,
           promptText,
           delivery: mode,
-          ...(sheet.commandScroll.canSwitchAgentMode && chosenAgent ? { agentClass: chosenAgent } : {}),
+          ...selectedTargets,
           ...(activeGate ? { gateId: activeGate.gateId, kind: activeGate.kind, source: activeGate.source } : {}),
         },
         onStateChanged,

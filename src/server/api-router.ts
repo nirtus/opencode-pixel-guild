@@ -127,8 +127,13 @@ export async function tryHandleGuildApiRoute(
     ctx.sseClients.add(res);
     const keepAliveTimer = setInterval(() => {
       if (res.writableEnded) return;
+      const buffered = typeof res.writableLength === "number" ? res.writableLength : 0;
+      if (buffered >= 2 * 1024 * 1024) return;
       try {
-        res.write(": keepalive\n\n");
+        const curSnap = ctx.getReducer().getSnapshot();
+        res.write(
+          `event: heartbeat\ndata: ${JSON.stringify({ ts: Date.now(), version: curSnap.version, timestampMs: curSnap.timestampMs, daemonUrl: curSnap.daemonUrl ?? null })}\n\n`,
+        );
       } catch {
         ctx.sseClients.delete(res);
       }

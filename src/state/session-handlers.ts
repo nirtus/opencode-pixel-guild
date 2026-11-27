@@ -95,6 +95,7 @@ export function handleSessionUpserted(
       timestampMs: event.timestampMs, activityTimestampMs, sequenceCursor: event.sequenceCursor ?? 0,
       isOpenInOpenCode: event.isOpenInOpenCode ?? true,
     });
+    if (typeof event.modelVariant === "string" && event.modelVariant.trim()) char.modelVariant = event.modelVariant.trim();
     if (event.preserveActivityTimestamp && event.timestampMs - activityTimestampMs > 15_000) {
       char.lifecycleState = event.idleAtMs ? "RestingInLounge" : "Thinking";
       char.dwellUntilMs = null;
@@ -131,6 +132,8 @@ export function handleSessionUpserted(
     if (event.title) char.title = event.title;
     if (event.agentClass) { char.agentClass = event.agentClass; char.visualTraits = agentCap.visualTraits; }
     if (event.modelId) char.modelId = event.modelId;
+    if (event.modelVariant === null) delete char.modelVariant;
+    else if (typeof event.modelVariant === "string" && event.modelVariant.trim()) char.modelVariant = event.modelVariant.trim();
     if (event.isOpenInOpenCode !== undefined) char.isOpenInOpenCode = event.isOpenInOpenCode;
     updateContextMana(char.contextMana, event.tokens, char.modelId, state.catalog.models);
     if (typeof event.sequenceCursor === "number") char.sequenceCursor = Math.max(char.sequenceCursor, event.sequenceCursor);

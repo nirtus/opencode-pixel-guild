@@ -52,7 +52,7 @@ On `awesome-opencode`, established projects such as **OpenChamber** ([Discussion
 
   I'd like to share **[OpenCode Pixel Guild](https://github.com/nirtus/opencode-pixel-guild)** — a self-hosted 2D RPG workshop and dungeon companion built for **OpenCode V2**.
 
-  ![OpenCode Pixel Guild Preview](https://raw.githubusercontent.com/nirtus/opencode-pixel-guild/main/docs/images/opencode-pixel-guild-intro-preview.gif)
+  ![OpenCode Pixel Guild Preview](https://raw.githubusercontent.com/nirtus/opencode-pixel-guild/main/assets/images/opencode-pixel-guild-intro-preview.gif)
 
   ## What it does
   - **Unified Host Workshop Room & Project Heraldry** — Pairs with local or remote OpenCode V2 daemons (`opencode pair` QR/URL redemption or local auto-discovery) and renders all active projects and git worktrees inside a shared Workshop Room with deterministic guild uniforms and crests.
@@ -90,7 +90,7 @@ Hi everyone 👋
 
 I'd like to share **[OpenCode Pixel Guild](https://github.com/nirtus/opencode-pixel-guild)** — a self-hosted 2D RPG workshop and dungeon companion built for **OpenCode V2**.
 
-![OpenCode Pixel Guild Preview](https://raw.githubusercontent.com/nirtus/opencode-pixel-guild/main/docs/images/opencode-pixel-guild-intro-preview.gif)
+![OpenCode Pixel Guild Preview](https://raw.githubusercontent.com/nirtus/opencode-pixel-guild/main/assets/images/opencode-pixel-guild-intro-preview.gif)
 
 ## What it does
 - **Unified Host Workshop Room & Project Heraldry** — Pairs with local or remote OpenCode V2 daemons (`opencode pair` QR/URL redemption or local auto-discovery) and renders all active projects and git worktrees inside a shared Workshop Room with deterministic guild uniforms and crests.
@@ -361,14 +361,14 @@ gh pr create \
 ## 5. Community Launch Channels (Discord, Reddit, Hacker News, X/Twitter, LinkedIn & YouTube)
 
 1. **Official OpenCode Discord (`https://opencode.ai/discord`)**:
-   - Post `docs/images/opencode-pixel-guild-intro-preview.gif` (or `docs/images/mermaid-chat-diagrams.png`) + `docs/video/opencode-pixel-guild-intro.mp4` with the GitHub link (`https://github.com/nirtus/opencode-pixel-guild`) and `v0.2.0` release link (`https://github.com/nirtus/opencode-pixel-guild/releases/tag/v0.2.0`).
+   - Post `assets/images/opencode-pixel-guild-intro-preview.gif` (or `assets/images/showcase-hero-chat-mermaid.png`) + `docs/video/opencode-pixel-guild-intro.mp4` with the GitHub link (`https://github.com/nirtus/opencode-pixel-guild`) and `v0.2.0` release link (`https://github.com/nirtus/opencode-pixel-guild/releases/tag/v0.2.0`).
 2. **Reddit ([`r/opencode`](https://www.reddit.com/r/opencode/), [`r/opencodeCLI`](https://www.reddit.com/r/opencodeCLI/), [`r/LocalLLaMA`](https://www.reddit.com/r/LocalLLaMA/))**:
    - **Title**: `I built OpenCode Pixel Guild (v0.2.0) — a real-time 2D RPG workshop & dungeon visualizer for live OpenCode V2 sessions, subagents, inline Mermaid SVG diagrams & Git commits (zero dependencies, MIT)`
-   - **Media**: Upload `docs/video/opencode-pixel-guild-intro.mp4` + `docs/images/mermaid-chat-diagrams.png`
+   - **Media**: Upload `docs/video/opencode-pixel-guild-intro.mp4` + `assets/images/showcase-hero-chat-mermaid.png`
 3. **Hacker News (`https://news.ycombinator.com/submit`)**:
    - **Title**: `Show HN: OpenCode Pixel Guild – 2D RPG workshop and dungeon visualizer for OpenCode V2`
    - **URL**: `https://github.com/nirtus/opencode-pixel-guild`
 4. **X / Twitter & LinkedIn**:
-   - Attach `docs/video/opencode-pixel-guild-intro.mp4` (35s 1080p sizzle) and `docs/images/mermaid-chat-diagrams.png`, linking `https://github.com/nirtus/opencode-pixel-guild` and `https://github.com/nirtus/opencode-pixel-guild/releases/tag/v0.2.0`.
+   - Attach `docs/video/opencode-pixel-guild-intro.mp4` (35s 1080p sizzle) and `assets/images/showcase-hero-chat-mermaid.png`, linking `https://github.com/nirtus/opencode-pixel-guild` and `https://github.com/nirtus/opencode-pixel-guild/releases/tag/v0.2.0`.
 5. **YouTube**:
    - Upload `docs/video/opencode-pixel-guild-intro.mp4` using the ready-to-paste title, chapters, and tags in [`docs/video/youtube-publish-guide.md`](./video/youtube-publish-guide.md).

@@ -1,4 +1,5 @@
 import {
+  indexModelCatalogEntry,
   WORKSTATION_CATALOG,
   type GuildDelta,
   type GuildStateEmission,
@@ -282,6 +283,10 @@ export function createWorldStateReducer(
           }
         }
       }
+      if (Array.isArray(persisted.availableModels)) {
+        state.catalog.models ??= {};
+        for (const m of persisted.availableModels) if (m?.id) indexModelCatalogEntry(state.catalog.models, structuredClone(m));
+      }
       if (persisted.rooms && typeof persisted.rooms === "object") {
         for (const [roomId, room] of Object.entries(persisted.rooms)) {
           if (room && room.characterIds?.length === 0 && /^\/(?:home|Users|c\/Users)\/[^/]+$/i.test(roomId)) {
@@ -289,6 +294,10 @@ export function createWorldStateReducer(
           }
           if (!state.rooms[roomId] && room) {
             state.rooms[roomId] = structuredClone(room);
+            if (Array.isArray(room.availableModels)) {
+              state.catalog.models ??= {};
+              for (const m of room.availableModels) if (m?.id) indexModelCatalogEntry(state.catalog.models, structuredClone(m));
+            }
             const roomMap = (state.roomAllPlugins[roomId] ??= {});
             for (const alcove of room.pluginAlcoves ?? []) {
               if (alcove?.namespace) roomMap[alcove.namespace.toLowerCase()] = structuredClone(alcove);

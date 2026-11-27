@@ -6,7 +6,8 @@ node_modules
 data/
 *.sqlite*
 test-*
-docs/images/*.png
+docs/images/
+assets/images/*.png
 docs/architecture-review-*.html
 docs/examples/
 docs/architecture-review/

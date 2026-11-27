@@ -1,4 +1,5 @@
 export * from "./station-catalog.ts";
+export * from "./model-catalog.ts";
 export * from "./core-types.ts";
 export * from "./command-types.ts";
 export * from "./role-archetypes.ts";

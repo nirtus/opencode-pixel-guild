@@ -4,6 +4,7 @@ import type { DirectionalTurnaround } from "../sprites/index.ts";
 import type { CharacterState, GuildOperatorPreferences, GuildSnapshot, WorkshopRoomState } from "../types/domain.ts";
 import type { ResolvedCharacterSlot } from "./station-and-workflow-routing.ts";
 import { clampDesktopWorldRatio } from "./layout-resizer.ts";
+import { isOfflineDemoModeActive } from "./offline-demo-flag.ts";
 import {
   computeHydratedProjectSelection, getBrowserStorage, isSavedAllWorldsSelection, type KeyValueStoragePort, persistClientUiWindowState,
   readSavedUiWindowState, resolveInitialProjectSelection, syncProjectUrlQueryParam, writeSavedProjectId,
@@ -350,7 +351,7 @@ export function persistProjectWorldSelection(
   writeSavedProjectId(projectId, storage);
   syncProjectUrlQueryParam(projectId);
   const isHeadless = typeof navigator !== "undefined" && /HeadlessChrome/i.test(navigator.userAgent || "");
-  if (!storage && !isHeadless && typeof window !== "undefined" && typeof fetch === "function") {
+  if (!storage && !isHeadless && !isOfflineDemoModeActive() && typeof window !== "undefined" && typeof fetch === "function") {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     const opId = clientState.operatorId || getBrowserStorage()?.getItem("guild.operatorId")?.trim() || null;
     if (opId) headers["X-Guild-Operator-Id"] = opId;

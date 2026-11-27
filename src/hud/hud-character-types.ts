@@ -113,6 +113,21 @@ export interface CharacterAgentModeOptionViewModel {
   readonly isCurrent: boolean;
 }
 
+export interface CharacterModelOptionViewModel {
+  readonly id: string;
+  readonly providerId: string;
+  readonly name: string;
+  readonly variants: readonly string[];
+  readonly limitContext: number;
+  readonly isCurrent: boolean;
+}
+
+export interface CharacterModelProviderGroupViewModel {
+  readonly providerId: string;
+  readonly providerLabel: string;
+  readonly models: readonly CharacterModelOptionViewModel[];
+}
+
 export interface CharacterCommandScrollViewModel {
   readonly endpoint: "/api/guild/command";
   readonly sessionId: string;
@@ -125,6 +140,11 @@ export interface CharacterCommandScrollViewModel {
   readonly selectedAgentClass: string;
   readonly canSwitchAgentMode: boolean;
   readonly availableAgentModes: readonly CharacterAgentModeOptionViewModel[];
+  readonly canSwitchModel: boolean;
+  readonly selectedModelId: string;
+  readonly selectedModelVariant: string | null;
+  readonly availableModelGroups: readonly CharacterModelProviderGroupViewModel[];
+  readonly availableVariants: readonly string[];
 }
 
 export interface CharacterKillActionViewModel {
@@ -172,6 +192,7 @@ export interface CharacterSheetViewModel {
   readonly title: string;
   readonly agentBadge: CharacterAgentBadgeViewModel;
   readonly modelId: string;
+  readonly modelVariant?: string;
   readonly equipmentLoadout: Readonly<EquipmentLoadout>;
   readonly recentTools: readonly Readonly<ToolExecutionRecord>[];
   readonly skillGrimoireStack: readonly SkillGrimoireChipViewModel[];

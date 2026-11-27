@@ -3,10 +3,9 @@ import { type CameraTransform, type ChamberFocusMode, clampCameraToChamberWalls,
 import { createCanvasGestureState, stepPointerDown, stepPointerMove, stepPointerUp, stepWheelZoom } from "./canvas-gesture-controller.ts";
 import { deriveProjectBugMonsters, hasHeroFightingMonster } from "./canvas-wilds-painter.ts";
 import { clientState, getCachedQueryViewportWidth, getScopedGameMasterCharacters, MOBILE_BREAKPOINT_PX, reconcileMobileDrawerSelection, selectCommitRepository, type SpectatorDrawerState, type SpectatorDrawerTab } from "./client-state.ts";
-import { closeDemolitionModal, confirmDemolishRoom, openDemolitionModal } from "./demolition-modal-controller.ts";
+import { openDemolitionModal } from "./demolition-modal-controller.ts";
 import { clampDesktopWorldRatio, initDesktopLayoutResizer } from "./layout-resizer.ts";
-
-export { closeDemolitionModal, confirmDemolishRoom, openDemolitionModal };
+import { hasOpenModal, syncViewportGeometryCssVars } from "./modal-shell.ts";
 
 export const TARGET_CANVAS_FPS = 30;
 export const TARGET_FRAME_INTERVAL_MS = 1000 / TARGET_CANVAS_FPS;
@@ -29,8 +28,10 @@ export function getEffectiveViewportWidth(): number {
   const outer = qVw > 0 ? qVw : (window.outerWidth || window.innerWidth);
   if (outer > 0 && outer < window.innerWidth && typeof document !== "undefined") {
     document.body.style.width = `${outer}px`; document.body.style.maxWidth = `${outer}px`;
+    syncViewportGeometryCssVars(outer);
     return outer;
   }
+  syncViewportGeometryCssVars(window.innerWidth);
   return window.innerWidth;
 }
 
@@ -294,10 +295,16 @@ export function initPointerAndCameraControls(canvas: HTMLCanvasElement, onStateC
   if (typeof ResizeObserver !== "undefined" && canvas.parentElement) {
     new ResizeObserver(() => syncViewportCameraFit(canvas, true)).observe(canvas.parentElement);
   }
-  window.visualViewport?.addEventListener("resize", () => {
-    const vv = window.visualViewport!;
-    document.documentElement.style.setProperty("--keyboard-inset-height", `${Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))}px`);
-  });
+  const syncViewportVars = () => {
+    const vv = window.visualViewport;
+    if (vv) {
+      document.documentElement.style.setProperty("--keyboard-inset-height", `${Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))}px`);
+    }
+    syncViewportGeometryCssVars(getEffectiveViewportWidth());
+  };
+  syncViewportVars();
+  window.visualViewport?.addEventListener("resize", syncViewportVars);
+  window.visualViewport?.addEventListener("scroll", syncViewportVars);
   bindOverlayAndDrawerControls(canvas, onStateChanged);
   initDesktopLayoutResizer(canvas, onStateChanged, () => syncViewportCameraFit(canvas, true));
 
@@ -366,21 +373,16 @@ export function initPointerAndCameraControls(canvas: HTMLCanvasElement, onStateC
     applyCameraTransform(stepWheelZoom(getCamera(), e.deltaY, canvasX, canvasY, canvas.width, canvas.height));
   }, { passive: false });
 
-  (document.getElementById("btn-cancel-demolish-room") ?? document.getElementById("demolition-cancel-btn"))
-    ?.addEventListener("click", () => closeDemolitionModal());
-  (document.getElementById("btn-confirm-demolish-room") ?? document.getElementById("demolition-confirm-btn"))
-    ?.addEventListener("click", () => void confirmDemolishRoom(fetch, onStateChanged));
-
   window.addEventListener("keydown", (e) => {
     const activeTag = (document.activeElement as HTMLElement | null)?.tagName?.toLowerCase();
     const isInputFocused = activeTag === "input" || activeTag === "textarea" || activeTag === "select";
-    if (e.key === "/" && !isInputFocused && clientState.selectedSessionId && clientState.mobileActiveTab === "character") {
+    if (e.key === "/" && !isInputFocused && !hasOpenModal() && clientState.selectedSessionId && clientState.mobileActiveTab === "character") {
       e.preventDefault(); clientState.heroSubtab = "chat"; clientState.isCommandScrollExpanded = true;
       onStateChanged(); (document.getElementById("command-scroll-input") as HTMLTextAreaElement | null)?.focus();
       return;
     }
     if (e.key === "Escape") {
-      if (clientState.pendingDemolishRoomId !== null) { closeDemolitionModal(); return; }
+      if (hasOpenModal()) return;
       if (clientState.isCommandScrollExpanded) {
         clientState.isCommandScrollExpanded = false; (document.activeElement as HTMLElement | null)?.blur?.();
         onStateChanged(); return;

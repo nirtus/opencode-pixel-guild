@@ -1,8 +1,8 @@
 import { normalizeLocationDirectory, toDaemonDirectoryPath } from "../state/world-reducer.ts";
-import { mergeQuestGateFields, normalizeQuestGateFields, type QuestGateSource, type SessionTokenTelemetry } from "../types/domain.ts";
+import { mergeQuestGateFields, normalizeQuestGateFields, parseModelRef, type QuestGateSource, type SessionTokenTelemetry } from "../types/domain.ts";
 import type { OpenCodeDaemonLocationPayload } from "./daemon-types.ts";
 import {
-  fetchOpenTuiSessionIds, mapDaemonSessionTokens, mergeDaemonPluginsAndMcps, normalizeDaemonModels,
+  buildProviderNameMap, fetchOpenTuiSessionIds, mapDaemonSessionTokens, mergeDaemonPluginsAndMcps, normalizeDaemonModels,
   type RawDaemonMcpResponse, type RawDaemonModelItem, type RawDaemonPluginItem,
 } from "./daemon-mcp-normalizer.ts";
 import {
@@ -19,16 +19,20 @@ const TUI_TAB_FRESHNESS_WINDOW_MS = 14_400_000;
 const ONE_DAY_MS = 86_400_000;
 const STATIC_CATALOG_TTL_MS = 300_000;
 
-interface CachedStaticCatalog {
+export interface CachedStaticCatalog {
   expiresAtMs: number;
   skills: Array<{ id: string; name?: string; description?: string }> | null;
   plugins: RawDaemonPluginItem[] | null;
   mcps: RawDaemonMcpResponse | null;
   agents: Array<{ id?: string; name?: string; color?: string; mode?: string; hidden?: boolean; disabled?: boolean; description?: string }> | null;
   rawModels: RawDaemonModelItem[] | null;
+  rawDefaultModel: unknown;
+  providerNames: Record<string, string> | null;
 }
 
-const staticCatalogCache = new Map<string, CachedStaticCatalog>();
+function encodeHeaderDir(dir: string): string {
+  return /[^\x20-\x7E]/.test(dir) ? encodeURIComponent(dir) : dir;
+}
 
 interface RawDaemonSessionItem {
   id?: string; sessionId?: string; parentID?: string | null; parentId?: string | null;
@@ -67,18 +71,17 @@ export async function fetchDaemonLocationState(
   _headers: Record<string, string>,
   fetchJson: <T>(path: string, extraHeaders?: Record<string, string>) => Promise<T | null>,
   directory: string,
-  options?: { hydrationMode?: LocationHydrationMode; signal?: AbortSignal },
+  options?: { hydrationMode?: LocationHydrationMode; signal?: AbortSignal; catalogCache?: Map<string, CachedStaticCatalog> },
 ): Promise<OpenCodeDaemonLocationPayload> {
   const hydrationMode: LocationHydrationMode = options?.hydrationMode ?? "full";
   const daemonDir = toDaemonDirectoryPath(directory);
-  const locHeaders = { "x-opencode-directory": daemonDir };
+  const locHeaders = { "x-opencode-directory": encodeHeaderDir(daemonDir) };
   const query = `?location[directory]=${encodeURIComponent(daemonDir)}`;
   const sessionQuery = `?directory=${encodeURIComponent(daemonDir)}&location[directory]=${encodeURIComponent(daemonDir)}`;
   const normTargetDir = normalizeLocationDirectory(directory);
   const cacheKey = `${rootUrl}::${normTargetDir}`;
   const cacheNowMs = Date.now();
-  const cachedCatalog = staticCatalogCache.get(cacheKey);
-  const hostCatalog = rootUrl ? staticCatalogCache.get(rootUrl) : undefined;
+  const cachedCatalog = options?.catalogCache?.get(cacheKey);
   const isWorktreeOrRoot = Boolean(rootUrl) && (normTargetDir === "/" || /^\/[a-z]$/i.test(normTargetDir));
   const hasValidCache = Boolean(isWorktreeOrRoot || (cachedCatalog && cachedCatalog.expiresAtMs > cacheNowMs && rootUrl));
 
@@ -92,13 +95,15 @@ export async function fetchDaemonLocationState(
     }
   }
 
-  const [fetchedSkills, fetchedPlugins, fetchedMcps, fetchedAgents, fetchedRawModels, rawSessions, activeSessions, permissions, forms, questions, openTuiSessionIds] =
+  const [fetchedSkills, fetchedPlugins, fetchedMcps, fetchedAgents, fetchedRawModels, fetchedDefaultModel, fetchedProviders, rawSessions, activeSessions, permissions, forms, questions, openTuiSessionIds] =
     await Promise.all([
       hasValidCache ? Promise.resolve(cachedCatalog?.skills ?? null) : fetchJson<Array<{ id: string; name?: string; description?: string }>>(`/api/skill${query}`, locHeaders),
       hasValidCache ? Promise.resolve(cachedCatalog?.plugins ?? null) : fetchJson<RawDaemonPluginItem[]>(`/api/plugin${query}`, locHeaders),
       hasValidCache ? Promise.resolve(cachedCatalog?.mcps ?? null) : fetchJson<RawDaemonMcpResponse>(`/api/mcp${query}`, locHeaders),
       hasValidCache ? Promise.resolve(cachedCatalog?.agents ?? null) : fetchJson<Array<{ id?: string; name?: string; color?: string; mode?: string; hidden?: boolean; disabled?: boolean; description?: string }>>(`/api/agent${query}`, locHeaders),
       hasValidCache ? Promise.resolve(cachedCatalog?.rawModels ?? null) : fetchJson<RawDaemonModelItem[]>(`/api/model${query}`, locHeaders),
+      hasValidCache ? Promise.resolve(cachedCatalog?.rawDefaultModel ?? null) : fetchJson<unknown>(`/api/model/default${query}`, locHeaders),
+      hasValidCache ? Promise.resolve(cachedCatalog?.providerNames ?? null) : fetchJson<unknown>(`/api/provider${query}`, locHeaders).then(buildProviderNameMap),
       fetchJson<RawDaemonSessionItem[]>(`/api/session${sessionQuery}&limit=200`, locHeaders),
       fetchJson<Array<string | { id?: string; sessionId?: string }> | Record<string, { type?: string; status?: string }>>(`/api/session/active${query}`, locHeaders),
       isWorktreeOrRoot ? Promise.resolve(null) : fetchJson<RawDaemonGateItem[]>(`/api/permission/request${query}`, locHeaders),
@@ -111,19 +116,20 @@ export async function fetchDaemonLocationState(
       ? await fetchJson<RawDaemonSessionItem[]>(`/api/session${sessionQuery}&parentID=null&limit=100`, locHeaders)
       : null;
 
-  const skills = fetchedSkills ?? cachedCatalog?.skills ?? hostCatalog?.skills ?? null;
-  const plugins = fetchedPlugins ?? cachedCatalog?.plugins ?? hostCatalog?.plugins ?? null;
-  const mcps = fetchedMcps ?? cachedCatalog?.mcps ?? hostCatalog?.mcps ?? null;
-  const agents = fetchedAgents ?? cachedCatalog?.agents ?? hostCatalog?.agents ?? null;
-  const rawModels = fetchedRawModels ?? cachedCatalog?.rawModels ?? hostCatalog?.rawModels ?? null;
+  const skills = fetchedSkills ?? cachedCatalog?.skills ?? null;
+  const plugins = fetchedPlugins ?? cachedCatalog?.plugins ?? null;
+  const mcps = fetchedMcps ?? cachedCatalog?.mcps ?? null;
+  const agents = fetchedAgents ?? cachedCatalog?.agents ?? null;
+  const rawModels = fetchedRawModels ?? cachedCatalog?.rawModels ?? null;
+  const rawDefaultModel = fetchedDefaultModel ?? cachedCatalog?.rawDefaultModel ?? null;
+  const providerNames = fetchedProviders ?? cachedCatalog?.providerNames ?? null;
 
-  if (!hasValidCache && rootUrl && (skills || plugins || mcps || agents || rawModels)) {
-    const entry = { expiresAtMs: cacheNowMs + STATIC_CATALOG_TTL_MS, skills, plugins, mcps, agents, rawModels };
-    staticCatalogCache.set(cacheKey, entry);
-    staticCatalogCache.set(rootUrl, entry);
+  if (!hasValidCache && rootUrl && options?.catalogCache && (skills || plugins || mcps || agents || rawModels || rawDefaultModel)) {
+    options.catalogCache.set(cacheKey, { expiresAtMs: cacheNowMs + STATIC_CATALOG_TTL_MS, skills, plugins, mcps, agents, rawModels, rawDefaultModel, providerNames });
   }
 
-  const { models, modelLimitByKey } = normalizeDaemonModels(rawModels);
+  const { models, modelLimitByKey } = normalizeDaemonModels(rawModels, providerNames ?? undefined);
+  const defaultModelId = parseModelRef(rawDefaultModel)?.fullSpec;
   const mergedPlugins = mergeDaemonPluginsAndMcps(mcps, plugins);
 
   const fallbackGlobalSessions =
@@ -353,11 +359,9 @@ export async function fetchDaemonLocationState(
     }
     const sessionSkills = Array.isArray(s.skills) ? [...s.skills] : msgHydration?.skills;
 
-    const rawModelId =
-      typeof s.model === "object" && s.model
-        ? s.model.providerID ? `${s.model.providerID}/${s.model.id ?? "unknown-model"}` : (s.model.id ?? "unknown-model")
-        : (s.modelId ?? s.modelID ?? (typeof s.model === "string" ? s.model : "unknown-model"));
-    const modelId = msgHydration?.latestModelId ?? rawModelId;
+    const parsedRawModel = parseModelRef(s.model, s as Record<string, unknown>);
+    const modelId = msgHydration?.latestModelId ?? parsedRawModel?.modelId ?? "unknown-model";
+    const modelVariant = msgHydration?.latestModelId ? (msgHydration.latestModelVariant ?? null) : (parsedRawModel?.variant ?? null);
     const shortModelId = modelId.split("/").pop() ?? modelId;
     const catalogLimit = modelLimitByKey.get(modelId.toLowerCase()) ?? modelLimitByKey.get(shortModelId.toLowerCase());
     const mappedTokens = mapDaemonSessionTokens(s, shortModelId, catalogLimit, msgHydration?.latestContextTokens);
@@ -370,7 +374,7 @@ export async function fetchDaemonLocationState(
 
     sessions.push({
       sessionId, parentId: s.parentId ?? s.parentID ?? null, title: s.title,
-      agentClass: msgHydration?.latestAgentClass ?? s.agentClass ?? s.agent, modelId,
+      agentClass: msgHydration?.latestAgentClass ?? s.agentClass ?? s.agent, modelId, modelVariant,
       tokens: mappedTokens, skills: sessionSkills, ...(msgHydration !== undefined ? { activeTool: msgHydration.activeTool ?? null } : {}),
       recentTools: msgHydration?.recentTools, compactedAtMs, archived: isArchived,
       updatedAtMs, idleAtMs, viewedAtMs, turnOutcome: s.outcome ?? null, hasUnviewedResult,
@@ -387,7 +391,7 @@ export async function fetchDaemonLocationState(
     .map((a) => { const id = (a?.id || a?.name || "").trim(); return id ? { id, name: a?.name ?? id, color: a?.color, mode: a?.mode, hidden: a?.hidden, disabled: a?.disabled, description: a?.description } : null; })
     .filter((a): a is NonNullable<typeof a> => Boolean(a));
   return {
-    skills: normalizedSkills, plugins: mergedPlugins, agents: normalizedAgents, models, activeSessionIds,
+    skills: normalizedSkills, plugins: mergedPlugins, agents: normalizedAgents, models, ...(defaultModelId ? { defaultModelId } : {}), activeSessionIds,
     sessions: Array.isArray(rawSessions) || Array.isArray(rawRootSessions) ? sessions : sessions.length > 0 ? sessions : undefined,
     pendingPermissions, pendingQuestions,
   };

@@ -72,7 +72,3 @@ When one or more **Guild Characters** (**Guild Adventurers** or **Squad Subagent
 2. **Docker Container Deployment & Visual Proof (`opencode-pixel-guild-visualizer` on port `4310`)**:
    - Deploy via `npm run docker:up`, run `npm test`, capture `docs/images/per-bug-monster-combat-targeting.png` via headless Chrome, and inspect via `read`.
 
-## Visual Proof
-
-![Per-Bug Monster Combat Targeting — Split Room & Dungeon Wilds](../../images/per-bug-monster-combat-targeting.png)
-

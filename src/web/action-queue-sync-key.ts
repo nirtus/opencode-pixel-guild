@@ -162,7 +162,7 @@ export function buildCharacterActionSyncKey(
       ? `${Math.round(slot.x)},${Math.round(slot.y)},${slot.facingDirection ?? ""}`
       : "";
   const resolvedKey = resolved
-    ? `${resolved.station}:${resolved.isActing ? 1 : 0}:${resolved.overheadLabel}:${resolved.actionId ?? ""}`
+    ? `${resolved.station}:${resolved.isActing ? 1 : 0}:${resolved.overheadLabel}:${resolved.questMarker ?? ""}:${resolved.actionId ?? ""}`
     : "none";
   const qFirstKey = qFirst ? `${qFirst.station}:${qFirst.actionId ?? ""}` : "";
   const qLastKey = qLast ? `${qLast.station}:${qLast.actionId ?? ""}` : "";

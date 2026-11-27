@@ -1,4 +1,5 @@
 import type { QuestGateQuestionField, QuestGateSource } from "./command-types.ts";
+import type { ModelCatalogEntry } from "./model-catalog.ts";
 import type { GuildRoleArchetype } from "./role-archetypes.ts";
 import type {
   CoreWorkstationKind,
@@ -83,10 +84,6 @@ export type CapabilityKind = "builtin-tool" | "skill" | "plugin-tool" | "code-mo
 export interface CapabilityCatalogEntry {
   id: string; name?: string; kind: "tool" | "skill" | "plugin" | "mcp" | "agent";
   namespace?: string; color?: string; status?: PluginStatusKind; description?: string; mode?: string; hidden?: boolean; disabled?: boolean;
-}
-
-export interface ModelCatalogEntry {
-  id: string; providerId?: string; name?: string; limitContext: number; limitOutput?: number;
 }
 
 export interface CapabilityCatalog {
@@ -199,6 +196,7 @@ export interface CharacterState {
   agentClass: string;
   roleArchetype?: GuildRoleArchetype;
   modelId: string;
+  modelVariant?: string;
   lifecycleState: CharacterLifecycleState;
   stateEnteredAtMs: number;
   lastActivityAtMs: number;
@@ -280,7 +278,7 @@ export interface WorkshopRoomState {
   activeAdventurerCount: number; activeSubagentCount: number; questGateCount: number;
   createdAtMs: number; lastActivityAtMs: number;
   taskProgress?: ProjectTaskProgress; visualSeed?: ProjectWorldVisualSeed;
-  availableAgents?: CapabilityCatalogEntry[];
+  availableAgents?: CapabilityCatalogEntry[]; availableModels?: ModelCatalogEntry[]; defaultModelId?: string;
 }
 
 export interface GuildSummaryStats {
@@ -293,7 +291,7 @@ export interface GuildSnapshot {
   rooms: Record<string, WorkshopRoomState>; roomOrder: string[];
   characters: Record<string, CharacterState>; questGates: Record<string, QuestGateState>;
   tributeLedger?: Record<string, SessionTributeRecord>;
-  availableSkillIds?: string[]; availableAgentModes?: Array<{ id: string; name?: string; color?: string; description?: string }>; deletedSessionIds?: string[]; deletedRoomIds?: string[];
+  availableSkillIds?: string[]; availableAgentModes?: Array<{ id: string; name?: string; color?: string; description?: string }>; availableModels?: ModelCatalogEntry[]; deletedSessionIds?: string[]; deletedRoomIds?: string[];
   summary: GuildSummaryStats;
 }
 
@@ -326,7 +324,7 @@ export interface LocationReconciliationSnapshot {
   locationDirectory: string; projectId?: string; projectName?: string;
   isWorktree?: boolean; parentProjectDirectory?: string | null; activeSessionIds: string[];
   sessions?: Array<{
-    sessionId: string; parentId?: string | null; title?: string; agentClass?: string; modelId?: string;
+    sessionId: string; parentId?: string | null; title?: string; agentClass?: string; modelId?: string; modelVariant?: string | null;
     tokens?: SessionTokenTelemetry; skills?: string[];
     activeTool?: { callId?: string; toolName: string; toolInput?: Record<string, unknown> | string | null; timestampMs?: number } | null;
     recentTools?: Array<{
@@ -351,11 +349,11 @@ export type TelemetryEvent =
   | SessionDeletedTelemetryEvent
   | RoomDeletedTelemetryEvent
   | { type: "adapter.switched"; timestampMs: number; adapter: TelemetryAdapterKind; daemonUrl?: string | null }
-  | { type: "catalog.hydrated"; timestampMs: number; locationDirectory?: string; skills?: Array<{ id: string; name?: string; description?: string }>; plugins?: Array<{ namespace: string; name?: string; status?: PluginStatusKind; source?: { type?: string }; toolCount?: number; statusMessage?: string }>; agents?: Array<{ id: string; name?: string; color?: string; mode?: string; hidden?: boolean; disabled?: boolean; description?: string }>; tools?: Array<{ id: string; name?: string; namespace?: string }>; models?: Array<{ id: string; providerId?: string; name?: string; limitContext: number; limitOutput?: number }> }
+  | { type: "catalog.hydrated"; timestampMs: number; locationDirectory?: string; defaultModelId?: string; skills?: Array<{ id: string; name?: string; description?: string }>; plugins?: Array<{ namespace: string; name?: string; status?: PluginStatusKind; source?: { type?: string }; toolCount?: number; statusMessage?: string }>; agents?: Array<{ id: string; name?: string; color?: string; mode?: string; hidden?: boolean; disabled?: boolean; description?: string }>; tools?: Array<{ id: string; name?: string; namespace?: string }>; models?: ModelCatalogEntry[] }
   | { type: "location.discovered"; timestampMs: number; locationDirectory: string; projectId?: string; projectName?: string; isWorktree?: boolean; parentProjectDirectory?: string | null; explicit?: boolean }
   | { type: "worktree.created"; timestampMs: number; locationDirectory: string; parentProjectDirectory: string; projectId?: string; projectName?: string }
   | { type: "session.moved"; timestampMs: number; sessionId: string; fromDirectory?: string; toDirectory: string }
-  | { type: "session.upserted"; timestampMs: number; sessionId: string; parentId?: string | null; locationDirectory: string; worktreeDirectory?: string; title?: string; agentClass?: string; modelId?: string; agentColor?: string | null; tokens?: SessionTokenTelemetry; recentTools?: Array<{ callId?: string; toolName: string; workstation?: WorkstationKind; pluginNamespace?: string | null; status?: "running" | "completed" | "error"; inputPreview?: string; outputPreview?: string; toolInput?: Record<string, unknown> | string | null; timestampMs?: number; startedAtMs?: number; completedAtMs?: number; sequenceOrder?: number }>; lastAssistantText?: string | null; lastUserPromptText?: string | null; messages?: SessionChatMessage[]; updatedAtMs?: number; idleAtMs?: number | null; viewedAtMs?: number | null; turnOutcome?: "succeeded" | "failed" | "interrupted" | null; hasUnviewedResult?: boolean; isOpenInOpenCode?: boolean; preserveActivityTimestamp?: boolean; sequenceCursor?: number }
+  | { type: "session.upserted"; timestampMs: number; sessionId: string; parentId?: string | null; locationDirectory: string; worktreeDirectory?: string; title?: string; agentClass?: string; modelId?: string; modelVariant?: string | null; agentColor?: string | null; tokens?: SessionTokenTelemetry; recentTools?: Array<{ callId?: string; toolName: string; workstation?: WorkstationKind; pluginNamespace?: string | null; status?: "running" | "completed" | "error"; inputPreview?: string; outputPreview?: string; toolInput?: Record<string, unknown> | string | null; timestampMs?: number; startedAtMs?: number; completedAtMs?: number; sequenceOrder?: number }>; lastAssistantText?: string | null; lastUserPromptText?: string | null; messages?: SessionChatMessage[]; updatedAtMs?: number; idleAtMs?: number | null; viewedAtMs?: number | null; turnOutcome?: "succeeded" | "failed" | "interrupted" | null; hasUnviewedResult?: boolean; isOpenInOpenCode?: boolean; preserveActivityTimestamp?: boolean; sequenceCursor?: number }
   | { type: "subagent.spawned"; timestampMs: number; sessionId: string; parentId: string; locationDirectory: string; title?: string; agentClass?: string; modelId?: string; agentColor?: string | null; tokens?: SessionTokenTelemetry; recentTools?: Array<{ callId?: string; toolName: string; workstation?: WorkstationKind; pluginNamespace?: string | null; status?: "running" | "completed" | "error"; inputPreview?: string; outputPreview?: string; toolInput?: Record<string, unknown> | string | null; timestampMs?: number; startedAtMs?: number; completedAtMs?: number; sequenceOrder?: number }>; sequenceCursor?: number; updatedAtMs?: number; isOpenInOpenCode?: boolean }
   | { type: "session.status"; timestampMs: number; sessionId: string; status: "thinking" | "working" | "idle" | "archived"; tokens?: SessionTokenTelemetry; sequenceCursor?: number }
   | { type: "session.idle"; timestampMs: number; sessionId: string; summary?: string; outcome?: "succeeded" | "failed" | "interrupted"; tokens?: SessionTokenTelemetry; sequenceCursor?: number }

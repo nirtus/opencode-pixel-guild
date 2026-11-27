@@ -1,8 +1,16 @@
-import type { TelemetryEvent } from "../types/domain.ts";
+import type { ModelCatalogEntry, TelemetryEvent } from "../types/domain.ts";
 
 export const PRIMARY_HALL_DIR = "/workspace/opencode-pixel-guild";
 export const WORKTREE_ANNEX_DIR =
   "/workspace/opencode-pixel-guild/.worktrees/ticket-05";
+
+export const DEMO_DEFAULT_MODEL_ID = "anthropic/claude-sonnet-4";
+export const DEMO_CATALOG_MODELS: readonly ModelCatalogEntry[] = Object.freeze([
+  { id: "anthropic/claude-sonnet-4", providerId: "anthropic", providerName: "Anthropic", name: "Claude Sonnet 4", type: "chat", variants: ["low", "medium", "high"], limitContext: 200_000, limitOutput: 16_000 },
+  { id: "anthropic/claude-opus-4", providerId: "anthropic", providerName: "Anthropic", name: "Claude Opus 4", type: "chat", variants: ["low", "high"], limitContext: 200_000, limitOutput: 32_000 },
+  { id: "google/gemini-4-argon", providerId: "google", providerName: "Google", name: "Gemini 4 Argon", type: "chat", variants: ["low", "high"], limitContext: 1_048_576, limitOutput: 65_536 },
+  { id: "openai/gpt-5", providerId: "openai", providerName: "OpenAI", name: "GPT-5", type: "chat", limitContext: 400_000, limitOutput: 32_000 },
+]);
 
 export const PLUGIN_ALCOVE_CODEMODE_EVENTS: readonly TelemetryEvent[] =
   Object.freeze<TelemetryEvent[]>([
@@ -16,6 +24,8 @@ export const PLUGIN_ALCOVE_CODEMODE_EVENTS: readonly TelemetryEvent[] =
       type: "catalog.hydrated",
       timestampMs: 3_050,
       locationDirectory: PRIMARY_HALL_DIR,
+      defaultModelId: DEMO_DEFAULT_MODEL_ID,
+      models: [...DEMO_CATALOG_MODELS],
       plugins: [
         { namespace: "github", name: "GitHub MCP", status: "connected" },
         { namespace: "linear", name: "Linear MCP", status: "connected" },
@@ -73,6 +83,8 @@ export const MCP_AUTH_AND_FAILURE_EVENTS: readonly TelemetryEvent[] =
       type: "catalog.hydrated",
       timestampMs: 4_050,
       locationDirectory: PRIMARY_HALL_DIR,
+      defaultModelId: DEMO_DEFAULT_MODEL_ID,
+      models: [...DEMO_CATALOG_MODELS],
       plugins: [
         { namespace: "github", name: "GitHub MCP", status: "connected" },
         {
@@ -130,6 +142,13 @@ export const WORKTREE_ANNEXATION_EVENTS: readonly TelemetryEvent[] =
       isWorktree: false,
     },
     {
+      type: "catalog.hydrated",
+      timestampMs: 5_060,
+      locationDirectory: PRIMARY_HALL_DIR,
+      defaultModelId: DEMO_DEFAULT_MODEL_ID,
+      models: [...DEMO_CATALOG_MODELS],
+    },
+    {
       type: "session.upserted",
       timestampMs: 5_100,
       sessionId: "ses-main-guardian",
@@ -178,6 +197,13 @@ export const COMPACTION_AND_QUEST_GATE_EVENTS: readonly TelemetryEvent[] =
       timestampMs: 6_000,
       adapter: "demo-simulator",
       daemonUrl: "http://127.0.0.1:4096",
+    },
+    {
+      type: "catalog.hydrated",
+      timestampMs: 6_050,
+      locationDirectory: PRIMARY_HALL_DIR,
+      defaultModelId: DEMO_DEFAULT_MODEL_ID,
+      models: [...DEMO_CATALOG_MODELS],
     },
     {
       type: "session.upserted",

@@ -1,5 +1,5 @@
 import { isBuiltinOpenCodePlugin } from "../capability/classifier.ts";
-import { detectConversationalQuestionPrompt, LIFECYCLE_TIMERS_MS, mergeQuestGateFields, type QuestGateState, type ReconnectLogEntry, type TelemetryEvent } from "../types/domain.ts";
+import { detectConversationalQuestionPrompt, indexModelCatalogEntry, isSelectableChatModel, LIFECYCLE_TIMERS_MS, mergeQuestGateFields, normalizeCatalogModels, type QuestGateState, type ReconnectLogEntry, type TelemetryEvent } from "../types/domain.ts";
 import { syncCharacterWorkflow } from "./armory-and-workflow.ts";
 import { ARCHIVED_MAX_IN_MEMORY_MESSAGES, compactArchivedCharacterPayload } from "./archived-payload-compactor.ts";
 import { syncCharacterTributeRecord, updateContextMana } from "./context-mana.ts";
@@ -60,24 +60,27 @@ export function handleCatalogHydrated(state: InternalWorldStoreState, event: Ext
   for (const t of event.tools ?? []) {
     state.catalog.tools[t.id] = { id: t.id, name: t.name ?? t.id, kind: "tool", namespace: t.namespace };
   }
-  if (event.models) {
+  if (event.models || event.defaultModelId) {
     state.catalog.models ??= {};
-    for (const model of event.models) {
-      if (!model.id || !(model.limitContext > 0)) continue;
-      const entry = {
-        id: model.id, providerId: model.providerId, name: model.name ?? model.id,
-        limitContext: model.limitContext, limitOutput: model.limitOutput,
-      };
-      const shortId = model.id.split("/").pop() ?? model.id;
-      const keys = [model.id, model.id.toLowerCase(), shortId, shortId.toLowerCase()];
-      if (model.providerId) keys.push(`${model.providerId}/${shortId}`, `${model.providerId}/${shortId}`.toLowerCase());
-      for (const k of keys) state.catalog.models[k] = entry;
+    const { models: normModels } = normalizeCatalogModels(event.models ?? []);
+    const selectableModels = normModels.filter((m) => isSelectableChatModel(m));
+    for (const entry of normModels) indexModelCatalogEntry(state.catalog.models, entry);
+    if (event.locationDirectory && (Array.isArray(event.models) || event.defaultModelId)) {
+      const normLoc = normalizeLocationDirectory(event.locationDirectory);
+      if (!state.deletedRoomIds.has(normLoc) || state.rooms[normLoc]) {
+        const room = ensureRoom(state, event.locationDirectory, event.timestampMs);
+        if (Array.isArray(event.models)) room.availableModels = selectableModels;
+        if (event.defaultModelId) room.defaultModelId = event.defaultModelId;
+        collector.changedRoomIds.add(room.roomId); collector.deltaRoomId = room.roomId;
+      }
     }
-    for (const char of Object.values(state.characters)) {
-      updateContextMana(char.contextMana, undefined, char.modelId, state.catalog.models);
-      char.equipmentLoadout = deriveEquipmentLoadout(char);
-      bumpCharacterRevision(state, char.characterId);
-      collector.changedCharacterIds.add(char.characterId);
+    if (normModels.length > 0) {
+      for (const char of Object.values(state.characters)) {
+        updateContextMana(char.contextMana, undefined, char.modelId, state.catalog.models);
+        char.equipmentLoadout = deriveEquipmentLoadout(char);
+        bumpCharacterRevision(state, char.characterId);
+        collector.changedCharacterIds.add(char.characterId);
+      }
     }
   }
 }
@@ -205,7 +208,7 @@ export function handleStreamReconnected(
         type: "session.upserted", timestampMs: event.timestampMs, sessionId: sessionMeta.sessionId,
         parentId: sessionMeta.parentId ?? null, locationDirectory: room.locationDirectory,
         worktreeDirectory: sessionMeta.locationDirectory, title: sessionMeta.title,
-        agentClass: sessionMeta.agentClass, modelId: sessionMeta.modelId, tokens: sessionMeta.tokens,
+        agentClass: sessionMeta.agentClass, modelId: sessionMeta.modelId, modelVariant: sessionMeta.modelVariant, tokens: sessionMeta.tokens,
         recentTools: sessionMeta.recentTools, lastAssistantText: sessionMeta.lastAssistantText,
         lastUserPromptText: sessionMeta.lastUserPromptText, messages: sessionMeta.messages,
         updatedAtMs: typeof sessionMeta.updatedAtMs === "number" ? sessionMeta.updatedAtMs : undefined,

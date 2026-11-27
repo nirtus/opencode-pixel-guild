@@ -5,12 +5,41 @@ import {
   persistProjectWorldSelection,
   triggerPlatformSnapBurst,
 } from "./client-state.ts";
-import { getOperatorHeaders } from "./operator-pairing-controller.ts";
+import { closeModal, openModal, registerModal } from "./modal-shell.ts";
+import { getOperatorHeaders } from "./operator-session-store.ts";
 import {
   applyAuthoritativeSnapshot,
   markRoomDemolishing,
   recordClientDeletedRoom,
 } from "./snapshot-gate.ts";
+
+const DEMOLITION_MODAL_ID = "demolition-modal";
+let demolitionBound = false;
+
+export function initDemolitionModalControls(onStateChanged: () => void): void {
+  if (typeof document === "undefined" || demolitionBound) return;
+  const modal = document.getElementById(DEMOLITION_MODAL_ID);
+  if (modal) {
+    registerModal({
+      id: DEMOLITION_MODAL_ID,
+      element: modal,
+      size: "compact",
+      onRequestClose: () => {
+        closeDemolitionModal(modal);
+        onStateChanged();
+      },
+    });
+  }
+  demolitionBound = true;
+  for (const sel of ["#btn-cancel-demolish-room", "#demolition-cancel-btn", "#btn-close-demolition-modal"]) {
+    document.querySelector(sel)?.addEventListener("click", () => {
+      closeDemolitionModal();
+      onStateChanged();
+    });
+  }
+  (document.getElementById("btn-confirm-demolish-room") ?? document.getElementById("demolition-confirm-btn"))
+    ?.addEventListener("click", () => void confirmDemolishRoom(fetch, onStateChanged));
+}
 
 export function openDemolitionModal(
   roomId: string,
@@ -20,7 +49,7 @@ export function openDemolitionModal(
   const el =
     modalEl ??
     (typeof document !== "undefined"
-      ? document.getElementById("demolition-modal")
+      ? document.getElementById(DEMOLITION_MODAL_ID)
       : null);
   if (typeof document !== "undefined") {
     const activeRoom =
@@ -42,7 +71,13 @@ export function openDemolitionModal(
     }
   }
   if (el) {
-    el.style.display = "grid";
+    registerModal({
+      id: DEMOLITION_MODAL_ID,
+      element: el,
+      size: "compact",
+      onRequestClose: () => closeDemolitionModal(el),
+    });
+    openModal(DEMOLITION_MODAL_ID, { size: "compact" });
   }
 }
 
@@ -51,10 +86,12 @@ export function closeDemolitionModal(modalEl?: HTMLElement | null): void {
   const el =
     modalEl ??
     (typeof document !== "undefined"
-      ? document.getElementById("demolition-modal")
+      ? document.getElementById(DEMOLITION_MODAL_ID)
       : null);
   if (el) {
-    el.style.display = "none";
+    closeModal(DEMOLITION_MODAL_ID);
+    el.classList?.remove("is-open");
+    if (el.style) el.style.display = "";
   }
 }
 

@@ -336,10 +336,10 @@ export async function handleAddRoomRoute(
   if (fullDaemon?.getLocationState) {
     try {
       const state = await fullDaemon.getLocationState(rawDirectory);
-      if (state.skills?.length || state.plugins?.length || state.agents?.length || state.models?.length) {
+      if (state.skills?.length || state.plugins?.length || state.agents?.length || state.models?.length || state.defaultModelId) {
         activeReducer.dispatch({
           type: "catalog.hydrated", timestampMs: Date.now(), locationDirectory: normDirectory,
-          skills: state.skills, plugins: state.plugins, agents: state.agents, models: state.models,
+          skills: state.skills, plugins: state.plugins, agents: state.agents, models: state.models, defaultModelId: state.defaultModelId,
         });
       }
     } catch { /* Non-fatal if daemon location state cannot be fetched yet */ }
