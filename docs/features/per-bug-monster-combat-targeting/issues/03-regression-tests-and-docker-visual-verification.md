@@ -22,5 +22,3 @@ Blocked by: 01, 02
 ## Answer
 
 Added comprehensive regression tests in `tests/09-choreography-and-project-isolation.test.ts` and `tests/23-unified-host-guild-hall-and-project-heraldry.test.ts`, verified all files under `src/` remain `<= 400` lines (`wilds-bug-targeting.ts`: 243 lines, `canvas-wilds-painter.ts`: 264 lines, `station-and-workflow-routing.ts`: 360 lines, `station-geometry-catalog.ts`: 384 lines), rebuilt and deployed the `opencode-pixel-guild-visualizer` Docker container on port `4310`, and captured and inspected `docs/images/per-bug-monster-combat-targeting.png`.
-
-![Per-Bug Monster Combat Targeting — Live Container Screenshot](../../../images/per-bug-monster-combat-targeting.png)

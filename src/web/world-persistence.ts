@@ -1,6 +1,7 @@
 import { matchProjectTabSelection } from "../spatial/index.ts";
 import type { ClientOperatorPreferences } from "../types/domain.ts";
 import { clampDesktopWorldRatio, DEFAULT_DESKTOP_WORLD_RATIO } from "./layout-resizer.ts";
+import { isOfflineDemoModeActive } from "./offline-demo-flag.ts";
 
 export { matchProjectTabSelection };
 
@@ -121,7 +122,7 @@ export function persistClientUiWindowState(
   },
   storage?: KeyValueStoragePort | null,
 ): void {
-  if (state.authBootCompleted === false || state.isAuthenticated === false) return;
+  if (state.authBootCompleted === false || state.isAuthenticated === false || (!storage && isOfflineDemoModeActive())) return;
   const snapshotPrefs: ClientOperatorPreferences = {
     selectedProjectId: state.selectedProjectId,
     selectedRoomId: state.selectedRoomId,

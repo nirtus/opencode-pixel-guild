@@ -1,5 +1,10 @@
 import { toDaemonDirectoryPath } from "../state/world-reducer.ts";
-import type { GuildCommandRequest } from "../types/domain.ts";
+import { toDaemonModelRef, type GuildCommandRequest } from "../types/domain.ts";
+import {
+  applyPrePromptSessionSwitches,
+  executeDaemonAgentSwitch,
+  executeDaemonModelSwitch,
+} from "./daemon-session-switches.ts";
 import { fetchWithDockerHostFallback } from "./opencode-pair-redeemer.ts";
 
 export function extractMergedSkills(
@@ -30,16 +35,13 @@ export function formatAnswersAsText(
   return lines.join("\n");
 }
 
-export function parseModelSpec(modelId?: string): { providerID: string; id: string } | undefined {
-  if (typeof modelId !== "string") return undefined;
-  const trimmed = modelId.trim();
-  if (!trimmed || trimmed === "default" || trimmed === "unknown-model") return undefined;
-  const slashIdx = trimmed.indexOf("/");
-  if (slashIdx <= 0 || slashIdx >= trimmed.length - 1) return undefined;
-  const providerID = trimmed.slice(0, slashIdx).trim();
-  const id = trimmed.slice(slashIdx + 1).trim();
-  if (!providerID || !id || id === "unknown-model") return undefined;
-  return { providerID, id };
+export function parseModelSpec(
+  modelId?: string,
+  modelVariant?: string | null,
+): { providerID: string; id: string; variant?: string } | undefined {
+  const ref = toDaemonModelRef(modelId, modelVariant);
+  if (!ref || ref.id === "unknown-model") return undefined;
+  return ref;
 }
 
 let activeSessionCreates = 0;
@@ -227,12 +229,8 @@ export async function executeDaemonCommand(
       if (cmd.gateId?.trim()) {
         await dismissPendingDaemonGate(cmd.sessionId, cmd.gateId.trim(), cmd.kind, cmd.source);
       }
-      if (cmd.agentClass?.trim()) {
-        await postJson(
-          `/api/session/${encodeURIComponent(cmd.sessionId)}/agent${query}`,
-          { agent: cmd.agentClass.trim() },
-        ).catch(() => null);
-      }
+      const switchFailure = await applyPrePromptSessionSwitches(postJson, formatResponseError, cmd, query);
+      if (switchFailure && !switchFailure.ok) return switchFailure;
       const mergedSkills = extractMergedSkills(cmd.promptText, cmd.skills);
       const res = await postPromptWithFastAck(
         cmd.sessionId,
@@ -246,19 +244,17 @@ export async function executeDaemonCommand(
       return { ok: res.ok, sessionId: cmd.sessionId, ...(res.ok ? {} : { error: formatResponseError(res) }) };
     }
 
-    if (cmd.command === "turn.interrupt" || cmd.command === "agent.switch") {
-      const endpoint =
-        cmd.command === "agent.switch"
-          ? `/api/session/${encodeURIComponent(cmd.sessionId)}/agent${query}`
-          : `/api/session/${encodeURIComponent(cmd.sessionId)}/interrupt${query}`;
-      const body =
-        cmd.command === "agent.switch" ? { agent: cmd.agentClass.trim() } : {};
-      const res = await postJson(endpoint, body);
-      return {
-        ok: res.ok,
-        sessionId: cmd.sessionId,
-        ...(res.ok ? {} : { error: formatResponseError(res) }),
-      };
+    if (cmd.command === "agent.switch") {
+      return executeDaemonAgentSwitch(postJson, formatResponseError, cmd.sessionId, query, cmd.agentClass);
+    }
+
+    if (cmd.command === "model.switch") {
+      return executeDaemonModelSwitch(postJson, formatResponseError, cmd.sessionId, query, cmd.modelId, cmd.modelVariant);
+    }
+
+    if (cmd.command === "turn.interrupt") {
+      const res = await postJson(`/api/session/${encodeURIComponent(cmd.sessionId)}/interrupt${query}`, {});
+      return { ok: res.ok, sessionId: cmd.sessionId, ...(res.ok ? {} : { error: formatResponseError(res) }) };
     }
 
     if (cmd.command === "session.view") {
@@ -284,7 +280,7 @@ export async function executeDaemonCommand(
     }
 
     if (cmd.command === "adventurer.summon") {
-      const parsedModel = parseModelSpec(cmd.modelId);
+      const parsedModel = parseModelSpec(cmd.modelId, cmd.modelVariant);
       let res = await postJson(`/api/session${query}`, {
         title: cmd.title || undefined,
         agent: cmd.agentClass || "build",

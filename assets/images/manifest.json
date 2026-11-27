@@ -1,0 +1,286 @@
+{
+  "schemaVersion": 1,
+  "fixtureSet": "synthetic-guild-v1",
+  "assets": {
+    "intro-demo-video.png": {
+      "generator": "intro-demo-video",
+      "sceneId": "intro-tour",
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "dpr": 1
+      },
+      "width": 1920,
+      "height": 1080,
+      "sha256": "d661d40f3800269da43fa3c08415f57d8ff95a260b0499ed9bcb95ed605fe9bd",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "opencode-pixel-guild-intro-preview.gif": {
+      "generator": "intro-demo-video",
+      "sceneId": "intro-tour",
+      "viewport": {
+        "width": 920,
+        "height": 518,
+        "dpr": 1
+      },
+      "width": 920,
+      "height": 518,
+      "sha256": "0ad08d42552c77669021dcedfcfef3b530b7b489f28c5e0017edb888427ec549",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-all-worlds.png": {
+      "generator": "docs-showcase",
+      "sceneId": "all-worlds",
+      "viewport": {
+        "width": 1600,
+        "height": 1000,
+        "dpr": 1
+      },
+      "width": 1600,
+      "height": 1000,
+      "sha256": "8d7a12a03a4770fbd738e03786e1c84411758c0f540bab8bb2639b13549c4dbc",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-assembly-bulk.png": {
+      "generator": "docs-showcase",
+      "sceneId": "assembly-bulk",
+      "viewport": {
+        "width": 1600,
+        "height": 1000,
+        "dpr": 1
+      },
+      "width": 1600,
+      "height": 1000,
+      "sha256": "b9b7ca000d51103bb42336343229b029535787e4768b31550da6304d6fbfe4f6",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-assembly-commit.png": {
+      "generator": "docs-showcase",
+      "sceneId": "assembly-commit",
+      "viewport": {
+        "width": 1600,
+        "height": 1000,
+        "dpr": 1
+      },
+      "width": 1600,
+      "height": 1000,
+      "sha256": "320dc1fe017ca3e7c6e50d65e5ea901dd1ecea9c683ae15b2068559d3ea98887",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-auth-gate.png": {
+      "generator": "docs-showcase",
+      "sceneId": "auth-gate",
+      "viewport": {
+        "width": 1600,
+        "height": 1000,
+        "dpr": 1
+      },
+      "width": 1600,
+      "height": 1000,
+      "sha256": "85f76b835d7daa0cbc543068433a56c7616ddd326577fa6f957f92463826624e",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-hero-chat-mermaid.png": {
+      "generator": "docs-showcase",
+      "sceneId": "hero-chat-mermaid",
+      "viewport": {
+        "width": 1600,
+        "height": 1000,
+        "dpr": 1
+      },
+      "width": 1600,
+      "height": 1000,
+      "sha256": "16cf6f78ea5552ff15ca2b762692077718eb115e018a0ad1fa5c3d29282153fb",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-hero-scrolls-gear.png": {
+      "generator": "docs-showcase",
+      "sceneId": "hero-scrolls-gear",
+      "viewport": {
+        "width": 1600,
+        "height": 1000,
+        "dpr": 1
+      },
+      "width": 1600,
+      "height": 1000,
+      "sha256": "53306d5c15733923cf5ee3344d34095409a767413bf886e17e1c124976be1244",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-hero-tool-log.png": {
+      "generator": "docs-showcase",
+      "sceneId": "hero-tool-log",
+      "viewport": {
+        "width": 1600,
+        "height": 1000,
+        "dpr": 1
+      },
+      "width": 1600,
+      "height": 1000,
+      "sha256": "5818979bdcd1c63982046675fbdb7d928b4fdecad9eb85915cb400fe74d4e673",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-machine-pairing.png": {
+      "generator": "docs-showcase",
+      "sceneId": "machine-pairing",
+      "viewport": {
+        "width": 1600,
+        "height": 1000,
+        "dpr": 1
+      },
+      "width": 1600,
+      "height": 1000,
+      "sha256": "df42dd4a94631250c378332afcea5292377cb9c612a3e6700498fe94d6ed04be",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-machine-strip.png": {
+      "generator": "docs-showcase",
+      "sceneId": "machine-strip",
+      "viewport": {
+        "width": 1600,
+        "height": 1000,
+        "dpr": 1
+      },
+      "width": 1600,
+      "height": 1000,
+      "sha256": "4982bdcc8a4fa5cfd44a11c44d9f66562e6167573123ca42039b0b455d69c3a5",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-mobile-hero.png": {
+      "generator": "docs-showcase",
+      "sceneId": "mobile-hero",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "dpr": 2
+      },
+      "width": 780,
+      "height": 1688,
+      "sha256": "9962b5db2bb09b925d4ab3a6c74fcde9f2555b3d6370a364230c28dfa023981c",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-mobile-ledger.png": {
+      "generator": "docs-showcase",
+      "sceneId": "mobile-ledger",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "dpr": 2
+      },
+      "width": 780,
+      "height": 1688,
+      "sha256": "98f0b9adfbb3ae141d65fcfc22389f1e827d37c8055034a4c1a2f9c2c267e46f",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-mobile-room.png": {
+      "generator": "docs-showcase",
+      "sceneId": "mobile-room",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "dpr": 2
+      },
+      "width": 780,
+      "height": 1688,
+      "sha256": "f4bf6441705c1f17075323b8bda36e7729e1c166a04f05403fb61d044330609a",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-mobile-wilds.png": {
+      "generator": "docs-showcase",
+      "sceneId": "mobile-wilds",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "dpr": 2
+      },
+      "width": 780,
+      "height": 1688,
+      "sha256": "b4b980d7110c648ce8a1c13ae5bebf30d5d5cb258cfd52bc847e41da1aab9a08",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-quest-gate.png": {
+      "generator": "docs-showcase",
+      "sceneId": "quest-gate",
+      "viewport": {
+        "width": 1600,
+        "height": 1000,
+        "dpr": 1
+      },
+      "width": 1600,
+      "height": 1000,
+      "sha256": "ffc8b6d728a42ca7fb17534ea0425f9922c6bc6d095fd827adf7dd45a28affe8",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-single-world.png": {
+      "generator": "docs-showcase",
+      "sceneId": "single-world",
+      "viewport": {
+        "width": 1600,
+        "height": 1000,
+        "dpr": 1
+      },
+      "width": 1600,
+      "height": 1000,
+      "sha256": "dae774df4ea527114a40de6a0ea349c113fd4f7c8fb99430195adfda505adc12",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-split-chamber.png": {
+      "generator": "docs-showcase",
+      "sceneId": "split-chamber",
+      "viewport": {
+        "width": 1600,
+        "height": 1000,
+        "dpr": 1
+      },
+      "width": 1600,
+      "height": 1000,
+      "sha256": "ba0c4df8df3475ee8f9e94889646b70793645cf0b3a3adbd7d759c80f7e3cbbb",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-summon-modal.png": {
+      "generator": "docs-showcase",
+      "sceneId": "summon-modal",
+      "viewport": {
+        "width": 1600,
+        "height": 1000,
+        "dpr": 1
+      },
+      "width": 1600,
+      "height": 1000,
+      "sha256": "2ad81d27aee306f137ff46f8c12d96e25daf422aa81b2bb32a9b327b9cc9df04",
+      "metadataStripped": true,
+      "ocrChecked": true
+    },
+    "showcase-wilds-combat.png": {
+      "generator": "docs-showcase",
+      "sceneId": "wilds-combat",
+      "viewport": {
+        "width": 1600,
+        "height": 1000,
+        "dpr": 1
+      },
+      "width": 1600,
+      "height": 1000,
+      "sha256": "82227ae5690964154458099438b8c1b72caeaa3747b8ecbd09d529529d458539",
+      "metadataStripped": true,
+      "ocrChecked": true
+    }
+  }
+}

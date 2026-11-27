@@ -1,41 +1,14 @@
-import type {
-  CharacterState,
-  ContextManaState,
-  SessionTokenTelemetry,
-  SessionTributeRecord,
-  WorkshopRoomState,
+import {
+  resolveModelContextLimit,
+  type CharacterState,
+  type ContextManaState,
+  type SessionTokenTelemetry,
+  type SessionTributeRecord,
+  type WorkshopRoomState,
 } from "../types/domain.ts";
 import { normalizeLocationDirectory } from "./location-normalization.ts";
 
-export function resolveModelContextLimit(
-  modelId?: string | null,
-  catalogModels?: Record<string, { limitContext: number }>,
-): number {
-  const raw = (modelId ?? "").trim();
-  if (raw) {
-    const lower = raw.toLowerCase();
-    const shortId = lower.split("/").pop() ?? lower;
-    if (catalogModels) {
-      const exact =
-        catalogModels[raw] ??
-        catalogModels[lower] ??
-        catalogModels[shortId];
-      if (exact && typeof exact.limitContext === "number" && exact.limitContext > 0) {
-        return exact.limitContext;
-      }
-    }
-    if (shortId.includes("gemini-")) {
-      return 1_048_576;
-    }
-    if (shortId.includes("gpt-5") || shortId.includes("codex")) {
-      return 400_000;
-    }
-    if (shortId.includes("flint-") || shortId.includes("qwen3")) {
-      return 262_144;
-    }
-  }
-  return 200_000;
-}
+export { resolveModelContextLimit };
 
 export function createInitialContextMana(
   tokens?: SessionTokenTelemetry,

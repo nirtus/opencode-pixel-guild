@@ -65,5 +65,3 @@ When a **Guild Operator** clicks **Summon Adventurer** in `#summon-adventurer-mo
 4. **400-Line Ceiling & Live Docker Container Visual Verification**:
    - All files under `src/` remain `<= 400` lines (`tests/00-architecture-invariants.test.ts`).
    - Deployed and verified on `opencode-pixel-guild-visualizer` (`npm run docker:up` on port `4310`) with headless Chrome screenshot proof in `docs/images/atomic-summon-and-ghost-directory-pruning.png`.
-
-![Atomic Summon & Ghost Directory Pruning](./../../images/atomic-summon-and-ghost-directory-pruning.png)

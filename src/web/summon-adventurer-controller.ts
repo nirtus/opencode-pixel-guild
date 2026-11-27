@@ -8,9 +8,12 @@ import {
   dispatchGuildCommandFromWeb, formatCompactModeLabel, getLastSummonedSessionId,
 } from "./command-scroll-controller.ts";
 import { escapeHtml } from "./ledger-panel-reconciler.ts";
+import { closeModal, openModal, registerModal } from "./modal-shell.ts";
 import {
   bindSkillBrowserControls, renderSkillBrowserRowHtml, resolveAvailableSkillIds, syncSkillBrowserSelectionState,
 } from "./skill-browser-controller.ts";
+
+const SUMMON_MODAL_ID = "summon-adventurer-modal";
 
 const SUMMON_SKILL_SCOPE_ID = "summon:adventurer";
 
@@ -98,10 +101,20 @@ function formatConciseRoomLabel(projectName: string, directory: string): string 
 
 export function syncSummonModalDom(): void {
   if (typeof document === "undefined") return;
-  const modal = document.getElementById("summon-adventurer-modal");
+  const modal = document.getElementById(SUMMON_MODAL_ID);
   if (!modal) return;
-  modal.style.display = clientState.isSummonModalOpen ? "grid" : "none";
-  if (!clientState.isSummonModalOpen) return;
+  if (clientState.isSummonModalOpen) {
+    registerModal({
+      id: SUMMON_MODAL_ID,
+      element: modal,
+      size: "compact",
+      onRequestClose: () => closeSummonAdventurerModal(),
+    });
+    openModal(SUMMON_MODAL_ID, { size: "compact" });
+  } else {
+    closeModal(SUMMON_MODAL_ID);
+    return;
+  }
 
   const allRooms = Object.values(clientState.currentSnapshot.rooms || {});
   const targetDir =
@@ -237,14 +250,6 @@ export function initSummonAdventurerControls(
         onStateChanged();
       }
     });
-    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
-      window.addEventListener("keydown", (ev) => {
-        if (ev.key === "Escape" && clientState.isSummonModalOpen) {
-          closeSummonAdventurerModal();
-          onStateChanged();
-        }
-      });
-    }
   }
 
   if (!modal || modal.hasAttribute("data-summon-modal-bound")) {
@@ -252,14 +257,16 @@ export function initSummonAdventurerControls(
     return;
   }
   modal.setAttribute("data-summon-modal-bound", "true");
-  syncSummonModalDom();
-
-  modal.addEventListener("click", (ev) => {
-    if (ev.target === modal) {
+  registerModal({
+    id: SUMMON_MODAL_ID,
+    element: modal,
+    size: "compact",
+    onRequestClose: () => {
       closeSummonAdventurerModal();
       onStateChanged();
-    }
+    },
   });
+  syncSummonModalDom();
 
   const dirSelect = modal.querySelector("#summon-directory-select") as HTMLSelectElement | null;
   dirSelect?.addEventListener("change", () => {

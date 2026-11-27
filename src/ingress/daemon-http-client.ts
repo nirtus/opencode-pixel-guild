@@ -3,7 +3,7 @@ import type { GuildCommandRequest, ReconnectLogEntry, TelemetryEvent } from "../
 import type { DeleteRoomResourcesInput, DeleteRoomResourcesResult, OpenCodeDaemonClientPort } from "./daemon-types.ts";
 import { executeDaemonCommand } from "./daemon-command-ops.ts";
 import { deleteSingleSession, executeDaemonShellCommand, executeDeleteRoomResources } from "./daemon-session-ops.ts";
-import { evictIdleMessageHydrationCache, fetchDaemonLocationState } from "./daemon-location-state.ts";
+import { type CachedStaticCatalog, evictIdleMessageHydrationCache, fetchDaemonLocationState } from "./daemon-location-state.ts";
 import { listDaemonWorkspaceDirectories, probeDaemonDirectory } from "./daemon-workspace-ops.ts";
 import { registerRemoteDirectoryRunner } from "./remote-git-ops.ts";
 import { hydrateSessionMessages } from "./daemon-message-hydration.ts";
@@ -27,6 +27,7 @@ export function createHttpOpenCodeDaemonClient(
   let cachedLocations: Awaited<ReturnType<OpenCodeDaemonClientPort["getLocations"]>> | null = null;
   let cachedLocationsAtMs = 0;
   const cachedSessionsByPath = new Map<string, { data: unknown; atMs: number }>();
+  const staticCatalogCache = new Map<string, CachedStaticCatalog>();
   const rawDirByNormDir = new Map<string, string>();
   const clientAbortController = new AbortController();
   let isWindowsDaemon = false;
@@ -231,6 +232,7 @@ export function createHttpOpenCodeDaemonClient(
       return fetchDaemonLocationState(rootUrl, headers, fetchJson, resolveDaemonDir(directory), {
         hydrationMode: locOpts?.hydrationMode,
         signal: clientAbortController.signal,
+        catalogCache: staticCatalogCache,
       });
     },
     abortAll() {
@@ -293,6 +295,7 @@ export function createHttpOpenCodeDaemonClient(
 
     clearCaches() {
       cachedSessionsByPath.clear();
+      staticCatalogCache.clear();
       cachedLocations = null;
       cachedProjects = null;
     },
@@ -343,7 +346,12 @@ export function createHttpOpenCodeDaemonClient(
                     const jsonText = block.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("\n");
                     if (!jsonText || jsonText === "[DONE]") continue;
                     try {
-                      for (const ev of mapOpenCodeSseFrameToTelemetryEvents(JSON.parse(jsonText))) {
+                      const parsedFrame = JSON.parse(jsonText) as { type?: string; payload?: { type?: string } };
+                      const rawFrameType = parsedFrame?.payload?.type ?? parsedFrame?.type;
+                      if (rawFrameType === "model.updated" || rawFrameType === "provider.updated" || rawFrameType === "models-dev.refreshed" || rawFrameType === "agent.updated" || rawFrameType === "config.updated") {
+                        staticCatalogCache.clear(); onReconnect?.();
+                      }
+                      for (const ev of mapOpenCodeSseFrameToTelemetryEvents(parsedFrame)) {
                         if (combinedSignal.aborted) break;
                         if ("sessionId" in ev && typeof ev.sessionId === "string") {
                           cachedSessionsByPath.clear(); evictIdleMessageHydrationCache(ev.sessionId);

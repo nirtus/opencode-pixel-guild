@@ -5,7 +5,7 @@ import {
   renderCommitFilesListHtmlWithContext, renderCommitLedgerDockHtmlWithContext,
   renderOverviewAssemblyShowcaseCardHtml, renderProjectBrowserRowHtml, renderUnselectedProjectCommitHtml,
 } from "./commit-ledger-view.ts";
-import { getOperatorHeaders } from "./operator-pairing-controller.ts";
+import { getOperatorHeaders } from "./operator-session-store.ts";
 import { applyAuthoritativeSnapshot } from "./snapshot-gate.ts";
 import { hasActiveTextSelection } from "./text-selection-guard.ts";
 
@@ -43,6 +43,10 @@ function applyServerSnapshot(
 }
 
 export function getCommitLedgerRevision(): number { return gitStateRevision; }
+export function seedSyntheticRoomGitState(roomId: string, state: RoomGitWorkingTreeState): void {
+  cachedGitStateByRoom.set(roomId, state);
+  bumpGitStateRevision();
+}
 export function getLastCommitFeedbackText(): string { return lastCommitFeedbackText; }
 export function isGitSyncInFlight(roomId?: string | null): boolean {
   const key = roomId || "all";

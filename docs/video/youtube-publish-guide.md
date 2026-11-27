@@ -5,7 +5,7 @@
 | Artifact | Path | Resolution / Format | Target Use |
 | :--- | :--- | :--- | :--- |
 | **1080p YouTube Master Video** | [`docs/video/opencode-pixel-guild-intro.mp4`](./opencode-pixel-guild-intro.mp4) | `1920×1080` · `30 FPS` · `H.264 (yuv420p)` · `35s` | Direct upload to YouTube, GitHub Releases / PR video embeds, and high-res repository link. |
-| **Animated README Preview** | [`docs/images/opencode-pixel-guild-intro-preview.gif`](../images/opencode-pixel-guild-intro-preview.gif) | `920×518` · `2x Speed Loop` · `GIF` | Inline auto-playing animated hero preview at the top of `README.md`. |
+| **Animated README Preview** | [`assets/images/opencode-pixel-guild-intro-preview.gif`](../../assets/images/opencode-pixel-guild-intro-preview.gif) | `920×518` · `2x Speed Loop` · `GIF` | Inline auto-playing animated hero preview at the top of `README.md`. |
 | **Live Browser Replay URL** | `http://127.0.0.1:4310/?demo=intro-tour` | Live 30 FPS HTML5 Canvas | Interactive in-memory showcase tour inside the running visualizer container. |
 
 To regenerate both the 1080p MP4 and the animated GIF preview at any time against the running Docker container:

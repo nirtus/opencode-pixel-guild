@@ -3,8 +3,6 @@
 Label: ready-for-agent
 Status: resolved
 
-![Fast Paired Remote OpenCode Machine Switching Verification](../../images/fast-remote-machine-switching.png)
-
 ## 1. Plain-Language Problem Summary
 
 When a **Guild Operator** clicks a paired remote OpenCode machine in the top header (`#header-machine-strip`) or Profile Settings modal to switch between two remote machines (for example, two OpenTunnel `*.opentunnel.xyz` / `*.lhr.life` machines or remote LAN/VPN hosts), the visualizer stalls on `⏳ Switching...` for **10 to 40+ seconds** before showing the target machine's **Workshop Room**, projects, or **Guild Characters**.

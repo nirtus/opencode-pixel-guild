@@ -1,8 +1,11 @@
 import { clientState, selectCommitRepository } from "./client-state.ts";
 import { escapeHtml } from "./ledger-panel-reconciler.ts";
-import { getOperatorHeaders } from "./operator-pairing-controller.ts";
+import { closeModal, openModal, registerModal } from "./modal-shell.ts";
+import { getOperatorHeaders } from "./operator-session-store.ts";
 import { applyAuthoritativeSnapshot, clearClientDeletedRoom } from "./snapshot-gate.ts";
 import { openSummonAdventurerModal } from "./summon-adventurer-controller.ts";
+
+const ADD_WORLD_MODAL_ID = "add-world-folder-modal";
 
 export interface DiscoveredWorkspaceFolder {
   name: string;
@@ -284,8 +287,12 @@ function ensureAddWorldFolderModal(onStateChanged?: () => void): HTMLElement | n
   formGrid.appendChild(folderList);
   formGrid.appendChild(statusMsg);
 
+  const bodyWrap = document.createElement("div");
+  bodyWrap.className = "modal-body";
+  bodyWrap.appendChild(formGrid);
+
   const actionsRow = document.createElement("div");
-  actionsRow.className = "modal-actions";
+  actionsRow.className = "modal-footer modal-actions";
 
   const cancelBtn = document.createElement("button");
   cancelBtn.type = "button";
@@ -310,7 +317,7 @@ function ensureAddWorldFolderModal(onStateChanged?: () => void): HTMLElement | n
   actionsRow.appendChild(addAndSummonBtn);
 
   dialog.appendChild(headerRow);
-  dialog.appendChild(formGrid);
+  dialog.appendChild(bodyWrap);
   dialog.appendChild(actionsRow);
   modal.appendChild(dialog);
   document.body.appendChild(modal);
@@ -323,11 +330,15 @@ function ensureAddWorldFolderModal(onStateChanged?: () => void): HTMLElement | n
     activeOnStateChanged?.();
   };
 
+  registerModal({
+    id: ADD_WORLD_MODAL_ID,
+    element: modal,
+    size: "wide",
+    onRequestClose: handleClose,
+  });
+
   closeBtn.addEventListener("click", handleClose);
   cancelBtn.addEventListener("click", handleClose);
-  modal.addEventListener("click", (ev) => {
-    if (ev.target === modal) handleClose();
-  });
 
   dirInput.addEventListener("input", () => {
     updateSelectedFolderHighlight(dirInput.value.trim() || null);
@@ -372,17 +383,17 @@ export async function openAddWorldFolderModal(
   }
   selectedWorkspaceFolderPath = null;
   setStatusMessage("");
-  modal.classList.add("is-open");
-  modal.style.display = "grid";
+  openModal(ADD_WORLD_MODAL_ID, { size: "wide" });
 
   await loadWorkspaceFoldersIntoModal(undefined, fetchImpl);
 }
 
 export function closeAddWorldFolderModal(): void {
   if (typeof document === "undefined") return;
-  const modal = document.getElementById("add-world-folder-modal") ?? addWorldModalEl;
+  const modal = document.getElementById(ADD_WORLD_MODAL_ID) ?? addWorldModalEl;
   if (!modal) return;
+  closeModal(ADD_WORLD_MODAL_ID);
   modal.classList.remove("is-open");
-  modal.style.display = "none";
+  if (modal.style) modal.style.display = "";
   setStatusMessage("");
 }

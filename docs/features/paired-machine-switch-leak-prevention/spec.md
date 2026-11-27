@@ -3,8 +3,6 @@
 Label: ready-for-agent
 Status: resolved
 
-![Paired Machine Switch Leak Prevention Verification](../../images/paired-machine-switch-leak-prevention.png)
-
 ## Problem Statement
 
 When a **Guild Operator** pairs multiple OpenCode machines (**OpenCode Machine Pairing**) and switches between them using the header machine switcher or Profile Settings modal, project worlds (**Workshop Rooms**), **Guild Characters**, **Lifetime Tribute** token/cost records, and **Goal Assembly Site** / **Assembly Commit Ledger** states from one paired machine leak into another paired machine. Once leaked, those foreign project rooms are persisted into the target machine's **Guild Chronicle Store** snapshot row and permanently reappear on every subsequent machine switch or server restart.

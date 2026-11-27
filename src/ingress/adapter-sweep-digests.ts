@@ -2,7 +2,7 @@ import type { ProjectTaskProgress } from "../types/domain.ts";
 import type { OpenCodeDaemonLocationPayload } from "./daemon-types.ts";
 
 export function computeCatalogHydrationDigest(
-  state: Pick<OpenCodeDaemonLocationPayload, "skills" | "plugins" | "agents" | "models">,
+  state: Pick<OpenCodeDaemonLocationPayload, "skills" | "plugins" | "agents" | "models" | "defaultModelId">,
 ): string {
   const skills = (state.skills ?? [])
     .map((s) => `${s.id}:${s.name ?? ""}:${s.description ?? ""}`)
@@ -25,11 +25,11 @@ export function computeCatalogHydrationDigest(
   const models = (state.models ?? [])
     .map(
       (m) =>
-        `${m.id}:${m.providerId ?? ""}:${m.name ?? ""}:${m.limitContext}:${m.limitOutput ?? 0}`,
+        `${m.id}:${m.providerId ?? ""}:${m.providerName ?? ""}:${m.name ?? ""}:${m.type ?? ""}:${m.disabled ? 1 : 0}:${(m.variants ?? []).join("/")}:${m.limitContext}:${m.limitOutput ?? 0}`,
     )
     .sort()
     .join(",");
-  return `s[${skills}]|p[${plugins}]|a[${agents}]|m[${models}]`;
+  return `s[${skills}]|p[${plugins}]|a[${agents}]|m[${models}]|d[${state.defaultModelId ?? ""}]`;
 }
 
 export function computeTaskProgressDigest(
@@ -45,7 +45,7 @@ export function computeTaskProgressDigest(
 export interface SweepDigestTracker {
   shouldEmitCatalog(
     dir: string,
-    state: Pick<OpenCodeDaemonLocationPayload, "skills" | "plugins" | "agents" | "models">,
+    state: Pick<OpenCodeDaemonLocationPayload, "skills" | "plugins" | "agents" | "models" | "defaultModelId">,
     isReconnect: boolean,
   ): boolean;
   shouldEmitTaskProgress(

@@ -1,10 +1,12 @@
-import type {
-  CharacterState,
-  EquipmentLoadout,
-  GuildSnapshot,
-  RoomDeletedTelemetryEvent,
-  SessionDeletedTelemetryEvent,
-  TelemetryEvent,
+import {
+  isSelectableChatModel,
+  type CharacterState,
+  type EquipmentLoadout,
+  type GuildSnapshot,
+  type ModelCatalogEntry,
+  type RoomDeletedTelemetryEvent,
+  type SessionDeletedTelemetryEvent,
+  type TelemetryEvent,
 } from "../types/domain.ts";
 import { syncCharacterWorkflow } from "./armory-and-workflow.ts";
 import { syncAllCharacterTributes, syncCharacterTributeRecord } from "./context-mana.ts";
@@ -128,6 +130,11 @@ export function buildSnapshot(state: InternalWorldStoreState): GuildSnapshot {
   const primaryAgents = Object.values(state.catalog.agents)
     .filter((a) => !a.hidden && !a.disabled && (!a.mode || a.mode === "primary" || a.mode === "all"))
     .map((a) => ({ id: a.id, name: a.name ?? a.id, ...(a.color ? { color: a.color } : {}), ...(a.description ? { description: a.description } : {}) }));
+  const uniqueModels = new Map<string, ModelCatalogEntry>();
+  for (const m of Object.values(state.catalog.models ?? {})) {
+    if (isSelectableChatModel(m) && !uniqueModels.has(m.id)) uniqueModels.set(m.id, structuredClone(m));
+  }
+  const availableModels = [...uniqueModels.values()];
 
   return {
     version: state.version,
@@ -141,6 +148,7 @@ export function buildSnapshot(state: InternalWorldStoreState): GuildSnapshot {
     ...(Object.keys(state.tributeLedger).length > 0 ? { tributeLedger: structuredClone(state.tributeLedger) } : {}),
     ...(availableSkillSet.size > 0 ? { availableSkillIds: [...availableSkillSet] } : {}),
     ...(primaryAgents.length > 0 ? { availableAgentModes: primaryAgents } : {}),
+    ...(availableModels.length > 0 ? { availableModels } : {}),
     ...(state.deletedSessionIds.size > 0 ? { deletedSessionIds: [...state.deletedSessionIds] } : {}),
     ...(state.deletedRoomIds.size > 0 ? { deletedRoomIds: [...state.deletedRoomIds] } : {}),
     summary: {

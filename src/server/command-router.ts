@@ -7,11 +7,13 @@ import {
   isDeletedHostDirectory,
   normalizeLocationDirectory,
 } from "../state/world-reducer.ts";
-import type {
-  GuildCommandRequest,
-  GuildCommandResult,
-  GuildSnapshot,
-  GuildStateEmission,
+import {
+  parseModelRef,
+  resolveEffectiveModelVariant,
+  type GuildCommandRequest,
+  type GuildCommandResult,
+  type GuildSnapshot,
+  type GuildStateEmission,
 } from "../types/domain.ts";
 import {
   type GuildApiRouterContext,
@@ -23,35 +25,19 @@ import {
   resolveRequestedWorldDirectory,
 } from "./workspace-folder-routes.ts";
 
-function isWorkingModelId(modelId: string | undefined): modelId is string {
-  if (!modelId) return false;
-  const trimmed = modelId.trim();
-  return (
-    trimmed.includes("/") &&
-    trimmed !== "default" &&
-    trimmed !== "unknown-model" &&
-    !trimmed.endsWith("/unknown-model") &&
-    trimmed !== "opencode/flint-40b-free"
-  );
-}
-
-function resolveDefaultSummonModelId(
+function resolveRoomDefaultModelId(
   snapshot: GuildSnapshot,
-  directory: string | undefined,
-): string {
-  const normDir = directory ? normalizeLocationDirectory(directory) : "";
-  const chars = Object.values(snapshot.characters);
-  if (normDir) {
-    const roomMatch = chars.find(
-      (c) =>
-        (c.roomId === normDir ||
-          normalizeLocationDirectory(c.locationDirectory) === normDir) &&
-        isWorkingModelId(c.modelId),
-    );
-    if (roomMatch) return roomMatch.modelId;
+  ...directories: Array<string | undefined>
+): string | undefined {
+  for (const dir of directories) {
+    if (!dir) continue;
+    const normDir = normalizeLocationDirectory(dir);
+    const room =
+      snapshot.rooms[normDir] ??
+      Object.values(snapshot.rooms).find((r) => normalizeLocationDirectory(r.locationDirectory) === normDir);
+    if (room?.defaultModelId?.trim()) return room.defaultModelId.trim();
   }
-  const anyMatch = chars.find((c) => isWorkingModelId(c.modelId));
-  return anyMatch?.modelId ?? "google/gemini-4-argon";
+  return undefined;
 }
 
 function sendSummonFailed(
@@ -87,7 +73,8 @@ export async function handleGuildCommandRoute(
   const command = rawBody.command;
   if (
     command !== "scroll.send" && command !== "turn.interrupt" && command !== "adventurer.summon" &&
-    command !== "gate.resolve" && command !== "session.view" && command !== "agent.switch"
+    command !== "gate.resolve" && command !== "session.view" && command !== "agent.switch" &&
+    command !== "model.switch"
   ) {
     sendJson(res, 400, { ok: false, error: `Invalid or missing command: ${String(command ?? "")}` });
     return;
@@ -101,94 +88,69 @@ export async function handleGuildCommandRoute(
       return;
     }
   } else if (command === "agent.switch") {
-    const sessionId =
-      typeof rawBody.sessionId === "string" ? rawBody.sessionId.trim() : "";
-    const agentClass =
-      typeof rawBody.agentClass === "string" ? rawBody.agentClass.trim() : "";
+    const sessionId = typeof rawBody.sessionId === "string" ? rawBody.sessionId.trim() : "";
+    const agentClass = typeof rawBody.agentClass === "string" ? rawBody.agentClass.trim() : "";
     if (!sessionId || !agentClass) {
-      sendJson(res, 400, {
-        ok: false,
-        error: "agent.switch requires non-empty sessionId and agentClass",
-      });
+      sendJson(res, 400, { ok: false, error: "agent.switch requires non-empty sessionId and agentClass" });
+      return;
+    }
+  } else if (command === "model.switch") {
+    const sessionId = typeof rawBody.sessionId === "string" ? rawBody.sessionId.trim() : "";
+    const modelId = typeof rawBody.modelId === "string" ? rawBody.modelId.trim() : "";
+    if (!sessionId || !modelId) {
+      sendJson(res, 400, { ok: false, error: "model.switch requires non-empty sessionId and modelId" });
       return;
     }
   } else if (command === "turn.interrupt" || command === "session.view") {
-    const sessionId =
-      typeof rawBody.sessionId === "string" ? rawBody.sessionId.trim() : "";
-    if (!sessionId) {
-      sendJson(res, 400, {
-        ok: false,
-        error: `${command} requires non-empty sessionId`,
-      });
-      return;
-    }
+    const sessionId = typeof rawBody.sessionId === "string" ? rawBody.sessionId.trim() : "";
+    if (!sessionId) { sendJson(res, 400, { ok: false, error: `${command} requires non-empty sessionId` }); return; }
   } else if (command === "adventurer.summon") {
-    const directory =
-      typeof rawBody.directory === "string" ? rawBody.directory.trim() : "";
-    if (!directory) {
-      sendJson(res, 400, {
-        ok: false,
-        error: "adventurer.summon requires non-empty directory",
-      });
-      return;
-    }
+    const directory = typeof rawBody.directory === "string" ? rawBody.directory.trim() : "";
+    if (!directory) { sendJson(res, 400, { ok: false, error: "adventurer.summon requires non-empty directory" }); return; }
   } else if (command === "gate.resolve") {
-    const sessionId =
-      typeof rawBody.sessionId === "string" ? rawBody.sessionId.trim() : "";
-    const gateId =
-      typeof rawBody.gateId === "string" ? rawBody.gateId.trim() : "";
-    if (!sessionId || !gateId) {
-      sendJson(res, 400, {
-        ok: false,
-        error: "gate.resolve requires non-empty sessionId and gateId",
-      });
-      return;
-    }
+    const sessionId = typeof rawBody.sessionId === "string" ? rawBody.sessionId.trim() : "";
+    const gateId = typeof rawBody.gateId === "string" ? rawBody.gateId.trim() : "";
+    if (!sessionId || !gateId) { sendJson(res, 400, { ok: false, error: "gate.resolve requires non-empty sessionId and gateId" }); return; }
   }
 
   const snapshotBefore = activeReducer.getSnapshot();
-  const rawSessionId =
-    typeof rawBody.sessionId === "string" ? rawBody.sessionId.trim() : "";
-  const charBefore = rawSessionId
-    ? snapshotBefore.characters[rawSessionId]
-    : undefined;
-
-  const rawPromptText =
-    typeof rawBody.promptText === "string" ? rawBody.promptText : undefined;
-  const rawSkills = Array.isArray(rawBody.skills)
-    ? (rawBody.skills as string[])
-    : undefined;
+  const rawSessionId = typeof rawBody.sessionId === "string" ? rawBody.sessionId.trim() : "";
+  const charBefore = rawSessionId ? snapshotBefore.characters[rawSessionId] : undefined;
+  const rawPromptText = typeof rawBody.promptText === "string" ? rawBody.promptText : undefined;
+  const rawSkills = Array.isArray(rawBody.skills) ? (rawBody.skills as string[]) : undefined;
   const mergedSkills =
     command === "scroll.send" || command === "adventurer.summon"
       ? extractMergedSkills(rawPromptText, rawSkills)
       : undefined;
 
-  let resolvedDirectory =
-    typeof rawBody.directory === "string" && rawBody.directory.trim()
-      ? rawBody.directory.trim()
-      : charBefore?.locationDirectory;
+  const rawRequestedDirectory = typeof rawBody.directory === "string" && rawBody.directory.trim() ? rawBody.directory.trim() : undefined;
+  let resolvedDirectory = rawRequestedDirectory ?? charBefore?.locationDirectory;
   if (command === "adventurer.summon" && resolvedDirectory) {
     const activeDaemonUrl = snapshotBefore.daemonUrl || ctx.daemonUrl;
     const hostParentPrefix = await inferHostWorkspaceParentPrefix(ctx);
-    const { rawDirectory } = resolveRequestedWorldDirectory(
-      resolvedDirectory,
-      hostParentPrefix,
-      activeDaemonUrl,
-    );
+    const { rawDirectory } = resolveRequestedWorldDirectory(resolvedDirectory, hostParentPrefix, activeDaemonUrl);
     resolvedDirectory = rawDirectory;
     if (isDeletedHostDirectory(rawDirectory, undefined, activeDaemonUrl)) {
       sendSummonFailed(res, activeAdapter, snapshotBefore, Date.now(), rawDirectory, `Directory does not exist on host: ${rawDirectory}`);
       return;
     }
   }
-  const rawModelId =
-    typeof rawBody.modelId === "string" && rawBody.modelId.trim()
-      ? rawBody.modelId.trim()
+  const rawModelId = typeof rawBody.modelId === "string" && rawBody.modelId.trim() ? rawBody.modelId.trim() : undefined;
+  const summonDefaultModelId =
+    command === "adventurer.summon" && !rawModelId
+      ? resolveRoomDefaultModelId(snapshotBefore, resolvedDirectory, rawRequestedDirectory)
       : undefined;
 
   const cmd = {
     ...rawBody,
     ...(resolvedDirectory ? { directory: resolvedDirectory } : {}),
+    ...(command === "scroll.send" && charBefore
+      ? {
+          currentAgentClass: charBefore.agentClass,
+          currentModelId: charBefore.modelId,
+          currentModelVariant: charBefore.modelVariant ?? null,
+        }
+      : {}),
     ...(command === "scroll.send" && charBefore?.questGate
       ? {
           gateId: (typeof rawBody.gateId === "string" && rawBody.gateId.trim()) ? rawBody.gateId.trim() : charBefore.questGate.gateId,
@@ -199,9 +161,7 @@ export async function handleGuildCommandRoute(
     ...(command === "session.view" && typeof rawBody.idleAtMs !== "number" && typeof charBefore?.idleAtMs === "number"
       ? { idleAtMs: charBefore.idleAtMs }
       : {}),
-    ...(command === "adventurer.summon" && !rawModelId
-      ? { modelId: resolveDefaultSummonModelId(snapshotBefore, resolvedDirectory) }
-      : {}),
+    ...(summonDefaultModelId ? { modelId: summonDefaultModelId } : {}),
     ...(mergedSkills !== undefined ? { skills: mergedSkills } : {}),
   } as unknown as GuildCommandRequest;
 
@@ -231,6 +191,7 @@ export async function handleGuildCommandRoute(
     !daemonRes.ok &&
     (cmd.command === "scroll.send" ||
       cmd.command === "agent.switch" ||
+      cmd.command === "model.switch" ||
       cmd.command === "turn.interrupt" ||
       cmd.command === "gate.resolve")
   ) {
@@ -256,14 +217,16 @@ export async function handleGuildCommandRoute(
 
   if (cmd.command === "scroll.send") {
     sessionId = cmd.sessionId;
-    if (cmd.agentClass?.trim()) {
+    const parsedScrollModel = cmd.modelId?.trim() ? parseModelRef(cmd.modelId) : null;
+    if (cmd.agentClass?.trim() || parsedScrollModel) {
+      const nextVariant = resolveEffectiveModelVariant(cmd.modelId, cmd.modelVariant);
       activeReducer.dispatch({
         type: "session.upserted",
         timestampMs: now,
         sessionId: cmd.sessionId,
-        locationDirectory:
-          cmd.directory || charBefore?.locationDirectory || "/",
-        agentClass: cmd.agentClass.trim(),
+        locationDirectory: cmd.directory || charBefore?.locationDirectory || "/",
+        ...(cmd.agentClass?.trim() ? { agentClass: cmd.agentClass.trim() } : {}),
+        ...(parsedScrollModel ? { modelId: parsedScrollModel.modelId, modelVariant: nextVariant } : {}),
         preserveActivityTimestamp: true,
       } as any);
     }
@@ -281,9 +244,22 @@ export async function handleGuildCommandRoute(
       type: "session.upserted",
       timestampMs: now,
       sessionId: cmd.sessionId,
-      locationDirectory:
-        cmd.directory || charBefore?.locationDirectory || "/",
+      locationDirectory: cmd.directory || charBefore?.locationDirectory || "/",
       agentClass: cmd.agentClass.trim(),
+      preserveActivityTimestamp: true,
+    } as any);
+  } else if (cmd.command === "model.switch") {
+    sessionId = cmd.sessionId;
+    const parsedSwitchModel = parseModelRef(cmd.modelId);
+    const nextModelId = parsedSwitchModel?.modelId ?? cmd.modelId.trim();
+    const nextVariant = resolveEffectiveModelVariant(cmd.modelId, cmd.modelVariant);
+    emission = activeReducer.dispatch({
+      type: "session.upserted",
+      timestampMs: now,
+      sessionId: cmd.sessionId,
+      locationDirectory: cmd.directory || charBefore?.locationDirectory || "/",
+      modelId: nextModelId,
+      modelVariant: nextVariant,
       preserveActivityTimestamp: true,
     } as any);
   } else if (cmd.command === "turn.interrupt") {
@@ -322,6 +298,8 @@ export async function handleGuildCommandRoute(
     const alreadyInSnapshot = Boolean(
       activeReducer.getSnapshot().characters[sessionId],
     );
+    const parsedSummonModel = cmd.modelId ? parseModelRef(cmd.modelId) : null;
+    const summonModelVariant = resolveEffectiveModelVariant(cmd.modelId, cmd.modelVariant);
     emission = activeReducer.dispatch({
       type: "session.upserted",
       timestampMs: now,
@@ -331,7 +309,8 @@ export async function handleGuildCommandRoute(
       title:
         cmd.title || cmd.promptText?.slice(0, 48) || "New Adventurer",
       agentClass: cmd.agentClass || "build",
-      modelId: cmd.modelId,
+      modelId: parsedSummonModel?.modelId ?? cmd.modelId,
+      ...(summonModelVariant ? { modelVariant: summonModelVariant } : {}),
       ...(alreadyInSnapshot ? { preserveActivityTimestamp: true } : {}),
       ...(!hasInitialPrompt ? { deferredLifecycleState: "RestingInLounge" } : {}),
     } as any);

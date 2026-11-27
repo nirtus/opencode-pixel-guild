@@ -106,7 +106,7 @@ button, input, textarea, select { user-select: text; -webkit-user-select: text; 
   align-items: center;
   justify-content: flex-end;
   gap: 5px;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
 }
 
@@ -130,33 +130,31 @@ button, input, textarea, select { user-select: text; -webkit-user-select: text; 
 }
 
 .header-machine-strip {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 4px;
-  max-width: 480px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
+  scroll-behavior: smooth;
 }
 .header-machine-strip::-webkit-scrollbar { display: none; }
 .header-machine-strip:empty { display: none; }
 
-.machine-switch-btn {
-  max-width: 155px;
+.btn.machine-switch-btn {
+  display: inline-block;
+  flex: 0 1 auto;
+  min-width: 72px;
+  max-width: 165px;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 18px;
 }
 
-#btn-open-pairing-modal {
-  max-width: 195px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-#btn-open-account-modal {
-  max-width: 155px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+#btn-open-pairing-modal { max-width: 195px; overflow: hidden; text-overflow: ellipsis; }
+#btn-open-account-modal { max-width: 155px; overflow: hidden; text-overflow: ellipsis; }
 
 .badge-pill.live { border-color: var(--accent-emerald); color: #6ee7b7; }
 

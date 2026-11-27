@@ -15,6 +15,7 @@ ENV NODE_ENV=production \
 
 COPY package.json tsconfig.json ./
 COPY src ./src
+COPY assets ./assets
 COPY docs ./docs
 
 EXPOSE 4310

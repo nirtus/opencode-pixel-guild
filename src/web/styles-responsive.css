@@ -114,8 +114,8 @@ body {
   .world-toolbar-label,
   #daemon-indicator,
   #summary-indicator,
+  #header-machine-strip-wrap,
   #header-machine-strip,
-  #btn-open-pairing-modal,
   #btn-refresh-live,
   #btn-toggle-lineage,
   #btn-toggle-style,
@@ -352,6 +352,9 @@ body {
   /* 16px inputs on mobile so iOS Safari never auto-zooms */
   #command-scroll-input,
   .command-scroll-input,
+  .command-scroll-agent-select,
+  .command-scroll-model-select,
+  .command-scroll-variant-select,
   .gate-custom-input,
   .modal-input,
   #summon-directory-select,
@@ -360,6 +363,13 @@ body {
   #summon-prompt-input {
     font-size: 16px !important;
   }
+  .command-scroll-target-controls { flex-wrap: wrap; }
+  .command-scroll-agent-select, .command-scroll-model-select, .command-scroll-variant-select, .btn-send-scroll { min-height: 44px; }
+}
+
+/* Compact Phone Header: keep Pair reachable via Account modal switcher on <= 599px */
+@media (max-width: 599px) {
+  #btn-open-pairing-modal { display: none !important; }
 }
 
 /* Mobile Landscape Breakpoint (max-height: 540px and orientation: landscape) */

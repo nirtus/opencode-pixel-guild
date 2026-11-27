@@ -1,5 +1,6 @@
 import type {
   GuildCommandRequest,
+  ModelCatalogEntry,
   PluginStatusKind,
   QuestGateQuestionField,
   QuestGateSource,
@@ -30,13 +31,8 @@ export interface OpenCodeDaemonLocationPayload {
     disabled?: boolean;
     description?: string;
   }>;
-  models?: Array<{
-    id: string;
-    providerId?: string;
-    name?: string;
-    limitContext: number;
-    limitOutput?: number;
-  }>;
+  models?: ModelCatalogEntry[];
+  defaultModelId?: string;
   activeSessionIds?: string[];
   sessions?: Array<{
     sessionId: string;
@@ -44,6 +40,7 @@ export interface OpenCodeDaemonLocationPayload {
     title?: string;
     agentClass?: string;
     modelId?: string;
+    modelVariant?: string | null;
     tokens?: SessionTokenTelemetry;
     skills?: string[];
     activeTool?: {

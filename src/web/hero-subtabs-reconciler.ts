@@ -6,7 +6,7 @@ import {
   formatPublicSafePath,
   sanitizeAndExtractSkillsFromChatText,
 } from "../hud/spectator-hud.ts";
-import type { CharacterState } from "../types/domain.ts";
+import { formatModelDisplaySpec, type CharacterState } from "../types/domain.ts";
 import { clientState, type HeroCategorySubtab } from "./client-state.ts";
 import { isSessionKilling } from "./snapshot-gate.ts";
 
@@ -323,7 +323,7 @@ export function renderHeroSubtabStaticHtml(
       <div class="session-details-grid">
         ${sheet.projectHeraldry ? `<div>Project: <span class="val-gold" data-herald-party="${escapeHtml(sheet.projectHeraldry.partyKey)}">${escapeHtml(sheet.projectHeraldry.crestIcon)} ${escapeHtml(sheet.projectHeraldry.projectName)} [${escapeHtml(sheet.projectHeraldry.shortTag)}] (${escapeHtml(formatPublicSafePath(sheet.projectHeraldry.projectId))})</span></div>` : ""}
         <div>Session ID: <span class="val-light">${escapeHtml(sheet.sessionId)}</span></div>
-        <div>Model: <span class="val-blue">${escapeHtml(sheet.modelId)}</span></div>
+        <div>Model: <span class="val-blue">${escapeHtml(formatModelDisplaySpec(sheet.modelId, sheet.modelVariant))}</span></div>
         <div>Context Mana: <span class="val-purple">${sheet.contextMana.usedTokens.toLocaleString()} / ${sheet.contextMana.limitTokens.toLocaleString()} (${sheet.contextMana.percent}%)</span></div>
         <div>Input / Output: <span class="val-light">${sheet.cost.inputTokens.toLocaleString()} in · ${sheet.cost.outputTokens.toLocaleString()} out</span></div>
         <div>Target Station: <span class="val-gold">${escapeHtml(sheet.activeTarget.preparationStation || sheet.activeTarget.workstation || "Break Lounge")}</span></div>

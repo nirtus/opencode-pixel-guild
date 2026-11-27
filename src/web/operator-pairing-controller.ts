@@ -2,103 +2,93 @@ import { formatPublicSafeEndpoint } from "../hud/index.ts";
 import { normalizeQrPayloadToPairingUrl } from "../ingress/qr-matrix-decoder.ts";
 import { clientState } from "./client-state.ts";
 import { clearCachedGitState } from "./commit-ledger-controller.ts";
-import { type ClientOperatorPreferences, type ClientOperatorProfile, type OperatorModalAction, type OperatorModalTab, renderOperatorModalWindowHtml } from "./operator-modal-views.ts";
+import { closeModal, openModal, registerModal, setModalDismissible, setModalSize } from "./modal-shell.ts";
+import { isOfflineDemoModeActive } from "./offline-demo-flag.ts";
+import {
+  type OperatorModalAction, type OperatorModalTab, type OperatorPairingMode,
+  renderOperatorModalWindowHtml, resolveOperatorModalMeta,
+} from "./operator-modal-views.ts";
+import {
+  applyOperatorPreferencesToClientState, bumpOperatorProfileMutationEpoch, type ClientOperatorProfile,
+  getCachedOperatorProfile, getOperatorHeaders, refreshCachedOperatorProfile,
+  setCachedOperatorProfile, setSavedOperatorId,
+} from "./operator-session-store.ts";
 import { decodeQrFromImageBlob, startCameraQrScanner, stopActiveQrCameraStream } from "./qr-barcode-scanner.ts";
 import { resetSidePanelSignatures } from "./side-panel-reconciler.ts";
-import { applyAuthoritativeSnapshot, resetAuthoritativeSnapshotGate, setExpectedMachineDaemonUrl, setPendingOperatorAction } from "./snapshot-gate.ts";
-import { applyPreferencesToStateTarget, getBrowserStorage, type KeyValueStoragePort, OPERATOR_ID_STORAGE_KEY, readSavedUiWindowState, syncProjectUrlQueryParam, UI_WINDOW_STATE_STORAGE_KEY, writeSavedProjectId, writeSavedUiWindowState } from "./world-persistence.ts";
+import {
+  applyAuthoritativeSnapshot, resetAuthoritativeSnapshotGate,
+  setExpectedMachineDaemonUrl, setPendingOperatorAction,
+} from "./snapshot-gate.ts";
+import {
+  getBrowserStorage, readSavedUiWindowState, syncProjectUrlQueryParam,
+  UI_WINDOW_STATE_STORAGE_KEY, writeSavedProjectId, writeSavedUiWindowState,
+} from "./world-persistence.ts";
 
-export type { ClientOperatorPreferences, ClientOperatorProfile, OperatorModalAction, OperatorModalTab };
+export type { OperatorModalAction, OperatorModalTab, OperatorPairingMode };
+
+const OPERATOR_MODAL_ID = "operator-pairing-modal";
 
 let pairingModalEl: HTMLElement | null = null;
-let activeModalTab: OperatorModalTab = "profile";
-let cachedProfile: ClientOperatorProfile | null = null;
+let activeModalTab: OperatorModalTab = "machines";
+let activePairingMode: OperatorPairingMode = "link-qr";
 let statusMessageText = "";
 let isAuthLocked = false;
-let profileMutationEpoch = 0;
-
-export function getCachedOperatorProfile(): ClientOperatorProfile | null { return cachedProfile; }
-
-export function getSavedOperatorId(): string | null {
-  if (clientState.operatorId) return clientState.operatorId;
-  if (typeof window !== "undefined" && window.location?.search) {
-    const qOp = new URLSearchParams(window.location.search).get("operatorId")?.trim();
-    if (qOp) return (clientState.operatorId = qOp);
-  }
-  try { const val = getBrowserStorage()?.getItem(OPERATOR_ID_STORAGE_KEY)?.trim(); if (val) return (clientState.operatorId = val); } catch { /* ignore */ }
-  return null;
-}
-
-export function setSavedOperatorId(operatorId: string | null): void {
-  clientState.operatorId = operatorId;
-  const store = getBrowserStorage();
-  if (!store) return;
-  try {
-    if (operatorId?.trim()) store.setItem(OPERATOR_ID_STORAGE_KEY, operatorId.trim());
-    else store.removeItem?.(OPERATOR_ID_STORAGE_KEY);
-  } catch { /* ignore */ }
-}
-
-export function getOperatorHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  const opId = getSavedOperatorId();
-  return opId ? { ...extra, "X-Guild-Operator-Id": opId } : { ...extra };
-}
-
-export function withOperatorQuery(path: string): string {
-  const opId = getSavedOperatorId();
-  return opId ? `${path}${path.includes("?") ? "&" : "?"}operatorId=${encodeURIComponent(opId)}` : path;
-}
-
-export function applyOperatorPreferencesToClientState(prefs: Partial<ClientOperatorPreferences> | null | undefined, options: { searchString?: string; storage?: KeyValueStoragePort | null } = {}): void {
-  applyPreferencesToStateTarget(clientState, prefs, options);
-}
-
-export async function syncOperatorPreferences(partial: Partial<ClientOperatorPreferences>, fetchImpl?: typeof fetch, storage?: KeyValueStoragePort | null): Promise<void> {
-  if ("selectedProjectId" in partial) {
-    clientState.selectedProjectId = partial.selectedProjectId ?? null;
-    writeSavedProjectId(clientState.selectedProjectId, storage);
-    syncProjectUrlQueryParam(clientState.selectedProjectId);
-  }
-  applyPreferencesToStateTarget(clientState, partial, { searchString: "", storage });
-  if (cachedProfile) cachedProfile.preferences = { ...(cachedProfile.preferences ?? {}), ...partial };
-  const fn = fetchImpl ?? (typeof fetch === "function" ? fetch : undefined);
-  if (!fn || storage) return;
-  try { await fn("/api/guild/users/me", { method: "PATCH", headers: getOperatorHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ preferences: partial }) }); } catch { /* ignore */ }
-}
 
 function syncAuthLockDom(): void {
   clientState.isAuthenticated = !isAuthLocked;
+  setModalDismissible(OPERATOR_MODAL_ID, !isAuthLocked);
   if (typeof document === "undefined") return;
   document.body?.setAttribute("data-auth-locked", isAuthLocked ? "true" : "false");
   pairingModalEl?.querySelector("#btn-close-pairing-modal")?.classList.toggle("is-hidden", isAuthLocked);
 }
 
+export function closeOperatorPairingModal(): void {
+  if (isAuthLocked) return;
+  stopActiveQrCameraStream();
+  closeModal(OPERATOR_MODAL_ID);
+  pairingModalEl?.classList.remove("is-open");
+}
+
 function resetClientWorldViewState(clearSelection = false): void {
-  clientState.characterWalkers.clear(); clientState.activeSummoningRituals.clear();
+  clientState.characterWalkers.clear();
+  clientState.activeSummoningRituals.clear();
   clientState.knownSessionIds.clear();
-  clientState.lanternFlares.length = 0; clientState.tickerLog.length = 0;
-  clearCachedGitState(); resetSidePanelSignatures();
-  if (clearSelection) {
-    resetAuthoritativeSnapshotGate({ preservePendingAction: true });
-    clientState.isAllWorldsFocused = true;
-    clientState.selectedProjectId = clientState.selectedRoomId = clientState.selectedSessionId = null; clientState.cameraFocusMode = "auto";
-    writeSavedProjectId(null); writeSavedUiWindowState({ selectedProjectId: null, selectedRoomId: null, selectedSessionId: null, cameraFocusMode: "auto" });
-    syncProjectUrlQueryParam(null);
-  }
+  clientState.lanternFlares.length = 0;
+  clientState.tickerLog.length = 0;
+  clearCachedGitState();
+  resetSidePanelSignatures();
+  if (!clearSelection) return;
+  resetAuthoritativeSnapshotGate({ preservePendingAction: true });
+  clientState.isAllWorldsFocused = true;
+  clientState.selectedProjectId = clientState.selectedRoomId = clientState.selectedSessionId = null;
+  clientState.cameraFocusMode = "auto";
+  writeSavedProjectId(null);
+  writeSavedUiWindowState({ selectedProjectId: null, selectedRoomId: null, selectedSessionId: null, cameraFocusMode: "auto" });
+  syncProjectUrlQueryParam(null);
 }
 
 async function refreshSnapshotAndRender(
-  modal: HTMLElement | null, onStateChanged: () => void, fetchImpl?: typeof fetch,
+  modal: HTMLElement | null,
+  onStateChanged: () => void,
+  fetchImpl?: typeof fetch,
   opts?: { inlineSnapshot?: unknown; preserveEventStream?: boolean },
 ): Promise<void> {
   if (opts?.inlineSnapshot && typeof opts.inlineSnapshot === "object") {
     applyAuthoritativeSnapshot(opts.inlineSnapshot as typeof clientState.currentSnapshot, { allowVersionReset: true });
   } else {
     const fn = fetchImpl ?? (typeof fetch === "function" ? fetch : undefined);
-    if (fn) { try { const snapRes = await fn("/api/guild/snapshot", { headers: getOperatorHeaders() }); if (snapRes.ok) applyAuthoritativeSnapshot(await snapRes.json(), { allowVersionReset: true }); } catch { /* ignore */ } }
+    if (fn) {
+      try {
+        const snapRes = await fn("/api/guild/snapshot", { headers: getOperatorHeaders() });
+        if (snapRes.ok) applyAuthoritativeSnapshot(await snapRes.json(), { allowVersionReset: true });
+      } catch { /* ignore */ }
+    }
   }
-  resetSidePanelSignatures(); syncAuthLockDom();
-  if (typeof window !== "undefined") window.dispatchEvent(new Event(opts?.preserveEventStream ? "guild-machine-changed" : "guild-operator-changed"));
+  resetSidePanelSignatures();
+  syncAuthLockDom();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(opts?.preserveEventStream ? "guild-machine-changed" : "guild-operator-changed"));
+  }
   if (modal) mountModalInnerDom(modal, onStateChanged);
   onStateChanged();
 }
@@ -130,16 +120,25 @@ export async function dispatchOperatorModalAction(
     if (nextTab) { activeModalTab = nextTab; statusMessageText = ""; if (modal) mountModalInnerDom(modal, onStateChanged); }
     return;
   }
-  profileMutationEpoch += 1;
+  if (action === "switch-pairing-mode") {
+    const nextMode = fields.pairingMode as OperatorPairingMode | undefined;
+    if (nextMode === "link-qr" || nextMode === "manual") {
+      activePairingMode = nextMode; statusMessageText = "";
+      if (modal) mountModalInnerDom(modal, onStateChanged);
+    }
+    return;
+  }
+
+  bumpOperatorProfileMutationEpoch();
   setPendingOperatorAction(fields.machineId ? `${action}:${fields.machineId}` : action);
   if (action === "activate-machine") {
-    const targetMachine = cachedProfile?.pairedMachines?.find((m) => m.machineId === fields.machineId);
-    setExpectedMachineDaemonUrl(targetMachine?.daemonUrl ?? null);
+    setExpectedMachineDaemonUrl(getCachedOperatorProfile()?.pairedMachines?.find((m) => m.machineId === fields.machineId)?.daemonUrl ?? null);
     onStateChanged();
   } else if (action === "pair-machine" || action === "pair-local-machine") {
     setExpectedMachineDaemonUrl(null);
     onStateChanged();
   }
+
   try {
     if (action === "login" || action === "register") {
       const endpoint = action === "login" ? "/api/guild/auth/login" : "/api/guild/auth/register";
@@ -148,24 +147,23 @@ export async function dispatchOperatorModalAction(
         : { username: (fields.username || "").trim(), password: fields.password || "", label: (fields.label || "").trim() };
       const res = await fn(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const payload = await res.json();
-      profileMutationEpoch += 1;
+      bumpOperatorProfileMutationEpoch();
       if (res.ok && payload?.operatorId) {
-        cachedProfile = payload; isAuthLocked = false; clientState.authBootCompleted = true;
+        setCachedOperatorProfile(payload); isAuthLocked = false; clientState.authBootCompleted = true;
         setSavedOperatorId(payload.operatorId); resetClientWorldViewState(true);
         applyOperatorPreferencesToClientState(payload.preferences, { searchString: "" });
-        const displayAlias = payload.label && payload.label !== "Guild Operator" ? payload.label : payload.username;
-        statusMessageText = action === "login"
-          ? `✅ Signed in as ${displayAlias} — manage OpenCode machines below or in the header row`
-          : `✅ Step 1 Complete! Registered '${displayAlias}' — now complete Step 2 in Profile Settings: add OpenCode with pairing link or paste QR code`;
-        activeModalTab = "profile";
+        const alias = payload.label && payload.label !== "Guild Operator" ? payload.label : payload.username;
+        statusMessageText = action === "login" ? `✅ Signed in as ${alias}` : `✅ Account '${alias}' created — pair your OpenCode machine below`;
+        activeModalTab = (payload.pairedMachines?.length ?? 0) > 0 ? "profile" : "machines";
         await refreshSnapshotAndRender(modal, onStateChanged, fn);
-        if (action === "login" && (payload.pairedMachines?.length ?? 0) > 0) { stopActiveQrCameraStream(); modal?.classList.remove("is-open"); }
+        if (action === "login" && (payload.pairedMachines?.length ?? 0) > 0) { closeOperatorPairingModal(); modal?.classList.remove("is-open"); }
       } else {
         statusMessageText = `⚠️ ${payload?.error || (action === "login" ? "Login failed" : "Registration failed")}`;
         if (modal) mountModalInnerDom(modal, onStateChanged);
       }
       return;
     }
+
     if (action === "pair-machine" || action === "pair-local-machine") {
       const discoverLocal = action === "pair-local-machine";
       const label = (fields.label || "").trim() || (discoverLocal ? "Local OpenCode" : "OpenCode Machine");
@@ -177,17 +175,18 @@ export async function dispatchOperatorModalAction(
         body: JSON.stringify({ label, daemonUrl, daemonPassword, discoverLocal, activate: true }),
       });
       const payload = await res.json();
-      profileMutationEpoch += 1;
+      bumpOperatorProfileMutationEpoch();
       if (res.ok && payload?.operatorId) {
         const { snapshot: inlineSnapshot, ...profileOnly } = payload;
-        cachedProfile = profileOnly; isAuthLocked = false; setSavedOperatorId(profileOnly.operatorId);
+        setCachedOperatorProfile(profileOnly); isAuthLocked = false; setSavedOperatorId(profileOnly.operatorId);
         if (profileOnly.daemonUrl) setExpectedMachineDaemonUrl(profileOnly.daemonUrl);
         resetClientWorldViewState(true);
-        statusMessageText = `✅ Step 2 Complete! Paired '${label}' (${formatPublicSafeEndpoint(profileOnly.daemonUrl || daemonUrl.replace(/\/auth\/connect\/.*/, ""))})`;
+        statusMessageText = `✅ Paired '${label}' (${formatPublicSafeEndpoint(profileOnly.daemonUrl || daemonUrl.replace(/\/auth\/connect\/.*/, ""))})`;
         await refreshSnapshotAndRender(modal, onStateChanged, fn, { inlineSnapshot, preserveEventStream: true });
       } else { statusMessageText = `⚠️ ${payload?.error || "Failed to pair machine"}`; if (modal) mountModalInnerDom(modal, onStateChanged); }
       return;
     }
+
     if ((action === "activate-machine" || action === "delete-machine") && fields.machineId) {
       const isActivate = action === "activate-machine";
       const res = await fn(`/api/guild/users/me/machines/${encodeURIComponent(fields.machineId)}`, {
@@ -196,30 +195,38 @@ export async function dispatchOperatorModalAction(
         ...(isActivate ? { body: JSON.stringify({ activate: true }) } : {}),
       });
       const payload = await res.json();
-      profileMutationEpoch += 1;
+      bumpOperatorProfileMutationEpoch();
       if (res.ok) {
         const { snapshot: inlineSnapshot, ...profileOnly } = payload;
-        cachedProfile = profileOnly; if (isActivate && profileOnly?.daemonUrl) setExpectedMachineDaemonUrl(profileOnly.daemonUrl);
+        setCachedOperatorProfile(profileOnly);
+        if (isActivate && profileOnly?.daemonUrl) setExpectedMachineDaemonUrl(profileOnly.daemonUrl);
         resetClientWorldViewState(true);
         statusMessageText = isActivate ? "✅ Switched active OpenCode machine" : "🗑 Removed OpenCode machine pairing";
         await refreshSnapshotAndRender(modal, onStateChanged, fn, { inlineSnapshot, preserveEventStream: true });
       } else { statusMessageText = `⚠️ ${payload?.error || "Failed to update machine"}`; if (modal) mountModalInnerDom(modal, onStateChanged); }
       return;
     }
+
     if (action === "save-profile") {
       const username = (fields.username || "").trim(), label = (fields.label || "").trim(), password = (fields.password || "").trim();
-      const res = await fn("/api/guild/users/me", { method: "PATCH", headers: getOperatorHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ username, label, ...(password ? { password } : {}) }) });
+      const res = await fn("/api/guild/users/me", {
+        method: "PATCH", headers: getOperatorHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ username, label, ...(password ? { password } : {}) }),
+      });
       const payload = await res.json();
-      profileMutationEpoch += 1;
-      if (res.ok) { cachedProfile = payload; statusMessageText = "✅ Profile settings saved"; await refreshSnapshotAndRender(modal, onStateChanged, fn); }
+      bumpOperatorProfileMutationEpoch();
+      if (res.ok) { setCachedOperatorProfile(payload); statusMessageText = "✅ Profile settings saved"; await refreshSnapshotAndRender(modal, onStateChanged, fn); }
       else { statusMessageText = `⚠️ ${payload?.error || "Failed to save profile"}`; if (modal) mountModalInnerDom(modal, onStateChanged); }
       return;
     }
+
     if (action === "logout" || action === "delete-account") {
-      if (action === "logout") { await fn("/api/guild/auth/logout", { method: "POST" }); statusMessageText = "Signed out — register or sign in to access your workspace"; }
+      if (action === "logout") { await fn("/api/guild/auth/logout", { method: "POST" }); statusMessageText = "Signed out — sign in or register to access your workspace"; }
       else { await fn("/api/guild/users/me", { method: "DELETE", headers: getOperatorHeaders() }); statusMessageText = "🗑 Account deleted"; }
-      profileMutationEpoch += 1; setSavedOperatorId(null); getBrowserStorage()?.removeItem?.(UI_WINDOW_STATE_STORAGE_KEY);
-      cachedProfile = null; isAuthLocked = true; activeModalTab = "register"; resetClientWorldViewState(true);
+      bumpOperatorProfileMutationEpoch();
+      setSavedOperatorId(null); getBrowserStorage()?.removeItem?.(UI_WINDOW_STATE_STORAGE_KEY);
+      setCachedOperatorProfile(null); isAuthLocked = true; activeModalTab = "login";
+      resetClientWorldViewState(true);
       applyAuthoritativeSnapshot({
         ...clientState.currentSnapshot, daemonUrl: null, roomOrder: [], rooms: {}, characters: {}, questGates: {},
         summary: { totalRooms: 0, activeAdventurers: 0, activeSubagents: 0, openQuestGates: 0, equippedGrimoires: 0, connectedPlugins: 0 },
@@ -245,9 +252,13 @@ async function handleDecodedQrImage(blob: Blob, scopeRoot: ParentNode, modal: HT
 function mountModalInnerDom(modal: HTMLElement, onStateChanged: () => void): void {
   stopActiveQrCameraStream();
   syncAuthLockDom();
+  const meta = resolveOperatorModalMeta(activeModalTab, isAuthLocked);
+  setModalSize(OPERATOR_MODAL_ID, meta.size);
+  const titleEl = modal.querySelector("#operator-modal-title");
+  if (titleEl) titleEl.textContent = meta.title;
   const bodySlot = modal.querySelector("#operator-modal-body-slot") as HTMLElement | null;
   if (!bodySlot) return;
-  bodySlot.innerHTML = renderOperatorModalWindowHtml(cachedProfile, activeModalTab, statusMessageText, isAuthLocked);
+  bodySlot.innerHTML = renderOperatorModalWindowHtml(getCachedOperatorProfile(), activeModalTab, statusMessageText, isAuthLocked, activePairingMode);
 
   const qrFileInput = bodySlot.querySelector<HTMLInputElement>("input[type='file'][name='qrImageFile']");
   qrFileInput?.addEventListener("change", () => {
@@ -272,7 +283,10 @@ function mountModalInnerDom(modal: HTMLElement, onStateChanged: () => void): voi
       if (previewSlot) {
         void startCameraQrScanner(
           previewSlot,
-          (decodedUrl) => { statusMessageText = `📷 Scanned QR link: ${decodedUrl}`; void dispatchOperatorModalAction("pair-machine", { ...extractScopedFields(bodySlot, "machine"), daemonUrl: decodedUrl }, onStateChanged, modal); },
+          (decodedUrl) => {
+            statusMessageText = `📷 Scanned QR link: ${decodedUrl}`;
+            void dispatchOperatorModalAction("pair-machine", { ...extractScopedFields(bodySlot, "machine"), daemonUrl: decodedUrl }, onStateChanged, modal);
+          },
           (msg) => { statusMessageText = msg; mountModalInnerDom(modal, onStateChanged); },
         );
       }
@@ -282,8 +296,9 @@ function mountModalInnerDom(modal: HTMLElement, onStateChanged: () => void): voi
     const scopedFields = extractScopedFields(bodySlot, target.getAttribute("data-operator-scope-target"));
     void dispatchOperatorModalAction(
       action,
-      { ...scopedFields, window: target.getAttribute("data-operator-window") || "", machineId: target.getAttribute("data-machine-activate") || target.getAttribute("data-machine-delete") || "" },
-      onStateChanged, modal,
+      { ...scopedFields, window: target.getAttribute("data-operator-window") || "", pairingMode: target.getAttribute("data-pairing-mode") || "", machineId: target.getAttribute("data-machine-activate") || target.getAttribute("data-machine-delete") || "" },
+      onStateChanged,
+      modal,
     );
   };
 }
@@ -291,14 +306,13 @@ function mountModalInnerDom(modal: HTMLElement, onStateChanged: () => void): voi
 function ensureOperatorPairingModal(onStateChanged: () => void): HTMLElement {
   if (pairingModalEl) return pairingModalEl;
   const modal = document.createElement("div");
-  modal.id = "operator-pairing-modal";
+  modal.id = OPERATOR_MODAL_ID;
   modal.className = "modal-overlay";
-  modal.innerHTML = `<div class="modal-dialog modal-dialog-summon"><div class="modal-header-row"><div class="modal-title-summon">👤 Guild Operator Account &amp; Profile Settings</div><button type="button" class="btn modal-close-btn" id="btn-close-pairing-modal" aria-label="Close Pairing Modal">✕</button></div><div id="operator-modal-body-slot"></div></div>`;
+  modal.innerHTML = `<div class="modal-dialog modal-dialog-summon"><div class="modal-header-row"><div id="operator-modal-title" class="modal-title-summon">🔗 OpenCode Machine Pairing</div><button type="button" class="btn modal-close-btn" id="btn-close-pairing-modal" aria-label="Close Modal">✕</button></div><div id="operator-modal-body-slot" class="modal-body"></div></div>`;
   document.body.appendChild(modal);
   pairingModalEl = modal;
-  modal.querySelector("#btn-close-pairing-modal")?.addEventListener("click", () => {
-    if (!isAuthLocked) { stopActiveQrCameraStream(); modal.classList.remove("is-open"); }
-  });
+  registerModal({ id: OPERATOR_MODAL_ID, element: modal, dismissible: !isAuthLocked, size: resolveOperatorModalMeta(activeModalTab, isAuthLocked).size, onRequestClose: () => closeOperatorPairingModal() });
+  modal.querySelector("#btn-close-pairing-modal")?.addEventListener("click", () => closeOperatorPairingModal());
   modal.addEventListener("paste", (ev: ClipboardEvent) => {
     for (const item of ev.clipboardData?.items ?? []) {
       if (!item.type.startsWith("image/")) continue;
@@ -309,25 +323,9 @@ function ensureOperatorPairingModal(onStateChanged: () => void): HTMLElement {
   return modal;
 }
 
-export async function refreshCachedOperatorProfile(fetchImpl?: typeof fetch): Promise<ClientOperatorProfile | null> {
+export async function refreshLiveGuildAndOperatorProfile(onStateChanged: () => void, fetchImpl?: typeof fetch): Promise<{ snapshot?: unknown; profile: ClientOperatorProfile | null }> {
   const fn = fetchImpl ?? (typeof fetch === "function" ? fetch : undefined);
-  if (!fn) return cachedProfile;
-  const startEpoch = profileMutationEpoch;
-  try {
-    const res = await fn("/api/guild/users/me", { headers: getOperatorHeaders() });
-    if (res.ok) {
-      const next = (await res.json()) as ClientOperatorProfile;
-      if (startEpoch === profileMutationEpoch) cachedProfile = next;
-    }
-  } catch { /* ignore */ }
-  return cachedProfile;
-}
-
-export async function refreshLiveGuildAndOperatorProfile(
-  onStateChanged: () => void, fetchImpl?: typeof fetch,
-): Promise<{ snapshot?: unknown; profile: ClientOperatorProfile | null }> {
-  const fn = fetchImpl ?? (typeof fetch === "function" ? fetch : undefined);
-  if (!fn) return { profile: cachedProfile };
+  if (!fn) return { profile: getCachedOperatorProfile() };
   let snapshot: unknown;
   try {
     const signal = typeof AbortSignal?.timeout === "function" ? AbortSignal.timeout(8000) : undefined;
@@ -351,40 +349,51 @@ export async function syncOperatorAuthGate(onStateChanged: () => void): Promise<
       if (profile.authenticated === false) {
         isAuthLocked = true; resetClientWorldViewState(false); clientState.authBootCompleted = true;
         activeModalTab = requestedModal === "register" ? "register" : "login";
-        const modal = ensureOperatorPairingModal(onStateChanged); modal.classList.add("is-open"); mountModalInnerDom(modal, onStateChanged);
+        const modal = ensureOperatorPairingModal(onStateChanged);
+        openModal(OPERATOR_MODAL_ID, { dismissible: false, size: "compact" });
+        mountModalInnerDom(modal, onStateChanged);
         onStateChanged(); return false;
       }
-      isAuthLocked = false; if (profile.operatorId) setSavedOperatorId(profile.operatorId);
+      isAuthLocked = false;
+      if (profile.operatorId) setSavedOperatorId(profile.operatorId);
       const localSaved = readSavedUiWindowState() ?? {};
       const mergedPrefs = { ...(profile.preferences ?? {}), ...localSaved };
       if (clientState.selectedSessionId) mergedPrefs.selectedSessionId = clientState.selectedSessionId;
       applyOperatorPreferencesToClientState(mergedPrefs);
       clientState.authBootCompleted = true; syncAuthLockDom(); onStateChanged();
       if (requestedModal === "profile" || requestedModal === "machines" || (profile.pairedMachines?.length ?? 0) === 0) {
-        activeModalTab = requestedModal === "machines" ? "machines" : "profile";
-        const modal = ensureOperatorPairingModal(onStateChanged); modal.classList.add("is-open"); mountModalInnerDom(modal, onStateChanged);
+        activeModalTab = requestedModal === "profile" ? "profile" : "machines";
+        const modal = ensureOperatorPairingModal(onStateChanged);
+        openModal(OPERATOR_MODAL_ID, { dismissible: true, size: resolveOperatorModalMeta(activeModalTab, false).size });
+        mountModalInnerDom(modal, onStateChanged);
       }
     }
   } catch { /* ignore */ }
-  clientState.authBootCompleted = true; return true;
+  clientState.authBootCompleted = true;
+  return true;
 }
 
-export async function openOperatorPairingModal(onStateChanged: () => void, initialTab: OperatorModalTab = "profile"): Promise<void> {
+export function openSyntheticOperatorModal(tab: OperatorModalTab, authLocked: boolean, onStateChanged: () => void): void {
   if (typeof document === "undefined") return;
-  activeModalTab = initialTab;
-  statusMessageText = "";
-  const modal = ensureOperatorPairingModal(onStateChanged);
-  modal.classList.add("is-open");
-  const prevSig = JSON.stringify(cachedProfile);
+  isAuthLocked = authLocked; activeModalTab = tab; statusMessageText = "";
+  const modal = ensureOperatorPairingModal(onStateChanged); syncAuthLockDom();
+  openModal(OPERATOR_MODAL_ID, { dismissible: !isAuthLocked, size: resolveOperatorModalMeta(activeModalTab, isAuthLocked).size });
   mountModalInnerDom(modal, onStateChanged);
+}
+export async function openOperatorPairingModal(onStateChanged: () => void, initialTab: OperatorModalTab = "machines"): Promise<void> {
+  if (typeof document === "undefined") return;
+  activeModalTab = initialTab; statusMessageText = "";
+  const modal = ensureOperatorPairingModal(onStateChanged);
+  openModal(OPERATOR_MODAL_ID, { dismissible: !isAuthLocked, size: resolveOperatorModalMeta(activeModalTab, isAuthLocked).size });
+  const prevSig = JSON.stringify(getCachedOperatorProfile());
+  mountModalInnerDom(modal, onStateChanged);
+  if (isOfflineDemoModeActive()) return;
   try {
     const profile = await refreshCachedOperatorProfile();
-    if (profile) {
-      isAuthLocked = profile.authenticated === false;
-      onStateChanged();
-      const activeEl = document.activeElement;
-      const isInteracting = Boolean(activeEl && modal.contains(activeEl) && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(activeEl.tagName));
-      if (!isInteracting && JSON.stringify(profile) !== prevSig) mountModalInnerDom(modal, onStateChanged);
-    }
+    if (!profile) return;
+    isAuthLocked = profile.authenticated === false; onStateChanged();
+    const activeEl = document.activeElement;
+    const isInteracting = Boolean(activeEl && modal.contains(activeEl) && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(activeEl.tagName));
+    if (!isInteracting && JSON.stringify(profile) !== prevSig) mountModalInnerDom(modal, onStateChanged);
   } catch { /* ignore */ }
 }

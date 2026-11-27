@@ -1,13 +1,13 @@
 import { classifyCapability, formatInputPreview } from "../capability/classifier.ts";
 import {
-  detectConversationalQuestionPrompt, normalizeQuestGateFields,
+  detectConversationalQuestionPrompt, normalizeQuestGateFields, parseModelRef,
   type QuestGateQuestionField, type QuestGateSource, type SessionChatMessage, type TelemetryEvent, type ToolExecutionRecord,
 } from "../types/domain.ts";
 
 export { detectConversationalQuestionPrompt };
 
 export interface SessionMessageHydration {
-  skills?: string[]; latestAgentClass?: string; latestModelId?: string;
+  skills?: string[]; latestAgentClass?: string; latestModelId?: string; latestModelVariant?: string | null;
   activeTool?: { callId?: string; toolName: string; toolInput?: Record<string, unknown> | string | null; outputPreview?: string; timestampMs?: number } | null;
   recentTools?: ToolExecutionRecord[]; latestContextTokens?: number; compactedAtMs?: number | null;
   lastAssistantText?: string | null; lastUserPromptText?: string | null;
@@ -88,7 +88,7 @@ export async function hydrateSessionMessages(
   const messages = await fetchJson<
     Array<{
       id?: string; type?: string; role?: string; agent?: string;
-      model?: { id?: string; providerID?: string; model?: string } | string;
+      model?: { id?: string; providerID?: string; model?: string; variant?: string } | string;
       text?: string; status?: string; timestampMs?: number;
       info?: { id?: string; role?: string; text?: string; agent?: string; time?: { created?: number; completed?: number } };
       time?: { created?: number; completed?: number };
@@ -113,6 +113,7 @@ export async function hydrateSessionMessages(
   const discoveredSkills = new Set<string>();
   let latestAgentClass: string | undefined;
   let latestModelId: string | undefined;
+  let latestModelVariant: string | null | undefined;
   let runningTool: SessionMessageHydration["activeTool"] = null;
   let pendingQuestion: SessionMessageHydration["pendingQuestion"] = null;
   let lastAssistantText: string | null = null;
@@ -211,11 +212,10 @@ export async function hydrateSessionMessages(
       latestAgentClass = msgAgent.trim();
     }
     if (!latestModelId && msg.model && (msgRole === "model-switched" || msgRole === "assistant")) {
-      if (typeof msg.model === "string" && msg.model.trim()) {
-        latestModelId = msg.model.trim();
-      } else if (typeof msg.model === "object") {
-        const mId = msg.model.id ?? msg.model.model;
-        if (mId) latestModelId = msg.model.providerID ? `${msg.model.providerID}/${mId}` : mId;
+      const parsedMsgModel = parseModelRef(msg.model);
+      if (parsedMsgModel) {
+        latestModelId = parsedMsgModel.modelId;
+        latestModelVariant = parsedMsgModel.variant ?? null;
       }
     }
     const partsText = items
@@ -336,7 +336,7 @@ export async function hydrateSessionMessages(
 
   return {
     skills: discoveredSkills.size > 0 ? [...discoveredSkills] : undefined,
-    latestAgentClass, latestModelId, activeTool: runningTool,
+    latestAgentClass, latestModelId, latestModelVariant, activeTool: runningTool,
     recentTools: recentTools.length > 0 ? recentTools : undefined,
     latestContextTokens, compactedAtMs, lastAssistantText, lastUserPromptText,
     messages: hydratedMessages.length > 0 ? hydratedMessages : undefined, pendingQuestion,
@@ -378,6 +378,9 @@ export function buildHydratedSessionEvents(
   }
   events.push({
     type: "session.upserted", timestampMs: now, sessionId, locationDirectory,
+    ...(hydrated.latestAgentClass ? { agentClass: hydrated.latestAgentClass } : {}),
+    ...(hydrated.latestModelId ? { modelId: hydrated.latestModelId } : {}),
+    ...(hydrated.latestModelVariant !== undefined ? { modelVariant: hydrated.latestModelVariant } : {}),
     lastAssistantText: pqDone ? undefined : hydrated.lastAssistantText, lastUserPromptText: hydrated.lastUserPromptText,
     messages: hydrated.messages, recentTools: hydrated.recentTools, preserveActivityTimestamp: true,
   } as TelemetryEvent);

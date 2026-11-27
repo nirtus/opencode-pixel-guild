@@ -1,17 +1,14 @@
 import { isBuiltinOpenCodePlugin } from "../capability/classifier.ts";
-import type {
-  PluginStatusKind,
-  SessionTokenTelemetry,
+import {
+  normalizeCatalogModels,
+  resolveModelContextLimit,
+  type PluginStatusKind,
+  type RawModelCatalogInput,
+  type SessionTokenTelemetry,
 } from "../types/domain.ts";
 import type { OpenCodeDaemonLocationPayload } from "./daemon-types.ts";
 
-export interface RawDaemonModelItem {
-  id?: string;
-  modelID?: string;
-  providerID?: string;
-  name?: string;
-  limit?: { context?: number; output?: number };
-}
+export type RawDaemonModelItem = RawModelCatalogInput;
 
 export interface RawDaemonPluginItem {
   namespace?: string;
@@ -63,27 +60,33 @@ export function normalizeMcpStatus(
   return "connected";
 }
 
+export function buildProviderNameMap(rawProviders: unknown): Record<string, string> | null {
+  if (!rawProviders) return null;
+  const out: Record<string, string> = {};
+  if (Array.isArray(rawProviders)) {
+    for (const p of rawProviders) {
+      if (p && typeof p === "object") {
+        const id = (p as { id?: string }).id?.trim();
+        const name = (p as { name?: string }).name?.trim();
+        if (id && name) out[id] = name;
+      }
+    }
+  } else if (typeof rawProviders === "object") {
+    for (const [id, val] of Object.entries(rawProviders as Record<string, { name?: string }>)) {
+      if (id && val?.name?.trim()) out[id] = val.name.trim();
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 export function normalizeDaemonModels(
   rawModels: RawDaemonModelItem[] | null | undefined,
+  providerNameById?: Record<string, string>,
 ) {
+  const { models, byKey } = normalizeCatalogModels(rawModels, providerNameById);
   const modelLimitByKey = new Map<string, number>();
-  const models: NonNullable<OpenCodeDaemonLocationPayload["models"]> = [];
-  if (Array.isArray(rawModels)) {
-    for (const m of rawModels) {
-      const fullId = m.id ?? m.modelID;
-      if (!fullId) continue;
-      const contextLimit = m.limit?.context ?? 200_000;
-      modelLimitByKey.set(fullId.toLowerCase(), contextLimit);
-      const shortId = fullId.split("/").pop();
-      if (shortId) modelLimitByKey.set(shortId.toLowerCase(), contextLimit);
-      models.push({
-        id: fullId,
-        providerId: m.providerID,
-        name: m.name ?? fullId,
-        limitContext: contextLimit,
-        limitOutput: m.limit?.output,
-      });
-    }
+  for (const [k, entry] of Object.entries(byKey)) {
+    modelLimitByKey.set(k.toLowerCase(), entry.limitContext);
   }
   return { models, modelLimitByKey };
 }
@@ -164,10 +167,8 @@ export function mapDaemonSessionTokens(
   const inputTokens = s.tokens?.inputTokens ?? s.tokens?.input ?? 0;
   const outputTokens = s.tokens?.outputTokens ?? s.tokens?.output ?? 0;
   const usedTokens = s.tokens?.usedTokens ?? latestContextTokens ?? inputTokens + outputTokens;
-  const lowerShort = shortModelId.toLowerCase();
   const limitTokens =
-    s.tokens?.limitTokens ?? catalogLimit ??
-    (lowerShort.includes("gemini-") ? 1_048_576 : lowerShort.includes("gpt-5") || lowerShort.includes("codex") ? 400_000 : 200_000);
+    s.tokens?.limitTokens ?? catalogLimit ?? resolveModelContextLimit(shortModelId);
   const cacheRead = s.tokens?.cacheReadTokens ?? s.tokens?.cacheRead ?? s.tokens?.cache?.read ?? 0;
   const cacheWrite = s.tokens?.cacheWriteTokens ?? s.tokens?.cacheWrite ?? s.tokens?.cache?.write ?? 0;
   const totalUsd = s.tokens?.totalCostUsd ?? s.tokens?.totalUsd ?? (typeof s.cost === "number" ? s.cost : 0);

@@ -1,6 +1,7 @@
 export * from "./service-discovery.ts";
 export * from "./daemon-types.ts";
 export * from "./daemon-session-ops.ts";
+export * from "./daemon-session-switches.ts";
 export * from "./daemon-message-hydration.ts";
 export * from "./daemon-mcp-normalizer.ts";
 export * from "./daemon-location-state.ts";

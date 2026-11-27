@@ -1,0 +1,37 @@
+# 02: Unified `model.switch` Command, Delta-Only Pre-Prompt Switching & Simulator Parity
+
+Type: task
+Label: ready-for-agent
+Status: resolved
+Blocked by: 01
+
+## Specification
+
+Implement the unified session switch command seam and simulator parity specified in [spec.md](../spec.md) (§3.2):
+
+1. **Extend `GuildCommandRequest` (`src/types/command-types.ts`)**:
+   - Add `"model.switch"` (`{ command: "model.switch", sessionId, directory?, modelId, modelVariant? }`).
+   - Add optional `modelVariant?: string` to `"scroll.send"` and `"adventurer.summon"`.
+2. **Create Deep Module `src/ingress/daemon-session-switches.ts` (re-exported via `src/ingress/index.ts`)**:
+   - Extract agent and model switching out of `src/ingress/daemon-command-ops.ts` (bringing `daemon-command-ops.ts` safely under 400 lines).
+   - Implement `executeDaemonModelSwitch` posting `POST /api/session/${encodeURIComponent(sessionId)}/model${query}` with `toDaemonModelRef(modelId, modelVariant)`.
+   - Implement delta-aware pre-prompt switching for `scroll.send`: compare requested `agentClass`, `modelId`, and `modelVariant` against the character's current state and only call `POST /api/session/:id/agent` or `POST /api/session/:id/model` when changed, returning real daemon errors instead of swallowing failures with `.catch(() => null)`.
+3. **Update `src/server/command-router.ts` & `src/state/session-handlers.ts`**:
+   - Handle `command === "model.switch"`: validate `sessionId` and `modelId`, execute via daemon client (or directly on `activeReducer` in `demo-simulator` mode), and gate `session.upserted` (`modelId`, `modelVariant: cmd.modelVariant ?? null`, `preserveActivityTimestamp: true`) strictly on daemon success—immediately rescaling `char.contextMana` and `equipmentLoadout` in `handleSessionUpserted`.
+   - Pass current character `(agentClass, modelId, modelVariant)` into `scroll.send` daemon dispatch so unchanged prompts perform zero redundant switch POSTs; if `scroll.send` changes model/variant and succeeds, reconcile `modelId` / `modelVariant` on the reducer.
+   - Replace `resolveDefaultSummonModelId` in `command-router.ts`: delete the hardcoded `"google/gemini-4-argon"` fallback and `"opencode/flint-40b-free"` exclusion, resolving `cmd.modelId ?? room?.defaultModelId` and omitting `model` on `POST /api/session` when undefined so OpenCode applies its configured location default.
+4. **Demo Guild Simulator Parity (`src/simulator/scenario-presets.ts`, `src/simulator/scenario-events.ts`)**:
+   - Emit `catalog.hydrated` with realistic multi-provider chat models (both models with `variants`, e.g. `["low", "medium", "high"]`, and models without variants) plus `defaultModelId` so offline/demo mode exercises the exact same model catalog and `model.switch` seam.
+
+## Acceptance Criteria
+
+- [x] `POST /api/guild/command` with `{ command: "model.switch", ... }` calls `POST /api/session/:id/model` with `{ providerID, id, variant? }` and immediately updates `char.modelId`, `char.modelVariant`, and `char.contextMana.limitTokens` on success.
+- [x] Failed daemon `model.switch` (4xx/5xx/network) returns `{ ok: false, error }` without mutating reducer state.
+- [x] `scroll.send` fires zero `/agent` or `/model` POSTs when requested values match current character state, and fires only the changed switch when different.
+- [x] `adventurer.summon` has zero hardcoded `"google/gemini-4-argon"` fallback and defers to `room.defaultModelId` or OpenCode's default.
+- [x] `Demo Guild Simulator` hydrates multi-provider models and supports live `model.switch`.
+- [x] Every modified/added file under `src/` stays strictly `<= 400` lines, Seam 2 tests pass in `tests/60-opencode-model-selection.test.ts`, and `tests/13`, `tests/39`, `tests/45`, `tests/57` stay green.
+
+## Answer
+
+Added `model.switch` (and optional `modelVariant` on `scroll.send` / `adventurer.summon`) in `src/types/command-types.ts`, extracted `src/ingress/daemon-session-switches.ts` (re-exported via `src/ingress/index.ts`) for `POST /api/session/:id/model` and delta-only pre-prompt switching, gated reducer mutations on daemon success in `src/server/command-router.ts`, removed the hardcoded `"google/gemini-4-argon"` summon fallback in favor of `room.defaultModelId` / OpenCode default, and hydrated multi-provider models with variants across all 6 `Demo Guild Simulator` presets (`src/simulator/scenario-events.ts`, `src/simulator/scenario-presets.ts`). Verified via Seam 2 tests in `tests/60-opencode-model-selection.test.ts` and live Docker container deployment on port `4310`.

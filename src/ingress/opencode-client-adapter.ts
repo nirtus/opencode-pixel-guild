@@ -170,12 +170,12 @@ export function createOpenCodeClientAdapter(options: CreateOpenCodeClientAdapter
           : locMeta.directory;
 
       if (
-        (state.skills?.length || state.plugins?.length || state.agents?.length || state.models?.length) &&
+        (state.skills?.length || state.plugins?.length || state.agents?.length || state.models?.length || state.defaultModelId) &&
         sweepDigests.shouldEmitCatalog(locMeta.directory, state, isReconnect)
       ) {
         sweepEvents.push({
           type: "catalog.hydrated", timestampMs: now, locationDirectory: targetCanonDir,
-          skills: state.skills, plugins: state.plugins, agents: state.agents, models: state.models,
+          skills: state.skills, plugins: state.plugins, agents: state.agents, models: state.models, defaultModelId: state.defaultModelId,
         });
       }
 

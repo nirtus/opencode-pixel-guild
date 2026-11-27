@@ -201,8 +201,14 @@ export function applyAuthoritativeSnapshot(
 
   const curVer = typeof curSnap?.version === "number" ? curSnap.version : 0;
   const nextVer = typeof nextSnap.version === "number" ? nextSnap.version : 0;
+  const curTs = typeof curSnap?.timestampMs === "number" ? curSnap.timestampMs : 0;
+  const nextTs = typeof nextSnap.timestampMs === "number" ? nextSnap.timestampMs : 0;
+  // Within a single reducer instance, timestampMs is strictly non-decreasing with version.
+  // A lower version paired with a strictly newer timestampMs on the same daemonUrl means the
+  // server restarted or reset the reducer for this host and must NOT lock out live updates.
+  const isNewerServerEpoch = curTs > 0 && nextTs > curTs;
 
-  if (!options.allowVersionReset && !isHostOwnershipTransition && curVer > 0 && nextVer > 0 && nextVer < curVer) {
+  if (!options.allowVersionReset && !isHostOwnershipTransition && !isNewerServerEpoch && curVer > 0 && nextVer > 0 && nextVer < curVer) {
     if (options.roomIdHint && curSnap?.rooms?.[options.roomIdHint] && nextSnap.rooms?.[options.roomIdHint]) {
       curSnap.rooms[options.roomIdHint] = {
         ...curSnap.rooms[options.roomIdHint]!,

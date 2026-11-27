@@ -31,6 +31,10 @@ export type GuildCommandRequest =
       readonly skills?: readonly string[];
       readonly agentClass?: string;
       readonly modelId?: string;
+      readonly modelVariant?: string | null;
+      readonly currentAgentClass?: string;
+      readonly currentModelId?: string;
+      readonly currentModelVariant?: string | null;
       readonly gateId?: string;
       readonly kind?: "permission" | "question";
       readonly source?: QuestGateSource;
@@ -46,6 +50,7 @@ export type GuildCommandRequest =
       readonly title?: string;
       readonly agentClass?: string;
       readonly modelId?: string;
+      readonly modelVariant?: string | null;
       readonly promptText?: string;
       readonly skills?: readonly string[];
     }
@@ -71,6 +76,13 @@ export type GuildCommandRequest =
       readonly sessionId: string;
       readonly directory?: string;
       readonly agentClass: string;
+    }
+  | {
+      readonly command: "model.switch";
+      readonly sessionId: string;
+      readonly directory?: string;
+      readonly modelId: string;
+      readonly modelVariant?: string | null;
     };
 
 export interface GuildCommandResult {

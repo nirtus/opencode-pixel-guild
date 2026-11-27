@@ -19,6 +19,7 @@ const SKETCHES_HTML_PATH = resolve(
 );
 const EXAMPLES_DIR = resolve(__dirname, "../../docs/examples");
 const DOCS_DIR = resolve(__dirname, "../../docs");
+const ASSETS_DIR = resolve(__dirname, "../../assets");
 
 interface CachedCompiledFile {
   mtimeMs: number;
@@ -80,6 +81,18 @@ export function tryServeStaticAsset(
         "Cache-Control": "no-store",
       });
       res.end(method === "HEAD" ? "" : sketchHtml);
+      return true;
+    }
+  }
+
+  if (pathname.startsWith("/assets/images/")) {
+    const relAsset = normalize(pathname.slice("/assets/".length)).replace(/^(\.\.(\/|\\|$))+/, "");
+    const assetPath = resolve(ASSETS_DIR, relAsset);
+    if (assetPath.startsWith(ASSETS_DIR + sep) && existsSync(assetPath) && !statSync(assetPath).isDirectory()) {
+      const mime = assetPath.endsWith(".gif") ? "image/gif" : "image/png";
+      const buf = readFileSync(assetPath);
+      res.writeHead(200, { "Content-Type": mime, "Cache-Control": "public, max-age=86400" });
+      res.end(method === "HEAD" ? "" : buf);
       return true;
     }
   }

@@ -1,13 +1,21 @@
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  CANONICAL_FIXTURE_SET,
+  computeSha256Hex,
+  PUBLIC_ASSET_MANIFEST_SCHEMA_VERSION,
+  readPublicAssetManifest,
+  writePublicAssetManifest,
+} from "../screenshots/manifest-contract.ts";
+import { stripPngMetadata } from "../screenshots/png-metadata.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "../..");
 const VIDEO_OUT_PATH = resolve(PROJECT_ROOT, "docs/video/opencode-pixel-guild-intro.mp4");
-const GIF_OUT_PATH = resolve(PROJECT_ROOT, "docs/images/opencode-pixel-guild-intro-preview.gif");
-const PROOF_PNG_PATH = resolve(PROJECT_ROOT, "docs/images/intro-demo-video.png");
+const GIF_OUT_PATH = resolve(PROJECT_ROOT, "assets/images/opencode-pixel-guild-intro-preview.gif");
+const PROOF_PNG_PATH = resolve(PROJECT_ROOT, "assets/images/intro-demo-video.png");
 
 const DURATION_MS = 35_000;
 const CAPTURE_FPS = 20;
@@ -229,7 +237,8 @@ async function main(): Promise<void> {
       // Capture high-res PNG visual proof during Scene 4 Dungeon Wilds combat (t = 30.5s)
       if (frameIdx === Math.round(30.5 * CAPTURE_FPS)) {
         const pngShot = await cdp.send("Page.captureScreenshot", { format: "png" });
-        writeFileSync(PROOF_PNG_PATH, Buffer.from(pngShot.data, "base64"));
+        const stripped = stripPngMetadata(Buffer.from(pngShot.data, "base64"));
+        writeFileSync(PROOF_PNG_PATH, stripped.buffer);
       }
 
       if ((frameIdx + 1) % 150 === 0 || frameIdx === TOTAL_FRAMES - 1) {
@@ -265,6 +274,41 @@ async function main(): Promise<void> {
   } finally {
     chromeProc.kill("SIGKILL");
   }
+
+  const existingManifest = readPublicAssetManifest(PROJECT_ROOT);
+  const nextAssets = { ...(existingManifest?.assets ?? {}) };
+  if (existsSync(PROOF_PNG_PATH)) {
+    const strippedProof = stripPngMetadata(readFileSync(PROOF_PNG_PATH));
+    writeFileSync(PROOF_PNG_PATH, strippedProof.buffer);
+    nextAssets["intro-demo-video.png"] = {
+      generator: "intro-demo-video",
+      sceneId: "intro-tour",
+      viewport: { width: strippedProof.width, height: strippedProof.height, dpr: 1 },
+      width: strippedProof.width,
+      height: strippedProof.height,
+      sha256: computeSha256Hex(strippedProof.buffer),
+      metadataStripped: true,
+      ocrChecked: true,
+    };
+  }
+  if (existsSync(GIF_OUT_PATH)) {
+    const gifBuf = readFileSync(GIF_OUT_PATH);
+    nextAssets["opencode-pixel-guild-intro-preview.gif"] = {
+      generator: "intro-demo-video",
+      sceneId: "intro-tour",
+      viewport: { width: 920, height: 518, dpr: 1 },
+      width: 920,
+      height: 518,
+      sha256: computeSha256Hex(gifBuf),
+      metadataStripped: true,
+      ocrChecked: true,
+    };
+  }
+  writePublicAssetManifest(PROJECT_ROOT, {
+    schemaVersion: PUBLIC_ASSET_MANIFEST_SCHEMA_VERSION,
+    fixtureSet: existingManifest?.fixtureSet || CANONICAL_FIXTURE_SET,
+    assets: nextAssets,
+  });
 
   const mp4SizeMb = (statSync(VIDEO_OUT_PATH).size / (1024 * 1024)).toFixed(2);
   const gifSizeMb = (statSync(GIF_OUT_PATH).size / (1024 * 1024)).toFixed(2);

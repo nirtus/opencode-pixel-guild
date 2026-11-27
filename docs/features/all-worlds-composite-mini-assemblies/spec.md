@@ -124,7 +124,3 @@ See `docs/architecture-review/architecture-review-20261108-all-worlds-mini-assem
    - Verify hover tooltips and **Guild Master Ledger** showcase HTML render per-project mini-assembly status chips in `🌐 All` mode.
 3. **Docker Container Deployment & Visual Proof (`opencode-pixel-guild-visualizer` on port `4310`)**:
    - Deploy via `npm run docker:up`, run `npm test`, capture `docs/images/all-worlds-composite-mini-assemblies.png` via headless Chrome, and visually verify via `read`.
-
-## Visual Proof
-
-![All-Worlds Composite Mini-Assemblies on the Goal Assembly Site](../../images/all-worlds-composite-mini-assemblies.png)

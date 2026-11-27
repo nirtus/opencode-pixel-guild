@@ -10,7 +10,8 @@ import { getCommitLedgerRevision } from "./commit-ledger-controller.ts";
 import { acknowledgeSessionResultAsRead, reconcileInteractiveCommandSlot, syncClientViewedSessionsToSnapshot } from "./command-scroll-controller.ts";
 import { expandedChatMessageIds, renderHeroSubtabBarHtml, renderHeroSubtabStaticHtml } from "./hero-subtabs-reconciler.ts";
 import { reconcileTicker, renderGuildMasterLedgerPanel, resetTickerSignature, syncSpectatorDrawerChrome } from "./ledger-panel-reconciler.ts";
-import { getCachedOperatorProfile, getOperatorHeaders } from "./operator-pairing-controller.ts";
+import { isOfflineDemoModeActive } from "./offline-demo-flag.ts";
+import { getCachedOperatorProfile, getOperatorHeaders } from "./operator-session-store.ts";
 import {
   applyAuthoritativeSnapshot, isRoomDemolishing, isSessionKilling, markSessionKilling, recordClientDeletedSession,
 } from "./snapshot-gate.ts";
@@ -160,11 +161,12 @@ export function reconcileSidePanel(onStateChanged: () => void): void {
     (window.innerWidth > 960 ? !clientState.isGamemasterCollapsed : clientState.mobileDrawerState !== "collapsed");
   const includeDispatchLog =
     clientState.mobileActiveTab === "character" && isSheetVisible && activeSubtab === "chat";
-  if (includeDispatchLog && hasCharacterUnviewedResult(rawChar)) {
+  const offlineDemo = isOfflineDemoModeActive();
+  if (!offlineDemo && includeDispatchLog && hasCharacterUnviewedResult(rawChar)) {
     acknowledgeSessionResultAsRead(rawChar.sessionId, onStateChanged);
   }
   const sheet = buildCharacterSheetViewModel(clientState.currentSnapshot, rawChar.sessionId, { includeDispatchLog });
-  maybeHydrateSessionMessagesOnDemand({
+  if (!offlineDemo) maybeHydrateSessionMessagesOnDemand({
     char: rawChar,
     messageCount: sheet.messages?.length ?? 0,
     mobileActiveTab: clientState.mobileActiveTab,
@@ -262,7 +264,7 @@ export function reconcileSidePanel(onStateChanged: () => void): void {
 
   const computeStaticSig = () => JSON.stringify(
     activeSubtab === "details"
-      ? ["details", sheet.sessionId, sheet.projectHeraldry?.partyKey, sheet.modelId, sheet.contextMana.usedTokens, sheet.contextMana.limitTokens, sheet.contextMana.percent, sheet.cost.inputTokens, sheet.cost.outputTokens, sheet.cost.formattedCost, sheet.activeTarget.preparationStation || sheet.activeTarget.workstation, sheet.contextMana.compactionCount, sheet.childSubagents.map((s) => `${s.sessionId}:${s.lifecycleState}`), clientState.pendingKillSessionId, isSessionKilling(sheet.sessionId)]
+      ? ["details", sheet.sessionId, sheet.projectHeraldry?.partyKey, sheet.modelId, sheet.modelVariant ?? "", sheet.contextMana.usedTokens, sheet.contextMana.limitTokens, sheet.contextMana.percent, sheet.cost.inputTokens, sheet.cost.outputTokens, sheet.cost.formattedCost, sheet.activeTarget.preparationStation || sheet.activeTarget.workstation, sheet.contextMana.compactionCount, sheet.childSubagents.map((s) => `${s.sessionId}:${s.lifecycleState}`), clientState.pendingKillSessionId, isSessionKilling(sheet.sessionId)]
       : activeSubtab === "scrolls"
         ? ["scrolls", sheet.sessionId, sheet.equipmentLoadout.level, sheet.equipmentLoadout.tierTitle, sheet.equipmentLoadout.headgear.rpgName, sheet.equipmentLoadout.robes.rpgName, sheet.equipmentLoadout.mainHand.rpgName, sheet.equipmentLoadout.offHand.rpgName, sheet.equipmentLoadout.toolBelt.map((b) => `${b.toolName}:${b.count}`), sheet.skillGrimoireStack.map((s) => s.skillId), (sheet.connectedPlugins ?? []).map((p) => `${p.namespace}:${p.status}`)]
         : activeSubtab === "tools"

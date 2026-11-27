@@ -7,9 +7,12 @@ import {
 import { hasCharacterUnviewedResult, resolveProjectHeraldry } from "../spatial/index.ts";
 import {
   detectConversationalQuestionPrompt,
+  groupSelectableModelsByProvider,
   isSelectablePrimaryAgentMode,
   normalizeQuestGateFields,
+  parseModelRef,
   resolveGuildRoleArchetype,
+  resolveRoomSelectableModels,
   type EquipmentLoadout,
   type GuildSnapshot,
   type ToolExecutionRecord,
@@ -278,27 +281,36 @@ export function buildCharacterSheetViewModel(
           snapshot.availableAgentModes.length > 0
         ? snapshot.availableAgentModes
         : DEFAULT_PRIMARY_AGENT_MODES;
-  const availableAgentModes: readonly CharacterAgentModeOptionViewModel[] =
-    Object.freeze(
-      rawPrimaryModes.map((m) =>
-        Object.freeze({
-          id: m.id,
-          displayName: formatAgentDisplayName(m.id),
-          description:
-            m.description ||
-            (m.id === "build"
-              ? "Warrior / Feature Smith"
-              : m.id === "plan"
-                ? "Scout / Strategist"
-                : m.id === "document"
-                  ? "Mage / Lore & Specs"
-                  : m.name || "Primary Agent"),
-          ...(m.color ? { colorHex: m.color } : {}),
-          roleArchetype: resolveGuildRoleArchetype(m.id),
-          isCurrent: m.id === character.agentClass,
-        }),
-      ),
-    );
+  const availableAgentModes: readonly CharacterAgentModeOptionViewModel[] = Object.freeze(
+    rawPrimaryModes.map((m) => Object.freeze({
+      id: m.id,
+      displayName: formatAgentDisplayName(m.id),
+      description:
+        m.description ||
+        (m.id === "build" ? "Warrior / Feature Smith" : m.id === "plan" ? "Scout / Strategist" : m.id === "document" ? "Mage / Lore & Specs" : m.name || "Primary Agent"),
+      ...(m.color ? { colorHex: m.color } : {}),
+      roleArchetype: resolveGuildRoleArchetype(m.id),
+      isCurrent: m.id === character.agentClass,
+    })),
+  );
+  const parsedCharModel = parseModelRef(character.modelId);
+  const selectedModelId = parsedCharModel?.modelId ?? character.modelId;
+  const selectedModelVariant = character.modelVariant ?? parsedCharModel?.variant ?? null;
+  const selectableModels = resolveRoomSelectableModels(room?.availableModels, snapshot.availableModels, selectedModelId);
+  const availableModelGroups = Object.freeze(
+    groupSelectableModelsByProvider(selectableModels).map((g) => Object.freeze({
+      providerId: g.providerId,
+      providerLabel: g.providerLabel,
+      models: Object.freeze(g.models.map((m) => Object.freeze({
+        id: m.id, providerId: m.providerId ?? g.providerId, name: m.name ?? m.id,
+        variants: Object.freeze([...(m.variants ?? [])]), limitContext: m.limitContext,
+        isCurrent: m.id.toLowerCase() === selectedModelId.toLowerCase(),
+      }))),
+    })),
+  );
+  const matchedCurrentModel = selectableModels.find((m) => m.id.toLowerCase() === selectedModelId.toLowerCase());
+  const availableVariants = Object.freeze([...(matchedCurrentModel?.variants ?? [])]);
+
   const commandScroll: CharacterCommandScrollViewModel = Object.freeze({
     endpoint: "/api/guild/command",
     sessionId: character.sessionId,
@@ -319,6 +331,11 @@ export function buildCharacterSheetViewModel(
     selectedAgentClass: character.agentClass,
     canSwitchAgentMode,
     availableAgentModes,
+    canSwitchModel: canSwitchAgentMode,
+    selectedModelId,
+    selectedModelVariant,
+    availableModelGroups,
+    availableVariants,
   });
 
   const messages = Object.freeze([...(character.messages ?? [])]);
@@ -347,6 +364,7 @@ export function buildCharacterSheetViewModel(
     title: character.title,
     agentBadge,
     modelId: character.modelId,
+    ...(selectedModelVariant ? { modelVariant: selectedModelVariant } : {}),
     equipmentLoadout,
     recentTools,
     skillGrimoireStack,

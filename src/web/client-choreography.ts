@@ -234,8 +234,10 @@ export function stepClientChoreography(dtSec: number, nowMs: number): void {
       Boolean(walker.resolvedSlot) && walker.resolvedSlot!.station !== "Lounge" && !currentlyAtNonActing &&
       walker.resolvedSlot!.overheadLabel !== "Despawning" && Math.hypot(walker.targetX - walker.currentX, walker.targetY - walker.currentY) > 3;
     const isUrgentDespawn = isSubagent && slot.overheadLabel === "Despawning" && walker.resolvedSlot?.overheadLabel !== "Despawning";
+    const isUrgentQuestGate = Boolean(slot.questMarker) && walker.resolvedSlot?.questMarker !== slot.questMarker;
+    const isUrgentLoungeFinish = effectiveLifecycleState === "RestingInLounge" && Boolean(c.hasUnviewedResult) && walker.resolvedSlot?.station !== "Lounge" && queue[0]?.station === "Lounge";
     const isLockedInStationJob =
-      !isUrgentDespawn && !currentlyAtNonActing && !currentlyRestingAtLounge && !currentlyInAbandonedCombat && !hasShiftedCombatTarget &&
+      !isUrgentDespawn && !isUrgentQuestGate && !isUrgentLoungeFinish && !currentlyAtNonActing && !currentlyRestingAtLounge && !currentlyInAbandonedCombat && !hasShiftedCombatTarget &&
       (walker.isWalking || Boolean(walker.isClearingPerimeter) || hasUnfinishedWalkToActiveJob || (typeof walker.dwellUntilMs === "number" && nowMs < walker.dwellUntilMs));
 
     const startSlotTransition = (nextSlot: ResolvedCharacterSlot) => {

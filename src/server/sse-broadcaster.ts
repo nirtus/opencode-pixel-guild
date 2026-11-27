@@ -3,6 +3,7 @@ import { normalizeDaemonEndpointUrl } from "../state/index.ts";
 import type { CharacterState, GuildStateEmission } from "../types/domain.ts";
 
 export const DEFAULT_SSE_STREAM_COALESCE_MS = 70;
+export const MAX_SSE_CLIENT_BACKPRESSURE_BYTES = 2 * 1024 * 1024;
 
 export interface SseBroadcasterOptions {
   readonly coalesceMs?: number;
@@ -17,7 +18,7 @@ export interface SseBroadcaster {
 }
 
 function buildCharMetaKey(char: CharacterState): string {
-  return `${char.lifecycleState}:${char.questGate?.gateId ?? ""}`;
+  return `${char.lifecycleState}:${char.questGate?.gateId ?? ""}:${char.hasUnviewedResult ? 1 : 0}`;
 }
 
 export function createSseBroadcaster(
@@ -27,8 +28,11 @@ export function createSseBroadcaster(
   const coalesceMs = Math.max(0, options.coalesceMs ?? DEFAULT_SSE_STREAM_COALESCE_MS);
   const now = options.now ?? (() => Date.now());
   const lastSentCharMeta = new Map<string, string>();
+  const drainingClients = new Set<ServerResponse>();
+  const lastWrittenVersionByClient = new WeakMap<ServerResponse, number>();
   let pendingTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingEmission: GuildStateEmission | null = null;
+  let latestEmission: GuildStateEmission | null = null;
   let activeDaemonUrl: string | null = null;
   let lastBroadcastAtMs = 0;
   let isClosed = false;
@@ -57,7 +61,8 @@ export function createSseBroadcaster(
 
   function isPassiveStreamingUpsert(emission: GuildStateEmission): boolean {
     if (coalesceMs <= 0) return false;
-    if (emission.delta.kind !== "session.upserted") return false;
+    const kind = emission.delta.kind;
+    if (kind !== "session.upserted" && kind !== "session.status") return false;
     const sid = emission.delta.sessionId;
     if (!sid) return false;
     const prevMeta = lastSentCharMeta.get(sid);
@@ -67,18 +72,41 @@ export function createSseBroadcaster(
     return buildCharMetaKey(char) === prevMeta;
   }
 
+  function scheduleDrainCatchup(client: ServerResponse): void {
+    if (drainingClients.has(client) || typeof client.once !== "function") return;
+    drainingClients.add(client);
+    client.once("drain", () => {
+      drainingClients.delete(client);
+      if (isClosed || client.writableEnded || !sseClients.has(client) || !latestEmission) return;
+      if ((normalizeDaemonEndpointUrl(latestEmission.snapshot.daemonUrl) || null) !== activeDaemonUrl) return;
+      if (lastWrittenVersionByClient.get(client) === latestEmission.snapshot.version) return;
+      try {
+        lastWrittenVersionByClient.set(client, latestEmission.snapshot.version);
+        client.write(`data: ${JSON.stringify(latestEmission)}\n\n`);
+      } catch {
+        sseClients.delete(client);
+      }
+    });
+  }
+
   function writeNow(emission: GuildStateEmission): void {
     lastBroadcastAtMs = now();
+    latestEmission = emission;
     recordCharMeta(emission);
     if (sseClients.size === 0) return;
     const payload = `data: ${JSON.stringify(emission)}\n\n`;
     for (const client of sseClients) {
-      if (!client.writableEnded) {
-        try {
-          client.write(payload);
-        } catch {
-          sseClients.delete(client);
-        }
+      if (client.writableEnded) continue;
+      const buffered = typeof client.writableLength === "number" ? client.writableLength : 0;
+      if (buffered >= MAX_SSE_CLIENT_BACKPRESSURE_BYTES) {
+        scheduleDrainCatchup(client);
+        continue;
+      }
+      try {
+        lastWrittenVersionByClient.set(client, emission.snapshot.version);
+        client.write(payload);
+      } catch {
+        sseClients.delete(client);
       }
     }
   }
@@ -94,6 +122,8 @@ export function createSseBroadcaster(
   function reset(): void {
     clearPending();
     lastSentCharMeta.clear();
+    drainingClients.clear();
+    latestEmission = null;
     activeDaemonUrl = null;
     lastBroadcastAtMs = 0;
   }
