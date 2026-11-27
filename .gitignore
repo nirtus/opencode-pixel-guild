@@ -21,8 +21,6 @@ architecture-review.html
 **/.rebuild.lock
 **/.graphify_detect.json
 **/.graphify_transcripts.json
-docs/graphify-out/cache/
-docs/graphify-out/manifest.json
 /graphify-out/
 .opencode/
 .superpowers/
@@ -37,14 +35,13 @@ AGENTS.md
 CLAUDE.md
 GLOSSARY.md
 
-docs/adr/
-docs/agents/
-docs/architecture-review/
-docs/examples/
-docs/graphify-out/
 docs/images/
-docs/research/
+/docs/*
+!/docs/awesome-opencode-submission.md
+!/docs/video/
 
 /tests/
 tests/
 tests/*
+
+.githooks/
