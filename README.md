@@ -25,6 +25,7 @@
    - [5. Inspect, Chat With & Steer Heroes in the Character Sheet](#5-inspect-chat-with--steer-heroes-in-the-character-sheet)
    - [6. Summon New Adventurers & Demolish Rooms](#6-summon-new-adventurers--demolish-rooms)
    - [7. Mobile & Home-Screen Web App Experience](#7-mobile--home-screen-web-app-experience)
+   - [8. Synthetic Public Screenshots & Hygiene Guardrails (Contributors)](#8-synthetic-public-screenshots--hygiene-guardrails-contributors)
 7. [OpenCode Ecosystem & Disclaimer](#opencode-ecosystem--disclaimer)
 
 ---
@@ -212,7 +213,7 @@ Clicking empty floor space (or pressing `Escape`) opens the **Guild Master Ledge
 
 - **Completed Session Results (Unread)**: Displays finished sessions waiting with `✓ Result Ready`; clicking any entry opens **Hero Chat** and marks the result as read.
 - **Telemetry, Lifetime Tribute & Demolition**: Shows active hero count, world count, cumulative **Lifetime Tribute** (`🪙 Tokens` and `💰 Cost`), and—when a single world is focused—the **Demolish** button.
-- **Goal Assembly & Active Room Roster**: Summarizes assembly progress with an inline **🔄 Sync Git** action, lists active **Bug Monsters**, and provides a quick-jump roster whose header shows `agents <count> | show subagents <count>` with a `show subagents` checkbox (agent and subagent counts stay stable regardless of subagent visibility). When `show subagents` is enabled, **Squad Subagents** render grouped immediately beneath their parent **Guild Adventurer** (or parent subagent, capped at 3 visual nesting levels) with **Project Heraldry**-tinted tree-bracket connectors (`├─` / `└─`), recessed child row styling, and `✦ <class>` badges (omitting the redundant `[Project]` pill on attached children, while detached/orphan subagents remain at top level with their **Project Heraldry** pill retained), keeping `Active Squads` world session counters and visible characters strictly synchronized with live OpenCode sessions.
+- **Goal Assembly & Active Room Roster**: Summarizes assembly progress with an inline **🔄 Sync Git** action, lists active **Bug Monsters**, and provides a quick-jump roster whose header shows `agents <count> | show subagents <count>` with a `show subagents` checkbox (agent and subagent counts stay stable regardless of subagent visibility). When `show subagents` is enabled, **Squad Subagents** render grouped immediately beneath their parent **Guild Adventurer** (or parent **Squad Subagent**, capped at 3 visual nesting levels) with **Project Heraldry**-tinted tree-bracket connectors (`├─` / `└─`), recessed child row styling, and `✦ <class>` badges (omitting the redundant `[Project]` pill on attached children, while detached/orphan subagents remain at top level with their **Project Heraldry** pill retained), keeping `Active Squads` world session counters and visible characters strictly synchronized with live OpenCode sessions.
 
 #### `Assembly & Commit` Subtab
 
